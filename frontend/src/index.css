@@ -1,0 +1,142 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --gk-primary: #0d5c73;
+  --gk-primary-rgb: 13 92 115;
+  --gk-secondary: #4a7c59;
+  --gk-secondary-rgb: 74 124 89;
+  --gk-accent: #c8992e;
+  --gk-accent-rgb: 200 153 46;
+  --gk-mist: #f0f4f6;
+  --gk-night: #1a1f2e;
+  --gk-teal-ice: rgba(13, 92, 115, 0.12);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: 'Inter', sans-serif;
+  background: var(--gk-mist);
+  color: var(--gk-night);
+}
+
+html.dark,
+body.dark {
+  --gk-mist: #0b1220;
+  --gk-night: #e2e8f0;
+  --gk-teal-ice: rgba(51, 65, 85, 0.5);
+}
+
+body.dark {
+  background: #101726;
+  color: #e2e8f0;
+}
+
+.dark .bg-white,
+.dark .bg-white\/90 {
+  background-color: #111827 !important;
+}
+
+.dark .bg-mist {
+  background-color: #0b1220 !important;
+}
+
+.dark .bg-slate-50 {
+  background-color: #0f172a !important;
+}
+
+.dark .bg-slate-100 {
+  background-color: #1e293b !important;
+}
+
+.dark .bg-slate-200 {
+  background-color: #334155 !important;
+}
+
+.dark .bg-slate-300 {
+  background-color: #475569 !important;
+}
+
+.dark .bg-tealIce {
+  background-color: rgba(30, 41, 59, 0.85) !important;
+}
+
+.dark .border-slate-50,
+.dark .border-slate-100,
+.dark .border-slate-200,
+.dark .border-slate-300 {
+  border-color: #334155 !important;
+}
+
+.dark .divide-slate-100 > :not([hidden]) ~ :not([hidden]) {
+  border-color: #334155 !important;
+}
+
+.dark .text-night {
+  color: #f8fafc !important;
+}
+
+.dark .text-neutral,
+.dark .text-slate-500,
+.dark .text-slate-600,
+.dark .text-slate-700,
+.dark .text-slate-800,
+.dark .text-slate-900 {
+  color: #cbd5e1 !important;
+}
+
+.dark .text-slate-400 {
+  color: #94a3b8 !important;
+}
+
+.dark [class*='placeholder:text-slate-400']::placeholder {
+  color: #94a3b8 !important;
+}
+
+.dark .hover\:bg-slate-50:hover {
+  background-color: #1e293b !important;
+}
+
+.dark .hover\:bg-slate-100:hover,
+.dark .hover\:bg-slate-200:hover,
+.dark .hover\:bg-mist:hover {
+  background-color: #1e293b !important;
+}
+
+.dark .shadow-card,
+.dark .shadow-lg,
+.dark .shadow-xl,
+.dark .shadow-2xl {
+  box-shadow: 0 10px 30px rgba(2, 6, 23, 0.45) !important;
+}
+
+.display-title {
+  @apply text-[32px] font-bold leading-tight text-night dark:text-mist;
+}
+
+.section-heading {
+  @apply text-[20px] font-semibold text-night dark:text-mist;
+}
+
+.body-copy {
+  @apply text-[15px] font-normal text-slate-700 dark:text-slate-200;
+}
+
+.caption {
+  @apply text-[11px] text-slate-500 dark:text-slate-400;
+}
+
+.overline {
+  @apply text-[10px] uppercase tracking-widest text-slate-500 dark:text-slate-400;
+}

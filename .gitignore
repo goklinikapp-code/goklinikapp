@@ -1,0 +1,30 @@
+# macOS
+.DS_Store
+
+# Environment files (keep only templates)
+**/.env
+**/.env.*
+!**/.env.example
+
+# Python
+**/__pycache__/
+**/*.pyc
+backend/.venv/
+backend/venv/
+backend/staticfiles/
+backend/media_uploads/
+backend/backups/
+backend/test_db.sqlite3
+
+# Node / frontend
+frontend/node_modules/
+frontend/dist/
+frontend/dist-ssr/
+
+# Flutter / Dart
+mobile/.dart_tool/
+mobile/build/
+mobile/.flutter-plugins-dependencies
+medic/.dart_tool/
+medic/build/
+medic/.flutter-plugins-dependencies

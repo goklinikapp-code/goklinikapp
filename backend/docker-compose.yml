@@ -1,0 +1,80 @@
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: goklinik_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: goklinik_web
+    restart: unless-stopped
+    network_mode: host
+    command: >
+      sh -c "poetry run python manage.py migrate &&
+             poetry run python manage.py runserver 0.0.0.0:8000"
+    env_file:
+      - .env
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.development
+      DATABASE_URL: ${DATABASE_URL}
+      DATABASE_SSL_REQUIRE: ${DATABASE_SSL_REQUIRE:-True}
+      CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://127.0.0.1:6379/0}
+      CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://127.0.0.1:6379/0}
+    volumes:
+      - .:/app
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  celery_worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: goklinik_celery_worker
+    restart: unless-stopped
+    network_mode: host
+    command: poetry run celery -A config worker -l info
+    env_file:
+      - .env
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.development
+      DATABASE_URL: ${DATABASE_URL}
+      DATABASE_SSL_REQUIRE: ${DATABASE_SSL_REQUIRE:-True}
+      CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://127.0.0.1:6379/0}
+      CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://127.0.0.1:6379/0}
+    volumes:
+      - .:/app
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  celery_beat:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: goklinik_celery_beat
+    restart: unless-stopped
+    network_mode: host
+    command: poetry run celery -A config beat -l info
+    env_file:
+      - .env
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.development
+      DATABASE_URL: ${DATABASE_URL}
+      DATABASE_SSL_REQUIRE: ${DATABASE_SSL_REQUIRE:-True}
+      CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://127.0.0.1:6379/0}
+      CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://127.0.0.1:6379/0}
+    volumes:
+      - .:/app
+    depends_on:
+      redis:
+        condition: service_healthy

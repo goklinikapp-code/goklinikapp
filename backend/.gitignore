@@ -1,0 +1,21 @@
+# Local environment
+.env
+.env.*
+!.env.example
+
+# Python artifacts
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environments
+.venv/
+venv/
+
+# Runtime/local files
+staticfiles/
+media_uploads/
+backups/
+test_db.sqlite3
+celerybeat-schedule
