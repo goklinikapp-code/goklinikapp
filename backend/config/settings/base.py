@@ -58,16 +58,14 @@ def normalize_database_url(raw_url: str) -> str:
 
 SECRET_KEY = env("DJANGO_SECRET_KEY", "django-insecure-change-me")
 DEBUG = env_bool("DJANGO_DEBUG", False)
-ALLOWED_HOSTS = env_list(
-    "DJANGO_ALLOWED_HOSTS",
-    [
-        "api.goklinik.com",
-        "goklinik.com",
-        "www.goklinik.com",
-        "localhost",
-        "127.0.0.1",
-    ],
-)
+DEFAULT_ALLOWED_HOSTS = [
+    "api.goklinik.com",
+    "goklinik.com",
+    "www.goklinik.com",
+    "localhost",
+    "127.0.0.1",
+]
+ALLOWED_HOSTS = sorted(set(DEFAULT_ALLOWED_HOSTS + env_list("DJANGO_ALLOWED_HOSTS", [])))
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -200,18 +198,25 @@ STORAGES = {
 }
 MEDIA_URL = f"{SUPABASE_URL}/storage/v1/object/public/{SUPABASE_STORAGE_BUCKET}/"
 
-CORS_ALLOWED_ORIGINS = env_list(
-    "CORS_ALLOWED_ORIGINS",
-    [
-        "https://goklinik.com",
-        "https://www.goklinik.com",
-        "http://localhost:3000",
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "capacitor://localhost",
-    ],
+DEFAULT_CORS_ALLOWED_ORIGINS = [
+    "https://goklinik.com",
+    "https://www.goklinik.com",
+    "http://localhost:3000",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "capacitor://localhost",
+]
+CORS_ALLOWED_ORIGINS = sorted(
+    set(DEFAULT_CORS_ALLOWED_ORIGINS + env_list("CORS_ALLOWED_ORIGINS", []))
 )
 CORS_ALLOW_CREDENTIALS = True
+CSRF_TRUSTED_ORIGINS = sorted(
+    {
+        origin
+        for origin in CORS_ALLOWED_ORIGINS
+        if origin.startswith("http://") or origin.startswith("https://")
+    }
+)
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
