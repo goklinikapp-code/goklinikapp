@@ -14,16 +14,15 @@ case "$RAW_PORT" in
 esac
 
 # Railway target-port mismatches can happen between 8000 and 8080.
-# To avoid hard downtime, always bind 8000 and also bind SAFE_PORT when it differs.
-if [ "$SAFE_PORT" = "8000" ]; then
-  exec gunicorn config.wsgi:application \
-    --bind "0.0.0.0:8000" \
-    --workers=3 \
-    --timeout=120
+# To avoid hard downtime, always bind both defaults, and also SAFE_PORT if it differs.
+set -- \
+  --bind "0.0.0.0:8000" \
+  --bind "0.0.0.0:8080"
+
+if [ "$SAFE_PORT" != "8000" ] && [ "$SAFE_PORT" != "8080" ]; then
+  set -- "$@" --bind "0.0.0.0:${SAFE_PORT}"
 fi
 
-exec gunicorn config.wsgi:application \
-  --bind "0.0.0.0:8000" \
-  --bind "0.0.0.0:${SAFE_PORT}" \
+exec gunicorn config.wsgi:application "$@" \
   --workers=3 \
   --timeout=120
