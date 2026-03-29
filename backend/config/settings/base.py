@@ -133,20 +133,38 @@ TEMPLATES = [
 DEFAULT_DATABASE_URL = (
     "postgresql://postgres:postgres@localhost:5432/postgres"
 )
-DATABASE_URL = env("DATABASE_URL", DEFAULT_DATABASE_URL) or DEFAULT_DATABASE_URL
+DIRECT_DATABASE_URL = env("DATABASE_URL", DEFAULT_DATABASE_URL) or DEFAULT_DATABASE_URL
 DATABASE_POOLER_URL = env("DATABASE_POOLER_URL")
-if DATABASE_POOLER_URL:
-    DATABASE_URL = DATABASE_POOLER_URL
 DATABASE_SSL_REQUIRE = env_bool("DATABASE_SSL_REQUIRE", True)
 DATABASE_CONN_MAX_AGE = env_int("DATABASE_CONN_MAX_AGE", 0 if DEBUG else 600)
+DATABASE_CONNECT_TIMEOUT = env_int("DATABASE_CONNECT_TIMEOUT", 10)
 
-DATABASES = {
-    "default": dj_database_url.parse(
-        normalize_database_url(DATABASE_URL),
-        conn_max_age=DATABASE_CONN_MAX_AGE,
-        ssl_require=DATABASE_SSL_REQUIRE,
-    )
-}
+database_parse_errors: list[str] = []
+database_candidates: list[tuple[str, str]] = []
+if DATABASE_POOLER_URL:
+    database_candidates.append(("DATABASE_POOLER_URL", DATABASE_POOLER_URL))
+database_candidates.append(("DATABASE_URL", DIRECT_DATABASE_URL))
+
+resolved_database_config = None
+for source_name, candidate_url in database_candidates:
+    try:
+        resolved_database_config = dj_database_url.parse(
+            normalize_database_url(candidate_url),
+            conn_max_age=DATABASE_CONN_MAX_AGE,
+            ssl_require=DATABASE_SSL_REQUIRE,
+        )
+        break
+    except Exception as exc:  # noqa: BLE001
+        database_parse_errors.append(f"{source_name}: {exc}")
+
+if resolved_database_config is None:
+    details = "; ".join(database_parse_errors) or "No DATABASE_URL candidate was provided."
+    raise RuntimeError(f"Invalid database configuration. Details: {details}")
+
+resolved_database_config.setdefault("OPTIONS", {})
+resolved_database_config["OPTIONS"].setdefault("connect_timeout", DATABASE_CONNECT_TIMEOUT)
+
+DATABASES = {"default": resolved_database_config}
 
 if env_bool("USE_SQLITE_FOR_TESTS", True) and "test" in sys.argv:
     DATABASES = {

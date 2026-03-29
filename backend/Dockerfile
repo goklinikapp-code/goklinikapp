@@ -23,4 +23,4 @@ COPY . .
 
 EXPOSE 8000
 
-CMD ["sh", "-c", "if [ \"${RUN_MIGRATIONS_ON_START:-0}\" = \"1\" ]; then python manage.py migrate || echo '[WARN] migrate failed at startup; continuing boot'; fi; exec gunicorn config.wsgi:application --bind 0.0.0.0:${PORT} --workers=3 --timeout=120"]
+CMD ["sh", "-c", "exec gunicorn config.wsgi:application --bind 0.0.0.0:${PORT:-8000} --workers=3 --timeout=120"]
