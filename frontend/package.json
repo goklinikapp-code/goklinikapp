@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "start": "npm run build && serve -s dist -l $PORT",
+    "start": "npm run build && serve -s dist -l tcp://0.0.0.0:${PORT:-4173}",
     "lint": "eslint .",
     "preview": "vite preview"
   },
