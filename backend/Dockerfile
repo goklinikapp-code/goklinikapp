@@ -23,4 +23,4 @@ COPY . .
 
 EXPOSE 8000
 
-CMD ["sh", "-c", "python manage.py migrate && gunicorn config.wsgi:application --bind 0.0.0.0:${PORT} --workers=3 --timeout=120"]
+CMD ["sh", "-c", "if [ \"${RUN_MIGRATIONS_ON_START:-0}\" = \"1\" ]; then python manage.py migrate; fi; gunicorn config.wsgi:application --bind 0.0.0.0:${PORT} --workers=3 --timeout=120"]
