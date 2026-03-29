@@ -14,29 +14,38 @@ APPS_DIR = ROOT_DIR / "apps"
 load_dotenv(ROOT_DIR / ".env")
 
 
+def clean_env_value(value: str | None) -> str | None:
+    if value is None:
+        return None
+    stripped = value.strip()
+    if len(stripped) >= 2 and stripped[0] == stripped[-1] and stripped[0] in {"'", '"'}:
+        return stripped[1:-1]
+    return stripped
+
+
 def env(name: str, default: str | None = None) -> str | None:
-    return os.getenv(name, default)
+    return clean_env_value(os.getenv(name, default))
 
 
 def env_bool(name: str, default: bool = False) -> bool:
-    value = os.getenv(name)
+    value = clean_env_value(os.getenv(name))
     if value is None:
         return default
-    return value.strip().lower() in {"1", "true", "yes", "on"}
+    return value.lower() in {"1", "true", "yes", "on"}
 
 
 def env_int(name: str, default: int) -> int:
-    value = os.getenv(name)
+    value = clean_env_value(os.getenv(name))
     if value is None:
         return default
     try:
-        return int(value.strip())
+        return int(value)
     except (TypeError, ValueError):
         return default
 
 
 def env_list(name: str, default: list[str] | None = None) -> list[str]:
-    value = os.getenv(name)
+    value = clean_env_value(os.getenv(name))
     if not value:
         return default or []
     return [item.strip() for item in value.split(",") if item.strip()]
