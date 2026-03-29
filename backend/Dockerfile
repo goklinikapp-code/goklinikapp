@@ -20,7 +20,8 @@ RUN poetry config virtualenvs.create false \
     && poetry install --no-interaction --no-ansi
 
 COPY . .
+RUN chmod +x /app/start_gunicorn.sh
 
 EXPOSE 8000
 
-CMD ["sh", "-c", "exec gunicorn config.wsgi:application --bind 0.0.0.0:${PORT:-8000} --workers=3 --timeout=120"]
+CMD ["./start_gunicorn.sh"]
