@@ -18,9 +18,8 @@ app.get('*', (_req, res) => {
 });
 
 const parsedPort = Number.parseInt(process.env.PORT || '', 10);
-const port = Number.isFinite(parsedPort) && parsedPort > 0 ? parsedPort : 4173;
+const port = Number.isFinite(parsedPort) && parsedPort > 0 ? parsedPort : 3000;
 
 app.listen(port, '0.0.0.0', () => {
   console.log(`Frontend serving dist on port ${port}`);
 });
-
