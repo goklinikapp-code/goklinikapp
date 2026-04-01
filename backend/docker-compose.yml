@@ -30,7 +30,11 @@ services:
       CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://127.0.0.1:6379/0}
       CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://127.0.0.1:6379/0}
     volumes:
-      - .:/app
+      - ./apps:/app/apps
+      - ./config:/app/config
+      - ./manage.py:/app/manage.py
+      - ./media:/app/media
+      - ./media:/app/media_uploads
     depends_on:
       redis:
         condition: service_healthy
@@ -52,7 +56,10 @@ services:
       CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://127.0.0.1:6379/0}
       CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://127.0.0.1:6379/0}
     volumes:
-      - .:/app
+      - ./apps:/app/apps
+      - ./config:/app/config
+      - ./manage.py:/app/manage.py
+      - ./media:/app/media
     depends_on:
       redis:
         condition: service_healthy
@@ -74,7 +81,10 @@ services:
       CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://127.0.0.1:6379/0}
       CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://127.0.0.1:6379/0}
     volumes:
-      - .:/app
+      - ./apps:/app/apps
+      - ./config:/app/config
+      - ./manage.py:/app/manage.py
+      - ./media:/app/media
     depends_on:
       redis:
         condition: service_healthy

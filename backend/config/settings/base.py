@@ -226,8 +226,8 @@ STORAGES = {
     "default": {"BACKEND": "storages.backends.s3boto3.S3Boto3Storage"},
     "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
 }
-DEFAULT_MEDIA_URL = f"{SUPABASE_URL}/storage/v1/object/public/{SUPABASE_STORAGE_BUCKET}/"
-MEDIA_URL = env("MEDIA_URL", DEFAULT_MEDIA_URL) or DEFAULT_MEDIA_URL
+MEDIA_ROOT = Path(env("MEDIA_ROOT", str(ROOT_DIR / "media")) or str(ROOT_DIR / "media"))
+MEDIA_URL = "/media/"
 
 DEFAULT_CORS_ALLOWED_ORIGINS = [
     "https://goklinik.com",
