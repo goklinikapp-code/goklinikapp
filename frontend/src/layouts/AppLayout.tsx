@@ -11,6 +11,7 @@ import {
   Info,
   LayoutDashboard,
   Moon,
+  Rocket,
   Search,
   Settings,
   Share2,
@@ -63,6 +64,7 @@ const saasNavItems = [
   { icon: Building2, labelKey: "nav_clients", to: "/clients" },
   { icon: UserCheck, labelKey: "nav_sellers", to: "/sellers" },
   { icon: GraduationCap, labelKey: "nav_tutorials", to: "/tutorials" },
+  { icon: Rocket, label: "Lançamento", to: "/launch" },
 ] as const;
 
 const supportItems = [
@@ -178,7 +180,7 @@ export function AppLayout() {
               }
             >
               <item.icon className="h-4 w-4" />
-              {t(item.labelKey)}
+              {"label" in item ? item.label : t(item.labelKey)}
             </NavLink>
           ))}
         </nav>

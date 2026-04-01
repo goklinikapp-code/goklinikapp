@@ -892,6 +892,7 @@ class SaaSClientUpdateSerializer(serializers.Serializer):
 class SaaSSellerSerializer(serializers.ModelSerializer):
     metrics = serializers.SerializerMethodField()
     invite_link = serializers.SerializerMethodField()
+    ref_code = serializers.CharField(source="invite_code", read_only=True)
 
     class Meta:
         model = SaaSSeller
@@ -900,6 +901,7 @@ class SaaSSellerSerializer(serializers.ModelSerializer):
             "full_name",
             "email",
             "phone",
+            "ref_code",
             "invite_code",
             "invite_link",
             "is_active",
@@ -908,8 +910,10 @@ class SaaSSellerSerializer(serializers.ModelSerializer):
         )
 
     def get_invite_link(self, obj: SaaSSeller):
-        base_url = (getattr(settings, "FRONTEND_BASE_URL", "") or "https://goklinik.com").rstrip("/")
-        return f"{base_url}/signup?seller={obj.invite_code}"
+        base_url = (getattr(settings, "LAUNCH_SIGNUP_BASE_URL", "") or "").rstrip("/")
+        if not base_url:
+            base_url = "http://localhost:5173" if settings.DEBUG else "https://launch.goklinik.com"
+        return f"{base_url}/signup?ref_code={obj.invite_code}"
 
     def get_metrics(self, obj: SaaSSeller):
         qs = obj.signup_requests.all()
@@ -917,10 +921,12 @@ class SaaSSellerSerializer(serializers.ModelSerializer):
         accepted = qs.filter(
             status=SaaSClinicSignupRequest.StatusChoices.VERIFIED,
         ).count()
+        leads_total = obj.leads.count()
         return {
             "invites_sent": sent,
             "invites_accepted": accepted,
             "signups_completed": accepted,
+            "leads_total": leads_total,
         }
 
 

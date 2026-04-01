@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 from urllib.parse import urlparse
+from uuid import UUID
 
 from django.conf import settings
 from django.db.models import Sum
@@ -14,8 +15,13 @@ from rest_framework.views import APIView
 from apps.users.models import GoKlinikUser
 from apps.users.signals import assign_referral_code_if_missing
 
-from .models import Referral
-from .serializers import AdminReferralListSerializer, MarkPaidSerializer, ReferralItemSerializer
+from .models import Lead, Referral
+from .serializers import (
+    AdminReferralListSerializer,
+    LeadSerializer,
+    MarkPaidSerializer,
+    ReferralItemSerializer,
+)
 
 REFERRAL_BASE_URL = settings.REFERRAL_BASE_URL
 
@@ -247,3 +253,37 @@ class AdminClinicReferralLinkAPIView(APIView):
             },
             status=status.HTTP_200_OK,
         )
+
+
+class LeadAPIView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request):
+        queryset = Lead.objects.select_related("seller").all().order_by("-created_at")
+        seller_id = (request.query_params.get("seller") or request.query_params.get("seller_id") or "").strip()
+        ref_code = (request.query_params.get("ref_code") or "").strip()
+        start_date = (request.query_params.get("start_date") or "").strip()
+        end_date = (request.query_params.get("end_date") or "").strip()
+
+        if seller_id:
+            try:
+                queryset = queryset.filter(seller_id=UUID(seller_id))
+            except ValueError:
+                return Response(
+                    {"detail": "seller inválido."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+        if ref_code:
+            queryset = queryset.filter(ref_code__iexact=ref_code)
+        if start_date:
+            queryset = queryset.filter(created_at__date__gte=start_date)
+        if end_date:
+            queryset = queryset.filter(created_at__date__lte=end_date)
+        serializer = LeadSerializer(queryset, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def post(self, request):
+        serializer = LeadSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data, status=status.HTTP_201_CREATED)

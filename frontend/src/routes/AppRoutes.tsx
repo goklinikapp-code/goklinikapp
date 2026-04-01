@@ -12,6 +12,7 @@ import DashboardPage from "@/pages/Dashboard";
 import SaaSDashboardPage from "@/pages/SaaSDashboard";
 import SaaSClientsPage from "@/pages/SaaSClients";
 import SaaSSellersPage from "@/pages/SaaSSellers";
+import SaaSLaunchPage from "@/pages/SaaSLaunch";
 import PatientsPage from "@/pages/Patients";
 import SchedulePage from "@/pages/Schedule";
 import ReportsPage from "@/pages/Reports";
@@ -129,6 +130,14 @@ export function AppRoutes() {
           element={
             <RoleRoute allow={["super_admin"]}>
               <SaaSSellersPage />
+            </RoleRoute>
+          }
+        />
+        <Route
+          path="/launch"
+          element={
+            <RoleRoute allow={["super_admin"]}>
+              <SaaSLaunchPage />
             </RoleRoute>
           }
         />

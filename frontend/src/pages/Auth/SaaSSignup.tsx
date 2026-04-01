@@ -8,6 +8,7 @@ import toast from 'react-hot-toast'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { z } from 'zod'
 
+import { createLead } from '@/api/leads'
 import { getSaaSSellerByCode, requestSaaSSignupCode, verifySaaSSignupCode } from '@/api/saas'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
@@ -35,7 +36,7 @@ const signupSchema = z
     clinic_name: z.string().min(3, 'Informe o nome da clínica'),
     full_name: z.string().min(3, 'Informe seu nome completo'),
     email: z.string().email('Informe um e-mail válido'),
-    phone: z.string().optional(),
+    phone: z.string().min(3, 'Informe seu telefone'),
     password: z.string().min(8, 'A senha precisa ter no mínimo 8 caracteres'),
     confirm_password: z.string().min(8, 'Confirme sua senha'),
     seller_code: z.string().optional(),
@@ -65,7 +66,7 @@ export function SaaSSignupPage() {
   const [sellerName, setSellerName] = useState<string | null>(null)
 
   const sellerCodeFromQuery = useMemo(
-    () => (searchParams.get('seller') || '').trim().toUpperCase(),
+    () => (searchParams.get('ref_code') || searchParams.get('seller') || '').trim().toUpperCase(),
     [searchParams],
   )
 
@@ -131,14 +132,28 @@ export function SaaSSignupPage() {
     },
   })
 
-  const onSubmitSignup = (values: SignupFormValues) => {
+  const onSubmitSignup = async (values: SignupFormValues) => {
+    const normalizedSellerCode = values.seller_code?.trim().toUpperCase() || undefined
+    const leadPayload = {
+      name: values.full_name.trim(),
+      email: values.email.trim(),
+      phone: values.phone.trim(),
+      ref_code: normalizedSellerCode,
+    }
+
+    try {
+      await createLead(leadPayload)
+    } catch {
+      // Lead capture should not block signup flow.
+    }
+
     requestCodeMutation.mutate({
       clinic_name: values.clinic_name.trim(),
       full_name: values.full_name.trim(),
       email: values.email.trim(),
-      phone: values.phone?.trim(),
+      phone: values.phone.trim(),
       password: values.password,
-      seller_code: values.seller_code?.trim().toUpperCase() || undefined,
+      seller_code: normalizedSellerCode,
       language,
     })
   }
@@ -191,6 +206,7 @@ export function SaaSSignupPage() {
               <div>
                 <label className="mb-1 block text-xs font-medium text-slate-600">Telefone</label>
                 <Input {...register('phone')} placeholder="+55 11 99999-9999" />
+                {signupErrors.phone ? <p className="caption mt-1 text-danger">{signupErrors.phone.message}</p> : null}
               </div>
 
               <div className="md:col-span-2">

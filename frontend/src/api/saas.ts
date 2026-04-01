@@ -62,6 +62,7 @@ export interface SaaSSeller {
   full_name: string;
   email: string;
   phone: string;
+  ref_code: string;
   invite_code: string;
   invite_link: string;
   is_active: boolean;
@@ -70,6 +71,7 @@ export interface SaaSSeller {
     invites_sent: number;
     invites_accepted: number;
     signups_completed: number;
+    leads_total: number;
   };
 }
 

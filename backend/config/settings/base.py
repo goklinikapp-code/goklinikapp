@@ -301,6 +301,10 @@ GROK_API_KEY = env("GROK_API_KEY", "")
 GROK_MODEL = env("GROK_MODEL", "grok-4-1-fast")
 GROK_CHAT_ENDPOINT = env("GROK_CHAT_ENDPOINT", "https://api.x.ai/v1/chat/completions")
 FRONTEND_BASE_URL = env("FRONTEND_BASE_URL", "https://goklinik.com")
+DEFAULT_LAUNCH_SIGNUP_BASE_URL = "http://localhost:5173" if DEBUG else "https://launch.goklinik.com"
+LAUNCH_SIGNUP_BASE_URL = (
+    env("LAUNCH_SIGNUP_BASE_URL", DEFAULT_LAUNCH_SIGNUP_BASE_URL) or DEFAULT_LAUNCH_SIGNUP_BASE_URL
+).rstrip("/")
 TEAM_INVITE_LOGIN_PATH = env("TEAM_INVITE_LOGIN_PATH", "/login")
 FIREBASE_CREDENTIALS_PATH = env("FIREBASE_CREDENTIALS_PATH", "")
 

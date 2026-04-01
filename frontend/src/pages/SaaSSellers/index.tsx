@@ -21,6 +21,7 @@ import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
+import { getSellerSignupLink } from '@/utils/baseUrl'
 import { formatDate } from '@/utils/format'
 
 const sellerSchema = z.object({
@@ -131,8 +132,8 @@ export default function SaaSSellersPage() {
     () => sellers.reduce((acc, seller) => acc + seller.metrics.invites_sent, 0),
     [sellers],
   )
-  const totalAccepted = useMemo(
-    () => sellers.reduce((acc, seller) => acc + seller.metrics.invites_accepted, 0),
+  const totalLeads = useMemo(
+    () => sellers.reduce((acc, seller) => acc + seller.metrics.leads_total, 0),
     [sellers],
   )
 
@@ -160,6 +161,10 @@ export default function SaaSSellersPage() {
     })
     setIsEditModalOpen(true)
   }
+
+  const getInviteLink = (seller: Pick<SaaSSeller, 'ref_code' | 'invite_code'>): string =>
+    getSellerSignupLink(seller.ref_code || seller.invite_code)
+  const selectedSellerInviteLink = selectedSeller ? getInviteLink(selectedSeller) : ''
 
   const handleCopyInviteLink = async (link: string) => {
     try {
@@ -229,9 +234,9 @@ export default function SaaSSellersPage() {
           <p className="caption mt-2">Via links de vendedor</p>
         </Card>
         <Card>
-          <p className="overline">CONVITES ACEITOS</p>
-          <p className="mt-2 text-3xl font-bold text-night">{totalAccepted}</p>
-          <p className="caption mt-2">Cadastros concluídos</p>
+          <p className="overline">LEADS CAPTURADOS</p>
+          <p className="mt-2 text-3xl font-bold text-night">{totalLeads}</p>
+          <p className="caption mt-2">Leads vinculados por ref_code</p>
         </Card>
       </div>
 
@@ -242,79 +247,82 @@ export default function SaaSSellersPage() {
               <tr>
                 <th className="px-4 py-3 text-left overline">VENDEDOR</th>
                 <th className="px-4 py-3 text-left overline">CONVITES</th>
-                <th className="px-4 py-3 text-left overline">CADASTROS</th>
+                <th className="px-4 py-3 text-left overline">LEADS REAIS</th>
                 <th className="px-4 py-3 text-left overline">LINK</th>
                 <th className="px-4 py-3 text-left overline">STATUS</th>
                 <th className="px-4 py-3 text-left overline">AÇÕES</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 bg-white">
-              {sellers.map((seller) => (
-                <tr key={seller.id}>
-                  <td className="px-4 py-3">
-                    <p className="text-sm font-semibold text-night">{seller.full_name}</p>
-                    <p className="caption">{seller.email}</p>
-                  </td>
-                  <td className="px-4 py-3 text-sm text-slate-600">
-                    <p>Enviados: {seller.metrics.invites_sent}</p>
-                    <p>Aceitos: {seller.metrics.invites_accepted}</p>
-                  </td>
-                  <td className="px-4 py-3 text-sm text-slate-600">
-                    {seller.metrics.signups_completed}
-                  </td>
-                  <td className="px-4 py-3 text-sm text-slate-600">
-                    <div className="flex items-center gap-2">
-                      <span className="max-w-[220px] truncate">{seller.invite_link}</span>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="secondary"
-                        onClick={() => void handleCopyInviteLink(seller.invite_link)}
-                      >
-                        <Copy className="h-3.5 w-3.5" />
-                      </Button>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <Badge status={seller.is_active ? 'active' : 'inactive'}>
-                      {seller.is_active ? 'ATIVO' : 'INATIVO'}
-                    </Badge>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex flex-wrap gap-2">
-                      <Button size="sm" variant="secondary" onClick={() => void openSellerDetail(seller.id)}>
-                        Detalhes
-                      </Button>
-                      <Button size="sm" variant="secondary" onClick={() => openEditModal(seller)}>
-                        <Pencil className="h-3.5 w-3.5" />
-                        Editar
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        onClick={() => handleToggleSellerStatus(seller)}
-                        disabled={updateMutation.isPending}
-                      >
-                        {seller.is_active ? (
-                          <>
-                            <UserRoundX className="h-3.5 w-3.5" />
-                            Desativar
-                          </>
-                        ) : (
-                          <>
-                            <UserRoundCheck className="h-3.5 w-3.5" />
-                            Ativar
-                          </>
-                        )}
-                      </Button>
-                      <Button size="sm" variant="danger" onClick={() => setSellerToDelete(seller)}>
-                        <Trash2 className="h-3.5 w-3.5" />
-                        Excluir
-                      </Button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+              {sellers.map((seller) => {
+                const inviteLink = getInviteLink(seller)
+                return (
+                  <tr key={seller.id}>
+                    <td className="px-4 py-3">
+                      <p className="text-sm font-semibold text-night">{seller.full_name}</p>
+                      <p className="caption">{seller.email}</p>
+                    </td>
+                    <td className="px-4 py-3 text-sm text-slate-600">
+                      <p>Enviados: {seller.metrics.invites_sent}</p>
+                      <p>Aceitos: {seller.metrics.invites_accepted}</p>
+                    </td>
+                    <td className="px-4 py-3 text-sm text-slate-600">
+                      {seller.metrics.leads_total}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-slate-600">
+                      <div className="flex items-center gap-2">
+                        <span className="max-w-[220px] truncate">{inviteLink}</span>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => void handleCopyInviteLink(inviteLink)}
+                        >
+                          <Copy className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <Badge status={seller.is_active ? 'active' : 'inactive'}>
+                        {seller.is_active ? 'ATIVO' : 'INATIVO'}
+                      </Badge>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex flex-wrap gap-2">
+                        <Button size="sm" variant="secondary" onClick={() => void openSellerDetail(seller.id)}>
+                          Detalhes
+                        </Button>
+                        <Button size="sm" variant="secondary" onClick={() => openEditModal(seller)}>
+                          <Pencil className="h-3.5 w-3.5" />
+                          Editar
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => handleToggleSellerStatus(seller)}
+                          disabled={updateMutation.isPending}
+                        >
+                          {seller.is_active ? (
+                            <>
+                              <UserRoundX className="h-3.5 w-3.5" />
+                              Desativar
+                            </>
+                          ) : (
+                            <>
+                              <UserRoundCheck className="h-3.5 w-3.5" />
+                              Ativar
+                            </>
+                          )}
+                        </Button>
+                        <Button size="sm" variant="danger" onClick={() => setSellerToDelete(seller)}>
+                          <Trash2 className="h-3.5 w-3.5" />
+                          Excluir
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         </div>
@@ -404,8 +412,8 @@ export default function SaaSSellersPage() {
 
             <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
               <p className="caption">Link de convite</p>
-              <p className="mt-1 break-all text-sm text-night">{selectedSeller.invite_link}</p>
-              <Button className="mt-2" size="sm" variant="secondary" onClick={() => void handleCopyInviteLink(selectedSeller.invite_link)}>
+              <p className="mt-1 break-all text-sm text-night">{selectedSellerInviteLink}</p>
+              <Button className="mt-2" size="sm" variant="secondary" onClick={() => void handleCopyInviteLink(selectedSellerInviteLink)}>
                 <Copy className="h-3.5 w-3.5" />
                 Copiar link
               </Button>
@@ -422,7 +430,7 @@ export default function SaaSSellersPage() {
               </Card>
               <Card className="p-3">
                 <p className="overline">CADASTROS</p>
-                <p className="mt-1 text-2xl font-bold text-night">{selectedSeller.metrics.signups_completed}</p>
+                <p className="mt-1 text-2xl font-bold text-night">{selectedSeller.metrics.leads_total}</p>
               </Card>
             </div>
           </div>

@@ -58,3 +58,30 @@ class Referral(models.Model):
 
     def __str__(self) -> str:
         return f"{self.referrer_id} -> {self.referred_id} ({self.status})"
+
+
+class Lead(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=255)
+    email = models.EmailField()
+    phone = models.CharField(max_length=50)
+    ref_code = models.CharField(
+        max_length=255,
+        null=True,
+        blank=True,
+        db_index=True,
+    )
+    seller = models.ForeignKey(
+        "users.SaaSSeller",
+        related_name="leads",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "leads"
+
+    def __str__(self) -> str:
+        return f"{self.name} <{self.email}>"
