@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import timedelta
-from urllib.parse import urlparse
+from urllib.parse import parse_qsl, urlencode, urlparse
 
 from django.conf import settings
 from django.contrib.auth import authenticate
@@ -913,7 +913,29 @@ class SaaSSellerSerializer(serializers.ModelSerializer):
         base_url = (getattr(settings, "LAUNCH_SIGNUP_BASE_URL", "") or "").rstrip("/")
         if not base_url:
             base_url = "http://localhost:5173" if settings.DEBUG else "https://launch.goklinik.com"
-        return f"{base_url}/signup?ref_code={obj.invite_code}"
+
+        parsed = urlparse(base_url)
+        host = (parsed.hostname or "").lower()
+        is_launch_domain = host in {"launch.goklinik.com", "www.launch.goklinik.com"}
+
+        default_path = "/" if is_launch_domain else "/signup"
+        default_ref_param = "r" if is_launch_domain else "ref_code"
+
+        configured_path = (getattr(settings, "LAUNCH_SIGNUP_PATH", "") or "").strip() or default_path
+        if not configured_path.startswith("/"):
+            configured_path = f"/{configured_path}"
+
+        ref_param = (getattr(settings, "LAUNCH_REF_QUERY_PARAM", "") or "").strip() or default_ref_param
+
+        query = dict(parse_qsl(parsed.query, keep_blank_values=True))
+        query[ref_param] = obj.invite_code
+
+        return parsed._replace(
+            path=configured_path,
+            params="",
+            query=urlencode(query),
+            fragment="",
+        ).geturl()
 
     def get_metrics(self, obj: SaaSSeller):
         qs = obj.signup_requests.all()

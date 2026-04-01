@@ -66,7 +66,7 @@ export function SaaSSignupPage() {
   const [sellerName, setSellerName] = useState<string | null>(null)
 
   const sellerCodeFromQuery = useMemo(
-    () => (searchParams.get('ref_code') || searchParams.get('seller') || '').trim().toUpperCase(),
+    () => (searchParams.get('ref_code') || searchParams.get('r') || searchParams.get('seller') || '').trim().toUpperCase(),
     [searchParams],
   )
 

@@ -4,6 +4,12 @@ type BaseUrlResolverOptions = {
   origin?: string | null
 }
 
+type SellerInviteUrlResolverOptions = {
+  baseUrl: string
+  invitePath?: string | null
+  refParam?: string | null
+}
+
 const normalizeBaseUrl = (value: string): string => value.replace(/\/+$/, '')
 
 export function resolveBaseUrl(options: BaseUrlResolverOptions = {}): string {
@@ -40,11 +46,54 @@ export function getBaseUrl(): string {
   })
 }
 
+function resolveSellerInviteUrlConfig({
+  baseUrl,
+  invitePath,
+  refParam,
+}: SellerInviteUrlResolverOptions): { path: string; queryParam: string } {
+  const normalizedInvitePath = (invitePath || '').trim()
+  const normalizedRefParam = (refParam || '').trim()
+  if (normalizedInvitePath && normalizedRefParam) {
+    return {
+      path: normalizedInvitePath.startsWith('/') ? normalizedInvitePath : `/${normalizedInvitePath}`,
+      queryParam: normalizedRefParam,
+    }
+  }
+
+  try {
+    const host = new URL(baseUrl).hostname.toLowerCase()
+    if (host === 'launch.goklinik.com' || host === 'www.launch.goklinik.com') {
+      return { path: '/', queryParam: 'r' }
+    }
+  } catch {
+    // Fall back to default when base URL is not parseable.
+  }
+
+  return { path: '/signup', queryParam: 'ref_code' }
+}
+
 export function getSellerSignupLink(refCode?: string | null): string {
   const baseUrl = getBaseUrl()
+  const { path, queryParam } = resolveSellerInviteUrlConfig({
+    baseUrl,
+    invitePath: import.meta.env.VITE_SELLER_INVITE_PATH,
+    refParam: import.meta.env.VITE_SELLER_REF_PARAM,
+  })
+
+  let url: URL
+  try {
+    url = new URL(baseUrl)
+  } catch {
+    return baseUrl
+  }
+
+  url.pathname = path
+  url.search = ''
+
   const normalizedCode = (refCode || '').trim()
   if (!normalizedCode) {
-    return `${baseUrl}/signup`
+    return url.toString()
   }
-  return `${baseUrl}/signup?ref_code=${encodeURIComponent(normalizedCode)}`
+  url.searchParams.set(queryParam, normalizedCode)
+  return url.toString()
 }
