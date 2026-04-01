@@ -359,7 +359,7 @@ class PatientsRepositoryImpl implements PatientsRepository {
     if (data is List<dynamic>) {
       return data.whereType<Map<String, dynamic>>().toList();
     }
-    if (data is Map<String, dynamic>) {
+    if (data is Map) {
       final results = data['results'];
       if (results is List<dynamic>) {
         return results.whereType<Map<String, dynamic>>().toList();
@@ -370,6 +370,9 @@ class PatientsRepositoryImpl implements PatientsRepository {
 
   Map<String, dynamic>? _extractMap(dynamic data) {
     if (data is Map<String, dynamic>) return data;
+    if (data is Map) {
+      return data.map((key, value) => MapEntry(key.toString(), value));
+    }
     return null;
   }
 

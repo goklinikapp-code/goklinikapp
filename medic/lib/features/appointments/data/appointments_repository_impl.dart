@@ -12,7 +12,8 @@ class AppointmentsRepositoryImpl implements AppointmentsRepository {
   final Dio _dio;
 
   @override
-  Future<List<AppointmentItem>> getAppointments({String? professionalId}) async {
+  Future<List<AppointmentItem>> getAppointments(
+      {String? professionalId}) async {
     final response = await _dio.get<dynamic>(
       ApiEndpoints.appointments,
       queryParameters: (professionalId != null && professionalId.isNotEmpty)
@@ -23,8 +24,12 @@ class AppointmentsRepositoryImpl implements AppointmentsRepository {
           : null,
     );
     final data = response.data;
-    final list = (data is Map<String, dynamic> ? data['results'] : data) as List<dynamic>? ?? const [];
-    return list.whereType<Map<String, dynamic>>().map(AppointmentItem.fromJson).toList();
+    final list =
+        (data is Map ? data['results'] : data) as List<dynamic>? ?? const [];
+    return list
+        .whereType<Map<String, dynamic>>()
+        .map(AppointmentItem.fromJson)
+        .toList();
   }
 
   @override
@@ -38,10 +43,12 @@ class AppointmentsRepositoryImpl implements AppointmentsRepository {
       queryParameters: {
         'professional_id': professionalId,
         'date': date,
-        if (specialtyId != null && specialtyId.isNotEmpty) 'specialty_id': specialtyId,
+        if (specialtyId != null && specialtyId.isNotEmpty)
+          'specialty_id': specialtyId,
       },
     );
-    return AvailableSlotsResponse.fromJson(response.data as Map<String, dynamic>);
+    return AvailableSlotsResponse.fromJson(
+        response.data as Map<String, dynamic>);
   }
 
   @override
@@ -59,7 +66,8 @@ class AppointmentsRepositoryImpl implements AppointmentsRepository {
       data: {
         'patient': patientId,
         'professional': professionalId,
-        if (specialtyId != null && specialtyId.isNotEmpty) 'specialty': specialtyId,
+        if (specialtyId != null && specialtyId.isNotEmpty)
+          'specialty': specialtyId,
         'appointment_date': appointmentDate,
         'appointment_time': appointmentTime,
         'appointment_type': appointmentType,

@@ -15,9 +15,8 @@ class AppointmentsRepositoryImpl implements AppointmentsRepository {
   Future<List<AppointmentItem>> getAppointments() async {
     final response = await _dio.get<dynamic>(ApiEndpoints.appointments);
     final data = response.data;
-    final list = (data is Map<String, dynamic> ? data['results'] : data)
-            as List<dynamic>? ??
-        const [];
+    final list =
+        (data is Map ? data['results'] : data) as List<dynamic>? ?? const [];
     return list
         .whereType<Map<String, dynamic>>()
         .map(AppointmentItem.fromJson)
@@ -29,9 +28,8 @@ class AppointmentsRepositoryImpl implements AppointmentsRepository {
     final response = await _dio
         .get<dynamic>(ApiEndpoints.appointmentsAvailableProfessionals);
     final data = response.data;
-    final list = (data is Map<String, dynamic> ? data['results'] : data)
-            as List<dynamic>? ??
-        const [];
+    final list =
+        (data is Map ? data['results'] : data) as List<dynamic>? ?? const [];
     return list
         .whereType<Map<String, dynamic>>()
         .map(AppointmentProfessional.fromJson)

@@ -15,7 +15,8 @@ class NotificationsRepositoryImpl implements NotificationsRepository {
   Future<List<GKNotification>> getNotifications() async {
     final response = await _dio.get<dynamic>(ApiEndpoints.notifications);
     final data = response.data;
-    final results = (data is Map<String, dynamic> ? data['results'] : data) as List<dynamic>? ?? const [];
+    final results =
+        (data is Map ? data['results'] : data) as List<dynamic>? ?? const [];
     return results
         .whereType<Map<String, dynamic>>()
         .map(GKNotification.fromJson)
@@ -24,13 +25,16 @@ class NotificationsRepositoryImpl implements NotificationsRepository {
 
   @override
   Future<int> getUnreadCount() async {
-    final response = await _dio.get<dynamic>(ApiEndpoints.notificationsUnreadCount);
-    final data = response.data as Map<String, dynamic>;
+    final response =
+        await _dio.get<dynamic>(ApiEndpoints.notificationsUnreadCount);
+    final data = response.data;
+    if (data is! Map) return 0;
     return int.tryParse((data['unread_count'] ?? 0).toString()) ?? 0;
   }
 
   @override
-  Future<void> registerToken({required String token, required String platform}) async {
+  Future<void> registerToken(
+      {required String token, required String platform}) async {
     await _dio.post<dynamic>(
       ApiEndpoints.notificationsRegisterToken,
       data: {'device_token': token, 'platform': platform},
@@ -45,12 +49,14 @@ class NotificationsRepositoryImpl implements NotificationsRepository {
   @override
   Future<int> markAllAsRead() async {
     final response = await _dio.put<dynamic>(ApiEndpoints.notificationsReadAll);
-    final data = response.data as Map<String, dynamic>;
+    final data = response.data;
+    if (data is! Map) return 0;
     return int.tryParse((data['updated_count'] ?? 0).toString()) ?? 0;
   }
 }
 
-final notificationsRepositoryProvider = Provider<NotificationsRepository>((ref) {
+final notificationsRepositoryProvider =
+    Provider<NotificationsRepository>((ref) {
   final dio = ref.watch(dioProvider);
   return NotificationsRepositoryImpl(dio);
 });

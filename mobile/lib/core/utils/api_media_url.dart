@@ -106,17 +106,16 @@ dynamic normalizeApiMediaPayload(dynamic input) {
     return input.map(normalizeApiMediaPayload).toList();
   }
 
-  if (input is Map) {
+  if (input is Map<String, dynamic>) {
     final messageType = (input['message_type'] ?? '').toString().toLowerCase();
-    final normalized = <dynamic, dynamic>{};
+    final normalized = <String, dynamic>{};
 
     input.forEach((key, value) {
-      final keyText = key is String ? key : key.toString();
-      if (value is String && _isMediaKey(keyText)) {
+      if (value is String && _isMediaKey(key)) {
         normalized[key] = resolveApiMediaUrl(value);
         return;
       }
-      if (value is String && keyText == 'content' && messageType == 'image') {
+      if (value is String && key == 'content' && messageType == 'image') {
         normalized[key] = resolveApiMediaUrl(value);
         return;
       }
@@ -124,6 +123,14 @@ dynamic normalizeApiMediaPayload(dynamic input) {
     });
 
     return normalized;
+  }
+
+  if (input is Map) {
+    final normalizedInput = <String, dynamic>{};
+    input.forEach((key, value) {
+      normalizedInput[key.toString()] = value;
+    });
+    return normalizeApiMediaPayload(normalizedInput);
   }
 
   return input;

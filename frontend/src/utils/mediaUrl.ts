@@ -22,10 +22,16 @@ export const resolveMediaUrl = (value?: string | null): string => {
 
   try {
     const parsed = new URL(raw)
-    if (!apiOrigin || !isLoopbackHost(parsed.hostname)) {
+    if (!apiOrigin) {
       return raw
     }
     const apiBase = new URL(apiOrigin)
+    if (parsed.hostname === apiBase.hostname && parsed.protocol !== apiBase.protocol) {
+      return `${apiBase.protocol}//${parsed.host}${parsed.pathname}${parsed.search}${parsed.hash}`
+    }
+    if (!isLoopbackHost(parsed.hostname)) {
+      return raw
+    }
     return `${apiBase.origin}${parsed.pathname}${parsed.search}${parsed.hash}`
   } catch {
     if (!apiOrigin) {

@@ -24,6 +24,11 @@ def _is_local_host(hostname: str | None) -> bool:
 
 
 def _request_base_url(request) -> str:
+    # In production-like environments we should always use the configured API base
+    # to avoid proxy/scheme mismatches (for example, http links behind TLS).
+    if not settings.DEBUG:
+        return _default_api_base_url()
+
     if request is None:
         return _default_api_base_url()
     try:
