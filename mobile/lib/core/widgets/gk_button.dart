@@ -26,19 +26,22 @@ class GKButton extends StatelessWidget {
           backgroundColor: colorScheme.primary,
           foregroundColor: Colors.white,
           minimumSize: const Size.fromHeight(56),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
         ),
       GKButtonVariant.secondary => OutlinedButton.styleFrom(
           foregroundColor: colorScheme.primary,
           side: BorderSide(color: colorScheme.primary),
           minimumSize: const Size.fromHeight(56),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
         ),
       GKButtonVariant.accent => ElevatedButton.styleFrom(
           backgroundColor: colorScheme.tertiary,
           foregroundColor: Colors.white,
           minimumSize: const Size.fromHeight(56),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
         ),
     };
 
@@ -46,7 +49,8 @@ class GKButton extends StatelessWidget {
         ? const SizedBox(
             height: 18,
             width: 18,
-            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+            child:
+                CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
           )
         : Row(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -69,8 +73,10 @@ class GKButton extends StatelessWidget {
           );
 
     return switch (variant) {
-      GKButtonVariant.secondary => OutlinedButton(onPressed: isLoading ? null : onPressed, style: style, child: child),
-      _ => ElevatedButton(onPressed: isLoading ? null : onPressed, style: style, child: child),
+      GKButtonVariant.secondary => OutlinedButton(
+          onPressed: isLoading ? null : onPressed, style: style, child: child),
+      _ => ElevatedButton(
+          onPressed: isLoading ? null : onPressed, style: style, child: child),
     };
   }
 }

@@ -32,6 +32,7 @@ class _PreOperatoryScreenState extends ConsumerState<PreOperatoryScreen> {
   bool _smoking = false;
   bool _alcohol = false;
   bool _isSubmitting = false;
+  bool _isEditMode = false;
   String? _boundRecordId;
   final List<String> _photoPaths = [];
   final List<String> _documentPaths = [];
@@ -49,6 +50,7 @@ class _PreOperatoryScreenState extends ConsumerState<PreOperatoryScreen> {
 
   void _bindRecord(PreOperatoryRecord record) {
     _boundRecordId = record.id;
+    _isEditMode = false;
     _allergiesController.text = record.allergies;
     _medicationsController.text = record.medications;
     _previousSurgeriesController.text = record.previousSurgeries;
@@ -172,6 +174,7 @@ class _PreOperatoryScreenState extends ConsumerState<PreOperatoryScreen> {
       setState(() {
         _photoPaths.clear();
         _documentPaths.clear();
+        _isEditMode = false;
       });
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Pré-operatório enviado com sucesso.')),
@@ -188,17 +191,86 @@ class _PreOperatoryScreenState extends ConsumerState<PreOperatoryScreen> {
     }
   }
 
-  Widget _buildFileList({
-    required String title,
-    required List<PreOperatoryFileItem> items,
-  }) {
+  Widget _buildPhotoList(List<PreOperatoryFileItem> items) {
     return GKCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            title,
-            style: const TextStyle(
+          const Text(
+            'Fotos enviadas',
+            style: TextStyle(
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 8),
+          if (items.isEmpty)
+            const Text(
+              'Nenhum arquivo enviado ainda.',
+              style: TextStyle(color: GKColors.neutral),
+            )
+          else
+            SizedBox(
+              height: 90,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: items.length,
+                separatorBuilder: (_, __) => const SizedBox(width: 8),
+                itemBuilder: (context, index) {
+                  final item = items[index];
+                  return GestureDetector(
+                    onTap: () {
+                      showDialog<void>(
+                        context: context,
+                        builder: (_) => Dialog(
+                          insetPadding: const EdgeInsets.all(16),
+                          child: InteractiveViewer(
+                            child: Image.network(
+                              item.fileUrl,
+                              fit: BoxFit.contain,
+                              errorBuilder: (_, __, ___) => const SizedBox(
+                                width: 220,
+                                height: 220,
+                                child: Center(
+                                  child: Icon(Icons.broken_image_outlined),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(10),
+                      child: Image.network(
+                        item.fileUrl,
+                        width: 90,
+                        height: 90,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => Container(
+                          width: 90,
+                          height: 90,
+                          color: GKColors.tealIce,
+                          child: const Icon(Icons.image_not_supported_outlined),
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDocumentList(List<PreOperatoryFileItem> items) {
+    return GKCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Documentos enviados',
+            style: TextStyle(
               fontWeight: FontWeight.w700,
             ),
           ),
@@ -212,13 +284,11 @@ class _PreOperatoryScreenState extends ConsumerState<PreOperatoryScreen> {
             Wrap(
               spacing: 8,
               runSpacing: 8,
-              children: items.map((item) {
-                final uri = Uri.tryParse(item.fileUrl);
-                final label = uri?.pathSegments.isNotEmpty == true
-                    ? uri!.pathSegments.last
-                    : 'Arquivo';
+              children: items.asMap().entries.map((entry) {
+                final index = entry.key;
+                final item = entry.value;
                 return ActionChip(
-                  label: Text(label, overflow: TextOverflow.ellipsis),
+                  label: Text('Documento ${index + 1}'),
                   onPressed: () => _openUrl(item.fileUrl),
                 );
               }).toList(),
@@ -280,6 +350,8 @@ class _PreOperatoryScreenState extends ConsumerState<PreOperatoryScreen> {
           }
 
           final status = _statusVisual(record?.status ?? 'pending');
+          final hasRecord = record != null;
+          final canEdit = !hasRecord || _isEditMode;
 
           return ListView(
             padding: const EdgeInsets.all(16),
@@ -319,6 +391,8 @@ class _PreOperatoryScreenState extends ConsumerState<PreOperatoryScreen> {
                     const SizedBox(height: 10),
                     TextField(
                       controller: _allergiesController,
+                      readOnly: !canEdit,
+                      enabled: canEdit,
                       maxLines: 2,
                       decoration: const InputDecoration(
                         labelText: 'Alergias',
@@ -328,6 +402,8 @@ class _PreOperatoryScreenState extends ConsumerState<PreOperatoryScreen> {
                     const SizedBox(height: 8),
                     TextField(
                       controller: _medicationsController,
+                      readOnly: !canEdit,
+                      enabled: canEdit,
                       maxLines: 2,
                       decoration: const InputDecoration(
                         labelText: 'Medicamentos em uso',
@@ -336,6 +412,8 @@ class _PreOperatoryScreenState extends ConsumerState<PreOperatoryScreen> {
                     const SizedBox(height: 8),
                     TextField(
                       controller: _previousSurgeriesController,
+                      readOnly: !canEdit,
+                      enabled: canEdit,
                       maxLines: 2,
                       decoration: const InputDecoration(
                         labelText: 'Cirurgias anteriores',
@@ -344,6 +422,8 @@ class _PreOperatoryScreenState extends ConsumerState<PreOperatoryScreen> {
                     const SizedBox(height: 8),
                     TextField(
                       controller: _diseasesController,
+                      readOnly: !canEdit,
+                      enabled: canEdit,
                       maxLines: 2,
                       decoration: const InputDecoration(
                         labelText: 'Doenças',
@@ -355,6 +435,8 @@ class _PreOperatoryScreenState extends ConsumerState<PreOperatoryScreen> {
                         Expanded(
                           child: TextField(
                             controller: _heightController,
+                            readOnly: !canEdit,
+                            enabled: canEdit,
                             keyboardType: const TextInputType.numberWithOptions(
                               decimal: true,
                             ),
@@ -367,6 +449,8 @@ class _PreOperatoryScreenState extends ConsumerState<PreOperatoryScreen> {
                         Expanded(
                           child: TextField(
                             controller: _weightController,
+                            readOnly: !canEdit,
+                            enabled: canEdit,
                             keyboardType: const TextInputType.numberWithOptions(
                               decimal: true,
                             ),
@@ -382,83 +466,128 @@ class _PreOperatoryScreenState extends ConsumerState<PreOperatoryScreen> {
                       value: _smoking,
                       contentPadding: EdgeInsets.zero,
                       title: const Text('Fuma'),
-                      onChanged: (value) => setState(() => _smoking = value),
+                      onChanged: canEdit
+                          ? (value) => setState(() => _smoking = value)
+                          : null,
                     ),
                     SwitchListTile.adaptive(
                       value: _alcohol,
                       contentPadding: EdgeInsets.zero,
                       title: const Text('Consome álcool'),
-                      onChanged: (value) => setState(() => _alcohol = value),
+                      onChanged: canEdit
+                          ? (value) => setState(() => _alcohol = value)
+                          : null,
                     ),
-                    const SizedBox(height: 10),
-                    const Text(
-                      'Uploads',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 16,
+                    if (!canEdit) ...[
+                      const SizedBox(height: 4),
+                      const Text(
+                        'Dados enviados. Toque em "Editar informações" se quiser atualizar.',
+                        style: TextStyle(color: GKColors.neutral),
                       ),
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: GKButton(
-                            label: 'Adicionar fotos',
-                            variant: GKButtonVariant.secondary,
-                            onPressed: _isSubmitting ? null : _pickPhotos,
-                          ),
+                    ],
+                    if (canEdit) ...[
+                      const SizedBox(height: 10),
+                      const Text(
+                        'Uploads',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 16,
                         ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: GKButton(
-                            label: 'Adicionar documentos',
-                            variant: GKButtonVariant.secondary,
-                            onPressed: _isSubmitting ? null : _pickDocuments,
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: GKButton(
+                              label: 'Adicionar fotos',
+                              variant: GKButtonVariant.secondary,
+                              onPressed: _isSubmitting ? null : _pickPhotos,
+                            ),
                           ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: GKButton(
+                              label: 'Adicionar docs',
+                              variant: GKButtonVariant.secondary,
+                              onPressed: _isSubmitting ? null : _pickDocuments,
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (_photoPaths.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          '${_photoPaths.length} foto(s) selecionada(s)',
+                          style: const TextStyle(color: GKColors.neutral),
                         ),
                       ],
-                    ),
-                    if (_photoPaths.isNotEmpty) ...[
-                      const SizedBox(height: 8),
-                      Text(
-                        '${_photoPaths.length} foto(s) selecionada(s)',
-                        style: const TextStyle(color: GKColors.neutral),
-                      ),
+                      if (_documentPaths.isNotEmpty) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          '${_documentPaths.length} documento(s) selecionado(s)',
+                          style: const TextStyle(color: GKColors.neutral),
+                        ),
+                      ],
+                      const SizedBox(height: 12),
                     ],
-                    if (_documentPaths.isNotEmpty) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        '${_documentPaths.length} documento(s) selecionado(s)',
-                        style: const TextStyle(color: GKColors.neutral),
+                    if (!hasRecord)
+                      GKButton(
+                        label: _isSubmitting
+                            ? 'Enviando...'
+                            : 'Enviar pré-operatório',
+                        onPressed: _isSubmitting ? null : _submit,
                       ),
-                    ],
-                    const SizedBox(height: 12),
-                    GKButton(
-                      label: _isSubmitting
-                          ? 'Enviando...'
-                          : record == null
-                              ? 'Enviar pré-operatório'
-                              : 'Atualizar pré-operatório',
-                      onPressed: _isSubmitting ? null : _submit,
-                    ),
+                    if (hasRecord && !canEdit)
+                      GKButton(
+                        label: 'Editar informações',
+                        variant: GKButtonVariant.secondary,
+                        onPressed: _isSubmitting
+                            ? null
+                            : () => setState(() => _isEditMode = true),
+                      ),
+                    if (hasRecord && canEdit)
+                      Row(
+                        children: [
+                          Expanded(
+                            child: GKButton(
+                              label: 'Cancelar',
+                              variant: GKButtonVariant.secondary,
+                              onPressed: _isSubmitting
+                                  ? null
+                                  : () {
+                                      setState(() {
+                                        _bindRecord(record);
+                                        _photoPaths.clear();
+                                        _documentPaths.clear();
+                                      });
+                                    },
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: GKButton(
+                              label: _isSubmitting
+                                  ? 'Salvando...'
+                                  : 'Salvar alterações',
+                              onPressed: _isSubmitting ? null : _submit,
+                            ),
+                          ),
+                        ],
+                      ),
                   ],
                 ),
               ),
-              const SizedBox(height: 10),
-              _buildFileList(
-                title: 'Fotos enviadas',
-                items: record?.photos ?? const [],
-              ),
-              const SizedBox(height: 10),
-              _buildFileList(
-                title: 'Documentos enviados',
-                items: record?.documents ?? const [],
-              ),
-              const SizedBox(height: 16),
-              Text(
-                'Status atual: ${_statusLabel(record?.status ?? 'pending')}',
-                style: const TextStyle(color: GKColors.neutral),
-              ),
+              if (record != null) ...[
+                const SizedBox(height: 10),
+                _buildPhotoList(record.photos),
+                const SizedBox(height: 10),
+                _buildDocumentList(record.documents),
+                const SizedBox(height: 16),
+                Text(
+                  'Status atual: ${_statusLabel(record.status)}',
+                  style: const TextStyle(color: GKColors.neutral),
+                ),
+              ],
             ],
           );
         },
