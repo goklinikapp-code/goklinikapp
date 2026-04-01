@@ -20,7 +20,9 @@ from .serializers import PreOperatorySerializer, PreOperatoryWriteSerializer
 
 
 def _save_uploaded_file(*, request, upload, folder: str) -> str:
-    filename = f"{uuid.uuid4()}_{upload.name}"
+    original_name = getattr(upload, "name", "") or ""
+    suffix = Path(original_name).suffix.lower()[:10]
+    filename = f"{uuid.uuid4()}{suffix}"
     storage_path = f"{folder}/{filename}"
     try:
         saved_path = default_storage.save(storage_path, upload)
@@ -237,4 +239,3 @@ class PreOperatoryDetailAPIView(APIView):
             ).data,
             status=status.HTTP_200_OK,
         )
-

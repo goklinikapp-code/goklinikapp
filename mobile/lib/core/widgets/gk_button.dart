@@ -50,13 +50,21 @@ class GKButton extends StatelessWidget {
           )
         : Row(
             mainAxisAlignment: MainAxisAlignment.center,
-            mainAxisSize: MainAxisSize.min,
+            mainAxisSize: MainAxisSize.max,
             children: [
               if (icon != null) ...[
                 icon!,
                 const SizedBox(width: 8),
               ],
-              Text(label, style: const TextStyle(fontWeight: FontWeight.w600)),
+              Flexible(
+                child: Text(
+                  label,
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                ),
+              ),
             ],
           );
 

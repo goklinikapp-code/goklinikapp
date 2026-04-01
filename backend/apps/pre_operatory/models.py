@@ -79,7 +79,7 @@ class PreOperatoryFile(models.Model):
         on_delete=models.CASCADE,
         related_name="files",
     )
-    file_url = models.URLField()
+    file_url = models.URLField(max_length=2048)
     type = models.CharField(max_length=20, choices=FileTypeChoices.choices)
     created_at = models.DateTimeField(auto_now_add=True)
 
