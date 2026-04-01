@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/gk_avatar.dart';
 import '../../../core/widgets/gk_badge.dart';
 import '../../../core/widgets/gk_button.dart';
@@ -11,6 +12,13 @@ import '../../../core/widgets/gk_card.dart';
 import '../../../core/widgets/gk_loading_shimmer.dart';
 import '../domain/chat_models.dart';
 import 'chat_controller.dart';
+
+enum InboxFilterChip {
+  all,
+  unread,
+  answered,
+  closed,
+}
 
 class ChatListScreen extends ConsumerStatefulWidget {
   const ChatListScreen({super.key});
@@ -21,6 +29,7 @@ class ChatListScreen extends ConsumerStatefulWidget {
 
 class _ChatListScreenState extends ConsumerState<ChatListScreen> {
   Timer? _pollTimer;
+  InboxFilterChip _filter = InboxFilterChip.all;
 
   @override
   void initState() {
@@ -102,134 +111,203 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
             );
           }
 
-          return ListView.separated(
-            padding: const EdgeInsets.all(16),
-            itemCount: items.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 10),
-            itemBuilder: (context, index) {
-              final item = items[index];
-              final status = _statusVisual(colorScheme, item.status);
+          final filtered =
+              items.where((item) => _matchesFilter(item, _filter)).toList();
 
-              return GKCard(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+          return Column(
+            children: [
+              const SizedBox(height: 8),
+              SizedBox(
+                height: 44,
+                child: ListView(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
                   children: [
-                    Row(
-                      children: [
-                        GKAvatar(
-                          name: item.patientName,
-                          imageUrl: item.patientAvatarUrl,
-                          radius: 22,
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                item.patientName,
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                item.patientEmail,
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  color: Color(0xFF64748B),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          children: [
-                            GKBadge(
-                              label: status.label,
-                              background: status.background,
-                              foreground: status.foreground,
-                            ),
-                            const SizedBox(height: 6),
-                            Text(
-                              DateFormat('dd/MM HH:mm')
-                                  .format(item.createdAt.toLocal()),
-                              style: const TextStyle(
-                                fontSize: 11,
-                                color: Color(0xFF64748B),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      item.question,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    if (item.answer.trim().isNotEmpty) ...[
-                      const SizedBox(height: 8),
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF8FAFC),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: const Color(0xFFE2E8F0),
-                          ),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'Resposta enviada',
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: Color(0xFF64748B),
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              item.answer,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                color: Color(0xFF475569),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                    const SizedBox(height: 12),
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: SizedBox(
-                        width: 170,
-                        child: GKButton(
-                          label: item.isAnswered ? 'Ver detalhes' : 'Responder',
-                          variant: item.isAnswered
-                              ? GKButtonVariant.secondary
-                              : GKButtonVariant.primary,
-                          onPressed: () => _openReplySheet(item),
-                        ),
-                      ),
-                    ),
+                    _chip('Todos', InboxFilterChip.all),
+                    _chip('Nao lidas', InboxFilterChip.unread),
+                    _chip('Respondidas', InboxFilterChip.answered),
+                    _chip('Fechadas', InboxFilterChip.closed),
                   ],
                 ),
-              );
-            },
+              ),
+              const SizedBox(height: 8),
+              Expanded(
+                child: filtered.isEmpty
+                    ? const Center(
+                        child: Text(
+                          'Nenhuma mensagem encontrada para este filtro.',
+                        ),
+                      )
+                    : ListView.separated(
+                        padding: const EdgeInsets.all(16),
+                        itemCount: filtered.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 10),
+                        itemBuilder: (context, index) {
+                          final item = filtered[index];
+                          final status =
+                              _statusVisual(colorScheme, item.status);
+
+                          return GKCard(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    GKAvatar(
+                                      name: item.patientName,
+                                      imageUrl: item.patientAvatarUrl,
+                                      radius: 22,
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            item.patientName,
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 2),
+                                          Text(
+                                            item.patientEmail,
+                                            style: const TextStyle(
+                                              fontSize: 12,
+                                              color: Color(0xFF64748B),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.end,
+                                      children: [
+                                        GKBadge(
+                                          label: status.label,
+                                          background: status.background,
+                                          foreground: status.foreground,
+                                        ),
+                                        const SizedBox(height: 6),
+                                        Text(
+                                          DateFormat('dd/MM HH:mm').format(
+                                            item.createdAt.toLocal(),
+                                          ),
+                                          style: const TextStyle(
+                                            fontSize: 11,
+                                            color: Color(0xFF64748B),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 12),
+                                Text(
+                                  item.question,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                if (item.answer.trim().isNotEmpty) ...[
+                                  const SizedBox(height: 8),
+                                  Container(
+                                    width: double.infinity,
+                                    padding: const EdgeInsets.all(10),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFF8FAFC),
+                                      borderRadius: BorderRadius.circular(12),
+                                      border: Border.all(
+                                        color: const Color(0xFFE2E8F0),
+                                      ),
+                                    ),
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        const Text(
+                                          'Resposta enviada',
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            color: Color(0xFF64748B),
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          item.answer,
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                            color: Color(0xFF475569),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                                const SizedBox(height: 12),
+                                Align(
+                                  alignment: Alignment.centerRight,
+                                  child: SizedBox(
+                                    width: 170,
+                                    child: GKButton(
+                                      label: item.isAnswered
+                                          ? 'Ver detalhes'
+                                          : 'Responder',
+                                      variant: item.isAnswered
+                                          ? GKButtonVariant.secondary
+                                          : GKButtonVariant.primary,
+                                      onPressed: () => _openReplySheet(item),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+              ),
+            ],
           );
         },
+      ),
+    );
+  }
+
+  bool _matchesFilter(DoctorInboxMessage item, InboxFilterChip filter) {
+    switch (filter) {
+      case InboxFilterChip.all:
+        return true;
+      case InboxFilterChip.unread:
+        return item.status == 'open';
+      case InboxFilterChip.answered:
+        return item.status == 'answered';
+      case InboxFilterChip.closed:
+        return item.status == 'closed';
+    }
+  }
+
+  Widget _chip(String label, InboxFilterChip value) {
+    final active = _filter == value;
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: ChoiceChip(
+        label: Text(label),
+        selected: active,
+        onSelected: (_) => setState(() => _filter = value),
+        selectedColor: GKColors.primary,
+        backgroundColor: Colors.white,
+        labelStyle: TextStyle(
+          color: active ? Colors.white : GKColors.darkBackground,
+          fontWeight: FontWeight.w600,
+          fontSize: 12,
+        ),
       ),
     );
   }
