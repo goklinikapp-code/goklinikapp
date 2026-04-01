@@ -227,3 +227,7 @@ export async function getPatientPreOperatory(patientId: string) {
     throw error
   }
 }
+
+export async function deletePatientPreOperatoryFile(fileId: string) {
+  await apiClient.delete(`/pre-operatory/files/${fileId}`)
+}

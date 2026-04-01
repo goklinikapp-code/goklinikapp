@@ -9,6 +9,7 @@ from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 from apps.pre_operatory.views import (
     PreOperatoryCreateAPIView,
     PreOperatoryDetailAPIView,
+    PreOperatoryFileDetailAPIView,
     PreOperatoryMeAPIView,
     PreOperatoryPatientAPIView,
 )
@@ -23,6 +24,11 @@ def health_view(_request):
 urlpatterns = [
     path("api/pre-operatory", PreOperatoryCreateAPIView.as_view(), name="api-pre-operatory"),
     path("api/pre-operatory/me", PreOperatoryMeAPIView.as_view(), name="api-pre-operatory-me"),
+    path(
+        "api/pre-operatory/files/<uuid:file_id>",
+        PreOperatoryFileDetailAPIView.as_view(),
+        name="api-pre-operatory-file-detail",
+    ),
     path(
         "api/pre-operatory/patient/<uuid:patient_id>",
         PreOperatoryPatientAPIView.as_view(),

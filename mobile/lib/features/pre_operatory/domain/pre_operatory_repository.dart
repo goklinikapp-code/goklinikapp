@@ -11,4 +11,6 @@ abstract class PreOperatoryRepository {
     String preOperatoryId,
     PreOperatoryUpsertPayload payload,
   );
+
+  Future<void> deletePreOperatoryFile(String fileId);
 }

@@ -9,6 +9,7 @@ import {
   createPatientMedication,
   createPatientProcedure,
   deactivatePatientMedication,
+  deletePatientPreOperatoryFile,
   deletePatientDocument,
   deletePatientProcedure,
   deletePatientProcedureImage,
@@ -187,6 +188,7 @@ export function PatientMedicalRecordModule({ patientId }: PatientMedicalRecordMo
   const [procedureFiles, setProcedureFiles] = useState<File[]>([])
   const [documentFile, setDocumentFile] = useState<File | null>(null)
   const [removingProcedureImageId, setRemovingProcedureImageId] = useState<string | null>(null)
+  const [removingPreOperatoryImageId, setRemovingPreOperatoryImageId] = useState<string | null>(null)
   const isSurgeon = currentUser?.role === 'surgeon'
   const currentProfessionalName = (currentUser?.full_name || '').trim()
 
@@ -348,6 +350,21 @@ export function PatientMedicalRecordModule({ patientId }: PatientMedicalRecordMo
       await invalidateAll()
     },
     onError: () => toast.error('Não foi possível remover o documento.'),
+  })
+
+  const deletePreOperatoryFileMutation = useMutation({
+    mutationFn: ({ fileId }: { fileId: string }) => deletePatientPreOperatoryFile(fileId),
+    onMutate: ({ fileId }) => {
+      setRemovingPreOperatoryImageId(fileId)
+    },
+    onSuccess: async () => {
+      toast.success('Imagem removida.')
+      await queryClient.invalidateQueries({ queryKey: ['patient-prontuario-pre-operatory', patientId] })
+    },
+    onError: () => toast.error('Não foi possível remover a imagem.'),
+    onSettled: () => {
+      setRemovingPreOperatoryImageId(null)
+    },
   })
 
   const activeMedicationsCount = useMemo(
@@ -1110,19 +1127,37 @@ export function PatientMedicalRecordModule({ patientId }: PatientMedicalRecordMo
               ) : (
                 <div className="flex flex-wrap gap-2">
                   {preOperatoryRecord.photos.map((item) => (
-                    <a
+                    <div
                       key={item.id}
-                      href={resolveMediaUrl(item.file_url)}
-                      target="_blank"
-                      rel="noreferrer"
                       className="relative h-20 w-20 overflow-hidden rounded-md border border-slate-200"
                     >
-                      <img
-                        src={resolveMediaUrl(item.file_url)}
-                        alt="Foto pré-operatória"
-                        className="h-full w-full object-cover"
-                      />
-                    </a>
+                      <a href={resolveMediaUrl(item.file_url)} target="_blank" rel="noreferrer">
+                        <img
+                          src={resolveMediaUrl(item.file_url)}
+                          alt="Foto pré-operatória"
+                          className="h-full w-full object-cover"
+                        />
+                      </a>
+                      <button
+                        type="button"
+                        className="absolute right-1 top-1 rounded-full bg-red-600 px-1.5 py-0.5 text-[10px] font-semibold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+                        onClick={() => {
+                          const shouldDelete = window.confirm('Deseja remover esta foto do pré-operatório?')
+                          if (!shouldDelete) return
+                          deletePreOperatoryFileMutation.mutate({ fileId: item.id })
+                        }}
+                        disabled={
+                          deletePreOperatoryFileMutation.isPending &&
+                          removingPreOperatoryImageId === item.id
+                        }
+                        title="Remover imagem"
+                      >
+                        {deletePreOperatoryFileMutation.isPending &&
+                        removingPreOperatoryImageId === item.id
+                          ? '...'
+                          : 'X'}
+                      </button>
+                    </div>
                   ))}
                 </div>
               )}

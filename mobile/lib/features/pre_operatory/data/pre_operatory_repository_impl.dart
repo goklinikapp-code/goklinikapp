@@ -112,6 +112,11 @@ class PreOperatoryRepositoryImpl implements PreOperatoryRepository {
     );
     return PreOperatoryRecord.fromJson(response.data as Map<String, dynamic>);
   }
+
+  @override
+  Future<void> deletePreOperatoryFile(String fileId) async {
+    await _dio.delete<dynamic>(ApiEndpoints.preOperatoryFileDetail(fileId));
+  }
 }
 
 final preOperatoryRepositoryProvider = Provider<PreOperatoryRepository>((ref) {

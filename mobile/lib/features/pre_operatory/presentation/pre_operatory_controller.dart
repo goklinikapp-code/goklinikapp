@@ -29,6 +29,12 @@ class PreOperatoryController
     state = AsyncValue.data(saved);
     return saved;
   }
+
+  Future<void> deleteFile(String fileId) async {
+    final repository = _ref.read(preOperatoryRepositoryProvider);
+    await repository.deletePreOperatoryFile(fileId);
+    await load();
+  }
 }
 
 final preOperatoryControllerProvider = StateNotifierProvider<

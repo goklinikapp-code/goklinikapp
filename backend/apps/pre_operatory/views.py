@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from django.conf import settings
 from django.core.files.storage import FileSystemStorage
@@ -69,6 +70,50 @@ def _can_staff_view_patient_pre_operatory(user: GoKlinikUser, patient: GoKlinikU
         return str(user.tenant_id or "") == str(patient.tenant_id or "")
 
     return False
+
+
+def _can_manage_pre_operatory_file(user: GoKlinikUser, pre_operatory: PreOperatory) -> bool:
+    if user.role == GoKlinikUser.RoleChoices.PATIENT:
+        return str(user.id) == str(pre_operatory.patient_id)
+
+    if user.role == GoKlinikUser.RoleChoices.SUPER_ADMIN:
+        return True
+
+    if user.role in {
+        GoKlinikUser.RoleChoices.CLINIC_MASTER,
+        GoKlinikUser.RoleChoices.SURGEON,
+        GoKlinikUser.RoleChoices.NURSE,
+        GoKlinikUser.RoleChoices.SECRETARY,
+    }:
+        return str(user.tenant_id or "") == str(pre_operatory.tenant_id or "")
+
+    return False
+
+
+def _delete_storage_file_from_url(file_url: str | None) -> None:
+    value = (file_url or "").strip()
+    if not value:
+        return
+
+    path = urlsplit(value).path or value
+    marker = "/pre_operatory/"
+    index = path.find(marker)
+    if index < 0:
+        marker = "pre_operatory/"
+        index = path.find(marker)
+    if index < 0:
+        return
+
+    relative_path = path[index + 1 :] if path[index] == "/" else path[index:]
+    if not relative_path:
+        return
+
+    try:
+        default_storage.delete(relative_path)
+    except Exception:
+        # Silently ignore storage deletion errors because the DB reference
+        # still needs to be removed for UX consistency.
+        pass
 
 
 class PreOperatoryCreateAPIView(APIView):
@@ -292,3 +337,26 @@ class PreOperatoryPatientAPIView(APIView):
             ).data,
             status=status.HTTP_200_OK,
         )
+
+
+class PreOperatoryFileDetailAPIView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def delete(self, request, file_id):
+        file_row = (
+            PreOperatoryFile.objects.select_related("pre_operatory")
+            .filter(id=file_id)
+            .first()
+        )
+        if not file_row:
+            return Response(
+                {"detail": "File not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        if not _can_manage_pre_operatory_file(request.user, file_row.pre_operatory):
+            return Response(status=status.HTTP_403_FORBIDDEN)
+
+        _delete_storage_file_from_url(file_row.file_url)
+        file_row.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)

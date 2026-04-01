@@ -20,6 +20,8 @@ class ApiEndpoints {
   static const preOperatoryMe = '/api/pre-operatory/me';
   static String preOperatoryDetail(String preOperatoryId) =>
       '/api/pre-operatory/$preOperatoryId';
+  static String preOperatoryFileDetail(String fileId) =>
+      '/api/pre-operatory/files/$fileId';
 
   static const chatRooms = '/api/chat/rooms/';
   static String chatRoomMessages(String roomId) =>

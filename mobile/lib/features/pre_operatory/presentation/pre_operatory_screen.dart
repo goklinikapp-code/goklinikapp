@@ -33,6 +33,7 @@ class _PreOperatoryScreenState extends ConsumerState<PreOperatoryScreen> {
   bool _alcohol = false;
   bool _isSubmitting = false;
   bool _isEditMode = false;
+  String? _deletingPhotoId;
   String? _boundRecordId;
   final List<String> _photoPaths = [];
   final List<String> _documentPaths = [];
@@ -161,6 +162,53 @@ class _PreOperatoryScreenState extends ConsumerState<PreOperatoryScreen> {
     await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 
+  Future<void> _deletePhoto(PreOperatoryFileItem item) async {
+    if (_deletingPhotoId != null || _isSubmitting) return;
+
+    final shouldDelete = await showDialog<bool>(
+          context: context,
+          builder: (_) => AlertDialog(
+            title: const Text('Excluir foto'),
+            content: const Text(
+              'Deseja remover esta foto do pré-operatório?',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text('Cancelar'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                child: const Text('Excluir'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+
+    if (!shouldDelete || !mounted) return;
+
+    setState(() => _deletingPhotoId = item.id);
+    try {
+      await ref
+          .read(preOperatoryControllerProvider.notifier)
+          .deleteFile(item.id);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Foto removida com sucesso.')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Não foi possível remover a foto: $error')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _deletingPhotoId = null);
+      }
+    }
+  }
+
   Future<void> _submit() async {
     if (_isSubmitting) return;
     setState(() => _isSubmitting = true);
@@ -191,7 +239,10 @@ class _PreOperatoryScreenState extends ConsumerState<PreOperatoryScreen> {
     }
   }
 
-  Widget _buildPhotoList(List<PreOperatoryFileItem> items) {
+  Widget _buildPhotoList(
+    List<PreOperatoryFileItem> items, {
+    required bool canDelete,
+  }) {
     return GKCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -217,42 +268,93 @@ class _PreOperatoryScreenState extends ConsumerState<PreOperatoryScreen> {
                 separatorBuilder: (_, __) => const SizedBox(width: 8),
                 itemBuilder: (context, index) {
                   final item = items[index];
-                  return GestureDetector(
-                    onTap: () {
-                      showDialog<void>(
-                        context: context,
-                        builder: (_) => Dialog(
-                          insetPadding: const EdgeInsets.all(16),
-                          child: InteractiveViewer(
+                  final isDeleting = _deletingPhotoId == item.id;
+                  return SizedBox(
+                    width: 90,
+                    height: 90,
+                    child: Stack(
+                      children: [
+                        GestureDetector(
+                          onTap: () {
+                            showDialog<void>(
+                              context: context,
+                              builder: (_) => Dialog(
+                                insetPadding: const EdgeInsets.all(16),
+                                child: InteractiveViewer(
+                                  child: Image.network(
+                                    item.fileUrl,
+                                    fit: BoxFit.contain,
+                                    errorBuilder: (_, __, ___) =>
+                                        const SizedBox(
+                                      width: 220,
+                                      height: 220,
+                                      child: Center(
+                                        child: Icon(
+                                          Icons.broken_image_outlined,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(10),
                             child: Image.network(
                               item.fileUrl,
-                              fit: BoxFit.contain,
-                              errorBuilder: (_, __, ___) => const SizedBox(
-                                width: 220,
-                                height: 220,
-                                child: Center(
-                                  child: Icon(Icons.broken_image_outlined),
+                              width: 90,
+                              height: 90,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) => Container(
+                                width: 90,
+                                height: 90,
+                                color: GKColors.tealIce,
+                                child: const Icon(
+                                  Icons.image_not_supported_outlined,
                                 ),
                               ),
                             ),
                           ),
                         ),
-                      );
-                    },
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(10),
-                      child: Image.network(
-                        item.fileUrl,
-                        width: 90,
-                        height: 90,
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => Container(
-                          width: 90,
-                          height: 90,
-                          color: GKColors.tealIce,
-                          child: const Icon(Icons.image_not_supported_outlined),
-                        ),
-                      ),
+                        if (canDelete)
+                          Positioned(
+                            top: 4,
+                            right: 4,
+                            child: Material(
+                              color: Colors.transparent,
+                              child: InkWell(
+                                onTap: isDeleting
+                                    ? null
+                                    : () => _deletePhoto(item),
+                                borderRadius: BorderRadius.circular(999),
+                                child: Container(
+                                  width: 22,
+                                  height: 22,
+                                  decoration: const BoxDecoration(
+                                    color: Color(0xFFD92D20),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  alignment: Alignment.center,
+                                  child: isDeleting
+                                      ? const SizedBox(
+                                          width: 12,
+                                          height: 12,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                            color: Colors.white,
+                                          ),
+                                        )
+                                      : const Icon(
+                                          Icons.close_rounded,
+                                          size: 14,
+                                          color: Colors.white,
+                                        ),
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
                   );
                 },
@@ -307,7 +409,7 @@ class _PreOperatoryScreenState extends ConsumerState<PreOperatoryScreen> {
         title: const Text('Pré-operatório'),
         actions: [
           IconButton(
-            onPressed: _isSubmitting
+            onPressed: _isSubmitting || _deletingPhotoId != null
                 ? null
                 : () =>
                     ref.read(preOperatoryControllerProvider.notifier).load(),
@@ -577,7 +679,10 @@ class _PreOperatoryScreenState extends ConsumerState<PreOperatoryScreen> {
               ),
               if (record != null) ...[
                 const SizedBox(height: 10),
-                _buildPhotoList(record.photos),
+                _buildPhotoList(
+                  record.photos,
+                  canDelete: true,
+                ),
                 const SizedBox(height: 10),
                 _buildDocumentList(record.documents),
                 const SizedBox(height: 16),
