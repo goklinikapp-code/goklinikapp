@@ -232,6 +232,7 @@ MEDIA_URL = env("MEDIA_URL", DEFAULT_MEDIA_URL) or DEFAULT_MEDIA_URL
 DEFAULT_CORS_ALLOWED_ORIGINS = [
     "https://goklinik.com",
     "https://www.goklinik.com",
+    "https://launch.goklinik.com",
     "http://localhost:3000",
     "http://localhost:5173",
     "http://127.0.0.1:5173",
@@ -241,6 +242,12 @@ CORS_ALLOWED_ORIGINS = sorted(
     set(DEFAULT_CORS_ALLOWED_ORIGINS + env_list("CORS_ALLOWED_ORIGINS", []))
 )
 CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOW_ALL_HEADERS = True
+CORS_ALLOW_METHODS = [
+    "GET",
+    "POST",
+    "OPTIONS",
+]
 CSRF_TRUSTED_ORIGINS = sorted(
     {
         origin
