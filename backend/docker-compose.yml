@@ -27,14 +27,15 @@ services:
       DJANGO_SETTINGS_MODULE: config.settings.development
       DATABASE_URL: ${DATABASE_URL}
       DATABASE_SSL_REQUIRE: ${DATABASE_SSL_REQUIRE:-True}
+      MEDIA_ROOT: /app/media
       CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://127.0.0.1:6379/0}
       CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://127.0.0.1:6379/0}
     volumes:
       - ./apps:/app/apps
       - ./config:/app/config
       - ./manage.py:/app/manage.py
-      - goklinik_media_data:/app/media
-      - goklinik_media_data:/app/media_uploads
+      - ${MEDIA_HOST_PATH:-/var/lib/goklinik/media}:/app/media
+      - ${MEDIA_HOST_PATH:-/var/lib/goklinik/media}:/app/media_uploads
     depends_on:
       redis:
         condition: service_healthy
@@ -53,14 +54,15 @@ services:
       DJANGO_SETTINGS_MODULE: config.settings.development
       DATABASE_URL: ${DATABASE_URL}
       DATABASE_SSL_REQUIRE: ${DATABASE_SSL_REQUIRE:-True}
+      MEDIA_ROOT: /app/media
       CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://127.0.0.1:6379/0}
       CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://127.0.0.1:6379/0}
     volumes:
       - ./apps:/app/apps
       - ./config:/app/config
       - ./manage.py:/app/manage.py
-      - goklinik_media_data:/app/media
-      - goklinik_media_data:/app/media_uploads
+      - ${MEDIA_HOST_PATH:-/var/lib/goklinik/media}:/app/media
+      - ${MEDIA_HOST_PATH:-/var/lib/goklinik/media}:/app/media_uploads
     depends_on:
       redis:
         condition: service_healthy
@@ -79,18 +81,15 @@ services:
       DJANGO_SETTINGS_MODULE: config.settings.development
       DATABASE_URL: ${DATABASE_URL}
       DATABASE_SSL_REQUIRE: ${DATABASE_SSL_REQUIRE:-True}
+      MEDIA_ROOT: /app/media
       CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://127.0.0.1:6379/0}
       CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://127.0.0.1:6379/0}
     volumes:
       - ./apps:/app/apps
       - ./config:/app/config
       - ./manage.py:/app/manage.py
-      - goklinik_media_data:/app/media
-      - goklinik_media_data:/app/media_uploads
+      - ${MEDIA_HOST_PATH:-/var/lib/goklinik/media}:/app/media
+      - ${MEDIA_HOST_PATH:-/var/lib/goklinik/media}:/app/media_uploads
     depends_on:
       redis:
         condition: service_healthy
-
-volumes:
-  goklinik_media_data:
-    name: goklinik_media_data

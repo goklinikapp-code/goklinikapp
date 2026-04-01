@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { isAxiosError } from 'axios'
-import { ClipboardCheck, FileText, History, Pill, Plus, Save, Trash2 } from 'lucide-react'
+import { AlertTriangle, ClipboardCheck, FileText, History, Pill, Plus, Save, Trash2 } from 'lucide-react'
 import { useMemo, useState, type FormEvent } from 'react'
 import toast from 'react-hot-toast'
 
@@ -77,6 +77,12 @@ interface DocumentFormState {
   titulo: string
   descricao: string
   tipo_arquivo: 'pdf' | 'imagem'
+}
+
+interface DeleteImageDialogState {
+  mode: 'procedure' | 'pre_operatory'
+  imageId: string
+  procedureId?: string
 }
 
 const today = new Date().toISOString().slice(0, 10)
@@ -189,6 +195,7 @@ export function PatientMedicalRecordModule({ patientId }: PatientMedicalRecordMo
   const [documentFile, setDocumentFile] = useState<File | null>(null)
   const [removingProcedureImageId, setRemovingProcedureImageId] = useState<string | null>(null)
   const [removingPreOperatoryImageId, setRemovingPreOperatoryImageId] = useState<string | null>(null)
+  const [deleteImageDialog, setDeleteImageDialog] = useState<DeleteImageDialogState | null>(null)
   const isSurgeon = currentUser?.role === 'surgeon'
   const currentProfessionalName = (currentUser?.full_name || '').trim()
 
@@ -518,12 +525,38 @@ export function PatientMedicalRecordModule({ patientId }: PatientMedicalRecordMo
   }
 
   const handleDeleteProcedureImage = (procedureId: string, imageId: string) => {
-    const shouldDelete = window.confirm('Deseja remover esta imagem do procedimento?')
-    if (!shouldDelete) {
+    setDeleteImageDialog({
+      mode: 'procedure',
+      procedureId,
+      imageId,
+    })
+  }
+
+  const handleDeletePreOperatoryImage = (imageId: string) => {
+    setDeleteImageDialog({
+      mode: 'pre_operatory',
+      imageId,
+    })
+  }
+
+  const confirmDeleteImage = () => {
+    if (!deleteImageDialog) {
       return
     }
-    deleteProcedureImageMutation.mutate({ procedureId, imageId })
+    if (deleteImageDialog.mode === 'procedure' && deleteImageDialog.procedureId) {
+      deleteProcedureImageMutation.mutate({
+        procedureId: deleteImageDialog.procedureId,
+        imageId: deleteImageDialog.imageId,
+      })
+      setDeleteImageDialog(null)
+      return
+    }
+    deletePreOperatoryFileMutation.mutate({ fileId: deleteImageDialog.imageId })
+    setDeleteImageDialog(null)
   }
+
+  const deleteImageSubject =
+    deleteImageDialog?.mode === 'procedure' ? 'do procedimento' : 'do pré-operatório'
 
   return (
     <>
@@ -1141,11 +1174,7 @@ export function PatientMedicalRecordModule({ patientId }: PatientMedicalRecordMo
                       <button
                         type="button"
                         className="absolute right-1 top-1 rounded-full bg-red-600 px-1.5 py-0.5 text-[10px] font-semibold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
-                        onClick={() => {
-                          const shouldDelete = window.confirm('Deseja remover esta foto do pré-operatório?')
-                          if (!shouldDelete) return
-                          deletePreOperatoryFileMutation.mutate({ fileId: item.id })
-                        }}
+                        onClick={() => handleDeletePreOperatoryImage(item.id)}
                         disabled={
                           deletePreOperatoryFileMutation.isPending &&
                           removingPreOperatoryImageId === item.id
@@ -1185,6 +1214,40 @@ export function PatientMedicalRecordModule({ patientId }: PatientMedicalRecordMo
             </div>
           </div>
         )}
+      </Modal>
+
+      <Modal
+        isOpen={Boolean(deleteImageDialog)}
+        onClose={() => setDeleteImageDialog(null)}
+        title="Excluir imagem"
+        className="max-w-md"
+      >
+        <div className="space-y-5">
+          <div className="flex items-start gap-3 rounded-card border border-red-100 bg-red-50 p-4">
+            <div className="rounded-full bg-red-100 p-2 text-red-600">
+              <AlertTriangle className="h-5 w-5" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-night">Confirma a exclusão?</p>
+              <p className="mt-1 text-sm text-slate-600">
+                Essa imagem {deleteImageSubject} será removida permanentemente.
+              </p>
+            </div>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="secondary" onClick={() => setDeleteImageDialog(null)}>
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              variant="danger"
+              onClick={confirmDeleteImage}
+              disabled={deleteProcedureImageMutation.isPending || deletePreOperatoryFileMutation.isPending}
+            >
+              Excluir imagem
+            </Button>
+          </div>
+        </div>
       </Modal>
     </>
   )
