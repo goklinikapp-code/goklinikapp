@@ -8,7 +8,7 @@ from django.conf import settings
 from django.db.models import Sum
 from django.db.models.functions import Coalesce
 from django.utils import timezone
-from rest_framework import permissions, status
+from rest_framework import pagination, permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -258,6 +258,9 @@ class AdminClinicReferralLinkAPIView(APIView):
 class LeadAPIView(APIView):
     permission_classes = [permissions.AllowAny]
 
+    class LeadPagination(pagination.PageNumberPagination):
+        page_size = 10
+
     def get(self, request):
         queryset = Lead.objects.select_related("seller").all().order_by("-created_at")
         seller_id = (request.query_params.get("seller") or request.query_params.get("seller_id") or "").strip()
@@ -279,11 +282,35 @@ class LeadAPIView(APIView):
             queryset = queryset.filter(created_at__date__gte=start_date)
         if end_date:
             queryset = queryset.filter(created_at__date__lte=end_date)
-        serializer = LeadSerializer(queryset, many=True)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+
+        paginator = self.LeadPagination()
+        page = paginator.paginate_queryset(queryset, request, view=self)
+        serializer = LeadSerializer(page, many=True)
+        return paginator.get_paginated_response(serializer.data)
 
     def post(self, request):
         serializer = LeadSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
+class LeadDetailAPIView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def put(self, request, lead_id):
+        lead = Lead.objects.filter(id=lead_id).first()
+        if not lead:
+            return Response({"detail": "Lead não encontrado."}, status=status.HTTP_404_NOT_FOUND)
+
+        serializer = LeadSerializer(lead, data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def delete(self, request, lead_id):
+        lead = Lead.objects.filter(id=lead_id).first()
+        if not lead:
+            return Response({"detail": "Lead não encontrado."}, status=status.HTTP_404_NOT_FOUND)
+        lead.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)

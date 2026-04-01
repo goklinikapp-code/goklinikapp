@@ -31,6 +31,7 @@ import { Input } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { Select } from '@/components/ui/Select'
 import { TextArea } from '@/components/ui/TextArea'
+import { useAuthStore } from '@/stores/authStore'
 import type {
   PatientDocumentRecord,
   PatientMedicationRecord,
@@ -161,6 +162,7 @@ function normalizeDocumentPayload(form: DocumentFormState, file: File | null): P
 
 export function PatientMedicalRecordModule({ patientId }: PatientMedicalRecordModuleProps) {
   const queryClient = useQueryClient()
+  const currentUser = useAuthStore((state) => state.user)
   const [openSection, setOpenSection] = useState<OpenSection>(null)
 
   const [medicationForm, setMedicationForm] = useState<MedicationFormState>(emptyMedication)
@@ -169,6 +171,8 @@ export function PatientMedicalRecordModule({ patientId }: PatientMedicalRecordMo
   const [procedureFiles, setProcedureFiles] = useState<File[]>([])
   const [documentFile, setDocumentFile] = useState<File | null>(null)
   const [removingProcedureImageId, setRemovingProcedureImageId] = useState<string | null>(null)
+  const isSurgeon = currentUser?.role === 'surgeon'
+  const currentProfessionalName = (currentUser?.full_name || '').trim()
 
   const medicationsQuery = useQuery({
     queryKey: ['patient-prontuario-medications', patientId],
@@ -200,6 +204,7 @@ export function PatientMedicalRecordModule({ patientId }: PatientMedicalRecordMo
   const professionalsQuery = useQuery({
     queryKey: ['team-professionals-prontuario'],
     queryFn: () => getTeamMembers(),
+    enabled: !isSurgeon,
     refetchInterval: 30000,
   })
 
@@ -433,7 +438,17 @@ export function PatientMedicalRecordModule({ patientId }: PatientMedicalRecordMo
       toast.error('Informe o nome do procedimento.')
       return
     }
-    const payload = normalizeProcedurePayload(procedureForm, procedureFiles)
+    const professionalName = isSurgeon
+      ? currentProfessionalName || procedureForm.profissional_responsavel.trim()
+      : procedureForm.profissional_responsavel.trim()
+
+    const payload = normalizeProcedurePayload(
+      {
+        ...procedureForm,
+        profissional_responsavel: professionalName,
+      },
+      procedureFiles,
+    )
     if (procedureForm.id) {
       updateProcedureMutation.mutate({ id: procedureForm.id, payload })
       return
@@ -710,19 +725,26 @@ export function PatientMedicalRecordModule({ patientId }: PatientMedicalRecordMo
               }
             />
           </div>
-          <Select
-            value={procedureForm.profissional_responsavel}
-            onChange={(event) =>
-              setProcedureForm((prev) => ({ ...prev, profissional_responsavel: event.target.value }))
-            }
-          >
-            <option value="">Selecione o profissional responsável</option>
-            {professionalOptions.map((name) => (
-              <option key={name} value={name}>
-                {name}
-              </option>
-            ))}
-          </Select>
+          {isSurgeon ? (
+            <div className="grid gap-1">
+              <label className="text-sm font-medium text-slate-700">Profissional responsável</label>
+              <Input value={currentProfessionalName} disabled readOnly />
+            </div>
+          ) : (
+            <Select
+              value={procedureForm.profissional_responsavel}
+              onChange={(event) =>
+                setProcedureForm((prev) => ({ ...prev, profissional_responsavel: event.target.value }))
+              }
+            >
+              <option value="">Selecione o profissional responsável</option>
+              {professionalOptions.map((name) => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ))}
+            </Select>
+          )}
           {proceduresCatalogQuery.isLoading || professionalsQuery.isLoading ? (
             <p className="caption">Carregando procedimentos e profissionais...</p>
           ) : null}

@@ -7,7 +7,7 @@ from django.urls import include, path
 from django.views.static import serve
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
-from apps.referrals.views import LeadAPIView
+from apps.referrals.views import LeadAPIView, LeadDetailAPIView
 from apps.users.dashboard_views import AdminDashboardAPIView
 
 
@@ -17,7 +17,9 @@ def health_view(_request):
 
 urlpatterns = [
     path("api/leads", LeadAPIView.as_view(), name="api-leads"),
+    path("api/leads/<uuid:lead_id>/", LeadDetailAPIView.as_view(), name="api-lead-detail"),
     path("leads", LeadAPIView.as_view(), name="leads"),
+    path("leads/<uuid:lead_id>/", LeadDetailAPIView.as_view(), name="lead-detail"),
     path("admin/", admin.site.urls),
     path("api/health/", health_view, name="api-health"),
     path("api/schema/", SpectacularAPIView.as_view(), name="api-schema"),

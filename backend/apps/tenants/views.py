@@ -140,10 +140,21 @@ class TenantSpecialtyListCreateAPIView(APIView):
 
     def _resolve_tenant(self, request):
         user = request.user
-        if user.role not in {
-            GoKlinikUser.RoleChoices.SUPER_ADMIN,
-            GoKlinikUser.RoleChoices.CLINIC_MASTER,
-        }:
+        if request.method == "GET":
+            allowed_roles = {
+                GoKlinikUser.RoleChoices.SUPER_ADMIN,
+                GoKlinikUser.RoleChoices.CLINIC_MASTER,
+                GoKlinikUser.RoleChoices.SURGEON,
+                GoKlinikUser.RoleChoices.NURSE,
+                GoKlinikUser.RoleChoices.SECRETARY,
+            }
+        else:
+            allowed_roles = {
+                GoKlinikUser.RoleChoices.SUPER_ADMIN,
+                GoKlinikUser.RoleChoices.CLINIC_MASTER,
+            }
+
+        if user.role not in allowed_roles:
             return None, Response(status=status.HTTP_403_FORBIDDEN)
         tenant_id = request.data.get("tenant_id") if request.method != "GET" else request.query_params.get("tenant_id")
         tenant = resolve_tenant_for_branding(user, tenant_id)
