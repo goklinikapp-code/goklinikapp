@@ -13,6 +13,8 @@ from rest_framework.exceptions import APIException, PermissionDenied
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
+from config.media_urls import absolute_media_url
+
 from apps.patients.models import DoctorPatientAssignment
 from apps.users.models import GoKlinikUser
 
@@ -264,7 +266,9 @@ class AppointmentViewSet(viewsets.ModelViewSet):
             except Exception as exc:  # noqa: BLE001
                 logger.warning("Unable to dispatch appointment tasks for %s: %s", appointment.id, exc)
 
-        return Response(AppointmentSerializer(appointment).data)
+        return Response(
+            AppointmentSerializer(appointment, context={"request": request}).data
+        )
 
     def destroy(self, request, *args, **kwargs):
         if request.user.role == GoKlinikUser.RoleChoices.PATIENT:
@@ -310,7 +314,7 @@ class AppointmentViewSet(viewsets.ModelViewSet):
                 "id": str(item.id),
                 "name": item.full_name,
                 "email": item.email,
-                "avatar_url": item.avatar_url or "",
+                "avatar_url": absolute_media_url(item.avatar_url, request=request),
                 "is_assigned": bool(assigned_doctor_id and str(item.id) == str(assigned_doctor_id)),
             }
             for item in professionals

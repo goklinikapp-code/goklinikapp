@@ -760,7 +760,10 @@ class SaaSSignupVerifyCodeAPIView(APIView):
             {
                 "access_token": str(refresh.access_token),
                 "refresh_token": str(refresh),
-                "user": GoKlinikUserSerializer(user).data,
+                "user": GoKlinikUserSerializer(
+                    user,
+                    context={"request": request},
+                ).data,
             },
             status=status.HTTP_201_CREATED,
         )
@@ -828,7 +831,10 @@ class SaaSInviteAcceptAPIView(APIView):
             {
                 "access_token": str(refresh.access_token),
                 "refresh_token": str(refresh),
-                "user": GoKlinikUserSerializer(user).data,
+                "user": GoKlinikUserSerializer(
+                    user,
+                    context={"request": request},
+                ).data,
             },
             status=status.HTTP_201_CREATED,
         )

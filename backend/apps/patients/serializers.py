@@ -3,6 +3,8 @@ from __future__ import annotations
 from django.utils.crypto import get_random_string
 from rest_framework import serializers
 
+from config.media_urls import AbsoluteMediaUrlsSerializerMixin
+
 from apps.tenants.models import Tenant
 from apps.tenants.models import TenantSpecialty
 from apps.users.models import GoKlinikUser
@@ -10,7 +12,7 @@ from apps.users.models import GoKlinikUser
 from .models import Patient
 
 
-class PatientListSerializer(serializers.ModelSerializer):
+class PatientListSerializer(AbsoluteMediaUrlsSerializerMixin, serializers.ModelSerializer):
     full_name = serializers.CharField(read_only=True)
     specialty_name = serializers.CharField(source="specialty.specialty_name", read_only=True)
     assigned_doctor = serializers.SerializerMethodField()
@@ -47,7 +49,7 @@ class PatientListSerializer(serializers.ModelSerializer):
         }
 
 
-class PatientDetailSerializer(serializers.ModelSerializer):
+class PatientDetailSerializer(AbsoluteMediaUrlsSerializerMixin, serializers.ModelSerializer):
     full_name = serializers.CharField(read_only=True)
     specialty_name = serializers.CharField(source="specialty.specialty_name", read_only=True)
     assigned_doctor = serializers.SerializerMethodField()

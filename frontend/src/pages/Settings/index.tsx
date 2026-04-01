@@ -46,6 +46,7 @@ import {
 import { usePreferencesStore } from '@/stores/preferencesStore'
 import { useTenantStore } from '@/stores/tenantStore'
 import type { TenantBranding } from '@/types'
+import { resolveMediaUrl } from '@/utils/mediaUrl'
 
 const tabs = ['Identidade Visual', 'Procedimentos', 'Profissionais', 'Conteúdo'] as const
 
@@ -270,7 +271,7 @@ export default function SettingsPage() {
   const [selectedLogoFile, setSelectedLogoFile] = useState<File | null>(null)
   const [isRemoveLogoModalOpen, setIsRemoveLogoModalOpen] = useState(false)
   const clinicAddresses = brandingForm.clinic_addresses || []
-  const previewLogo = logoPreview || brandingForm.logo_url || ''
+  const previewLogo = resolveMediaUrl(logoPreview || brandingForm.logo_url || '')
   const hasLogoConfigured = Boolean(String(previewLogo || '').trim())
   const previewCopy = previewCopyByLanguage[language]
 
@@ -691,7 +692,7 @@ export default function SettingsPage() {
 
               {logoPreview ? (
                 <div className="mt-4 flex items-center gap-3 rounded-lg bg-tealIce p-3">
-                  <img src={logoPreview} alt="preview" className="h-12 w-auto" />
+                  <img src={resolveMediaUrl(logoPreview)} alt="preview" className="h-12 w-auto" />
                   <p className="text-sm text-slate-600">Preview do novo logo</p>
                 </div>
               ) : null}

@@ -1,3 +1,5 @@
+import '../../../core/utils/api_media_url.dart';
+
 class ChatRoom {
   const ChatRoom({
     required this.id,
@@ -22,7 +24,9 @@ class ChatRoom {
       id: (json['id'] ?? '').toString(),
       roomType: (json['room_type'] ?? '').toString(),
       interlocutorName: (json['interlocutor_name'] ?? '').toString(),
-      interlocutorAvatar: (json['interlocutor_avatar'] ?? '').toString(),
+      interlocutorAvatar: resolveApiMediaUrl(
+        (json['interlocutor_avatar'] ?? '').toString(),
+      ),
       lastMessagePreview: (json['last_message_preview'] ?? '').toString(),
       lastMessageAt:
           DateTime.tryParse((json['last_message_at'] ?? '').toString()),
@@ -57,13 +61,16 @@ class ChatMessage {
   factory ChatMessage.fromJson(Map<String, dynamic> json) {
     final sender =
         (json['sender'] ?? <String, dynamic>{}) as Map<String, dynamic>;
+    final messageType = (json['message_type'] ?? 'text').toString();
+    final rawContent = (json['content'] ?? '').toString();
     return ChatMessage(
       id: (json['id'] ?? '').toString(),
       senderId: (sender['id'] ?? '').toString(),
       senderName: (sender['name'] ?? '').toString(),
-      senderAvatar: (sender['avatar'] ?? '').toString(),
-      content: (json['content'] ?? '').toString(),
-      messageType: (json['message_type'] ?? 'text').toString(),
+      senderAvatar: resolveApiMediaUrl((sender['avatar'] ?? '').toString()),
+      content:
+          messageType == 'image' ? resolveApiMediaUrl(rawContent) : rawContent,
+      messageType: messageType,
       isRead: json['is_read'] == true,
       createdAt: DateTime.tryParse((json['created_at'] ?? '').toString()) ??
           DateTime.now(),

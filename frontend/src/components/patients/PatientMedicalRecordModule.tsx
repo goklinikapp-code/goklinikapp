@@ -38,6 +38,7 @@ import type {
   TeamMember,
 } from '@/types'
 import { formatDate } from '@/utils/format'
+import { resolveMediaUrl } from '@/utils/mediaUrl'
 
 interface PatientMedicalRecordModuleProps {
   patientId: string
@@ -750,8 +751,8 @@ export function PatientMedicalRecordModule({ patientId }: PatientMedicalRecordMo
               <div className="flex flex-wrap gap-2">
                 {editingProcedureImages.map((image) => (
                   <div key={image.id} className="relative h-16 w-16 overflow-hidden rounded-md border border-slate-200">
-                    <a href={image.image_url} target="_blank" rel="noreferrer" title="Imagem já salva">
-                      <img src={image.image_url} alt="Imagem do procedimento" className="h-full w-full object-cover" />
+                    <a href={resolveMediaUrl(image.image_url)} target="_blank" rel="noreferrer" title="Imagem já salva">
+                      <img src={resolveMediaUrl(image.image_url)} alt="Imagem do procedimento" className="h-full w-full object-cover" />
                     </a>
                     {procedureForm.id ? (
                       <button
@@ -814,8 +815,8 @@ export function PatientMedicalRecordModule({ patientId }: PatientMedicalRecordMo
                   <div className="mt-3 flex flex-wrap gap-2">
                     {item.images.map((image) => (
                       <div key={image.id} className="relative h-16 w-16 overflow-hidden rounded-md border border-slate-200">
-                        <a href={image.image_url} target="_blank" rel="noreferrer">
-                          <img src={image.image_url} alt="Procedimento" className="h-full w-full object-cover" />
+                        <a href={resolveMediaUrl(image.image_url)} target="_blank" rel="noreferrer">
+                          <img src={resolveMediaUrl(image.image_url)} alt="Procedimento" className="h-full w-full object-cover" />
                         </a>
                         <button
                           type="button"
@@ -945,7 +946,7 @@ export function PatientMedicalRecordModule({ patientId }: PatientMedicalRecordMo
                 </div>
                 {item.descricao ? <p className="mt-2 text-sm text-slate-600">{item.descricao}</p> : null}
                 <a
-                  href={item.arquivo_url}
+                  href={resolveMediaUrl(item.arquivo_url)}
                   target="_blank"
                   rel="noreferrer"
                   className="mt-2 inline-block text-sm font-semibold text-primary underline-offset-4 hover:underline"

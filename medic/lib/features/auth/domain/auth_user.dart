@@ -1,3 +1,5 @@
+import '../../../core/utils/api_media_url.dart';
+
 class TenantInfo {
   const TenantInfo({required this.id, required this.name, required this.slug});
 
@@ -55,7 +57,7 @@ class AuthUser {
       fullName: fullName,
       role: (json['role'] ?? 'patient').toString(),
       phone: (json['phone'] ?? '').toString(),
-      avatarUrl: (json['avatar_url'] ?? '').toString(),
+      avatarUrl: resolveApiMediaUrl((json['avatar_url'] ?? '').toString()),
       crmNumber: (json['crm_number'] ?? '').toString(),
       bio: (json['bio'] ?? '').toString(),
       tenant: json['tenant'] is Map<String, dynamic>

@@ -19,6 +19,8 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from config.media_urls import absolute_media_url
+
 from apps.appointments.models import Appointment
 from apps.patients.models import Patient
 from apps.post_op.models import PostOpJourney
@@ -289,12 +291,12 @@ def _decode_base64_image(value: str) -> tuple[str, bytes]:
     return extension, decoded
 
 
-def _store_chat_image(content: str) -> str:
+def _store_chat_image(content: str, *, request=None) -> str:
     extension, decoded = _decode_base64_image(content)
     filename = f"{uuid.uuid4()}.{extension}"
     storage_path = f"chat_images/{filename}"
     saved = default_storage.save(storage_path, ContentFile(decoded))
-    return default_storage.url(saved)
+    return absolute_media_url(default_storage.url(saved), request=request)
 
 
 def _resolve_language_copy(language: str | None) -> dict[str, str]:
@@ -517,7 +519,7 @@ class ChatRoomViewSet(viewsets.GenericViewSet):
             paginator = MessagePagination()
             queryset = room.messages.select_related("sender").order_by("-created_at")
             page = paginator.paginate_queryset(queryset, request)
-            serializer = MessageSerializer(page, many=True)
+            serializer = MessageSerializer(page, many=True, context={"request": request})
             return paginator.get_paginated_response(serializer.data)
 
         payload_serializer = ChatMessageCreateSerializer(data=request.data)
@@ -527,9 +529,9 @@ class ChatRoomViewSet(viewsets.GenericViewSet):
         content = payload["content"]
         if payload["message_type"] == Message.MessageTypeChoices.IMAGE:
             if content.startswith("http://") or content.startswith("https://"):
-                normalized_content = content
+                normalized_content = absolute_media_url(content, request=request)
             else:
-                normalized_content = _store_chat_image(content)
+                normalized_content = _store_chat_image(content, request=request)
         else:
             normalized_content = content
 
@@ -542,7 +544,10 @@ class ChatRoomViewSet(viewsets.GenericViewSet):
         room.last_message_at = message.created_at
         room.save(update_fields=["last_message_at"])
 
-        return Response(MessageSerializer(message).data, status=status.HTTP_201_CREATED)
+        return Response(
+            MessageSerializer(message, context={"request": request}).data,
+            status=status.HTTP_201_CREATED,
+        )
 
     @action(detail=True, methods=["put"], url_path="read")
     def mark_read(self, request, pk=None):

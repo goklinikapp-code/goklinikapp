@@ -10,6 +10,8 @@ from rest_framework import permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from config.media_urls import absolute_media_url
+
 from apps.appointments.models import Appointment
 from apps.patients.models import DoctorPatientAssignment, Patient
 from apps.users.models import GoKlinikUser
@@ -212,7 +214,7 @@ class EvolutionPhotoCreateAPIView(APIView):
         filename = f"{uuid.uuid4()}_{upload.name}"
         storage_path = f"post_op_photos/{journey.id}/{filename}"
         stored_path = default_storage.save(storage_path, upload)
-        photo_url = default_storage.url(stored_path)
+        photo_url = absolute_media_url(default_storage.url(stored_path), request=request)
 
         photo = EvolutionPhoto.objects.create(
             journey=journey,
@@ -220,7 +222,10 @@ class EvolutionPhotoCreateAPIView(APIView):
             photo_url=photo_url,
             is_anonymous=payload.get("is_anonymous", False),
         )
-        return Response(EvolutionPhotoSerializer(photo).data, status=status.HTTP_201_CREATED)
+        return Response(
+            EvolutionPhotoSerializer(photo, context={"request": request}).data,
+            status=status.HTTP_201_CREATED,
+        )
 
 
 class EvolutionPhotoListAPIView(APIView):
@@ -242,7 +247,14 @@ class EvolutionPhotoListAPIView(APIView):
             return Response(status=status.HTTP_403_FORBIDDEN)
 
         queryset = EvolutionPhoto.objects.filter(journey_id=journey_id).order_by("-uploaded_at")
-        return Response(EvolutionPhotoSerializer(queryset, many=True).data, status=status.HTTP_200_OK)
+        return Response(
+            EvolutionPhotoSerializer(
+                queryset,
+                many=True,
+                context={"request": request},
+            ).data,
+            status=status.HTTP_200_OK,
+        )
 
 
 class AdminJourneysAPIView(APIView):
@@ -358,7 +370,14 @@ class UrgentMedicalRequestListCreateAPIView(APIView):
                 "answered_by",
                 "patient",
             )
-            return Response(UrgentMedicalRequestSerializer(queryset, many=True).data, status=status.HTTP_200_OK)
+            return Response(
+                UrgentMedicalRequestSerializer(
+                    queryset,
+                    many=True,
+                    context={"request": request},
+                ).data,
+                status=status.HTTP_200_OK,
+            )
 
         if user.role not in STAFF_ROLES:
             return Response(status=status.HTTP_403_FORBIDDEN)
@@ -373,7 +392,14 @@ class UrgentMedicalRequestListCreateAPIView(APIView):
                 models.Q(assigned_professional_id=user.id)
                 | models.Q(assigned_professional__isnull=True)
             )
-        return Response(UrgentMedicalRequestSerializer(queryset, many=True).data, status=status.HTTP_200_OK)
+        return Response(
+            UrgentMedicalRequestSerializer(
+                queryset,
+                many=True,
+                context={"request": request},
+            ).data,
+            status=status.HTTP_200_OK,
+        )
 
     def post(self, request):
         user = request.user
@@ -396,7 +422,10 @@ class UrgentMedicalRequestListCreateAPIView(APIView):
             status=UrgentMedicalRequest.StatusChoices.OPEN,
         )
         return Response(
-            UrgentMedicalRequestSerializer(urgent_request).data,
+            UrgentMedicalRequestSerializer(
+                urgent_request,
+                context={"request": request},
+            ).data,
             status=status.HTTP_201_CREATED,
         )
 
@@ -445,4 +474,10 @@ class UrgentMedicalRequestReplyAPIView(APIView):
             ]
         )
 
-        return Response(UrgentMedicalRequestSerializer(urgent_request).data, status=status.HTTP_200_OK)
+        return Response(
+            UrgentMedicalRequestSerializer(
+                urgent_request,
+                context={"request": request},
+            ).data,
+            status=status.HTTP_200_OK,
+        )

@@ -1,9 +1,11 @@
 from rest_framework import serializers
 
+from config.media_urls import AbsoluteMediaUrlsSerializerMixin
+
 from .models import Tenant, TenantSpecialty
 
 
-class TenantBrandingSerializer(serializers.ModelSerializer):
+class TenantBrandingSerializer(AbsoluteMediaUrlsSerializerMixin, serializers.ModelSerializer):
     class Meta:
         model = Tenant
         fields = (

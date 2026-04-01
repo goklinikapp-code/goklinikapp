@@ -7,6 +7,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/theme/app_theme.dart';
+import '../../../core/utils/api_media_url.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/gk_avatar.dart';
 import '../../../core/widgets/gk_badge.dart';
@@ -530,7 +531,7 @@ class _PatientDetailScreenState extends ConsumerState<PatientDetailScreen>
 
   Future<void> _openExternalUrl(String rawUrl) async {
     if (rawUrl.trim().isEmpty) return;
-    final uri = Uri.tryParse(rawUrl.trim());
+    final uri = Uri.tryParse(resolveApiMediaUrl(rawUrl));
     if (uri == null) return;
     await launchUrl(uri, mode: LaunchMode.externalApplication);
   }

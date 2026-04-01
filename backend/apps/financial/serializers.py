@@ -2,13 +2,15 @@ from __future__ import annotations
 
 from rest_framework import serializers
 
+from config.media_urls import AbsoluteMediaUrlsSerializerMixin
+
 from apps.appointments.models import Appointment
 from apps.patients.models import Patient
 
 from .models import SessionPackage, Transaction
 
 
-class TransactionListSerializer(serializers.ModelSerializer):
+class TransactionListSerializer(AbsoluteMediaUrlsSerializerMixin, serializers.ModelSerializer):
     patient = serializers.SerializerMethodField()
 
     class Meta:

@@ -34,6 +34,7 @@ import {
   type TranslationKey,
 } from "@/i18n/system";
 import { cn } from "@/utils/cn";
+import { resolveMediaUrl } from "@/utils/mediaUrl";
 import { useTheme } from "@/hooks/useTheme";
 import { useAuthStore } from "@/stores/authStore";
 import { usePreferencesStore } from "@/stores/preferencesStore";
@@ -123,7 +124,7 @@ export function AppLayout() {
 
   const sidebarLogoSrc = isSaasOwner
     ? "/assets/logo_go_klink.png"
-    : tenantConfig.logo_url || "/assets/logo_go_klink.png";
+    : resolveMediaUrl(tenantConfig.logo_url) || "/assets/logo_go_klink.png";
 
   const userRoleLabel = t(
     roleLabelMap[user?.role || ""] || "role_clinic_master",

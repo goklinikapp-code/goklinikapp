@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/utils/api_media_url.dart';
+
 class TenantBranding {
   const TenantBranding({
     required this.name,
@@ -76,7 +78,7 @@ class TenantBranding {
 
   static String? _normalizeUrl(dynamic value) {
     final text = (value ?? '').toString().trim();
-    return text.isEmpty ? null : text;
+    return text.isEmpty ? null : resolveApiMediaUrl(text);
   }
 
   static List<String> _parseAddresses(dynamic value) {

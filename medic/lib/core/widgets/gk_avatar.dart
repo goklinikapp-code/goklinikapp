@@ -1,5 +1,6 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import '../utils/api_media_url.dart';
 
 class GKAvatar extends StatelessWidget {
   const GKAvatar({
@@ -23,11 +24,13 @@ class GKAvatar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    if (imageUrl != null && imageUrl!.isNotEmpty) {
+    final normalizedImageUrl =
+        imageUrl == null ? '' : resolveApiMediaUrl(imageUrl!);
+    if (normalizedImageUrl.isNotEmpty) {
       return CircleAvatar(
         radius: radius,
         backgroundColor: colorScheme.primary.withValues(alpha: 0.12),
-        backgroundImage: CachedNetworkImageProvider(imageUrl!),
+        backgroundImage: CachedNetworkImageProvider(normalizedImageUrl),
       );
     }
 

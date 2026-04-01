@@ -1,15 +1,15 @@
 import 'package:dio/dio.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../features/auth/presentation/auth_controller.dart';
 import '../utils/app_logger.dart';
+import '../utils/api_media_url.dart';
 import 'api_endpoints.dart';
 import 'auth_storage.dart';
 
 final dioProvider = Provider<Dio>((ref) {
   final storage = ref.watch(authStorageProvider);
-  final configuredBaseUrl = (dotenv.env['API_BASE_URL'] ?? 'https://api.goklinik.com').trim();
+  final configuredBaseUrl = resolveApiBaseUrl();
   final normalized = configuredBaseUrl.replaceAll(RegExp(r'/+$'), '');
   final baseUrl = normalized.endsWith('/api')
       ? normalized.substring(0, normalized.length - 4)
@@ -28,7 +28,8 @@ final dioProvider = Provider<Dio>((ref) {
   dio.interceptors.add(
     InterceptorsWrapper(
       onRequest: (options, handler) async {
-        final inMemoryToken = ref.read(authControllerProvider).session?.accessToken;
+        final inMemoryToken =
+            ref.read(authControllerProvider).session?.accessToken;
         final token = (inMemoryToken != null && inMemoryToken.isNotEmpty)
             ? inMemoryToken
             : await storage.readAccessToken();
@@ -37,10 +38,18 @@ final dioProvider = Provider<Dio>((ref) {
         }
         handler.next(options);
       },
+      onResponse: (response, handler) {
+        final payload = response.data;
+        if (payload is Map || payload is List) {
+          response.data = normalizeApiMediaPayload(payload);
+        }
+        handler.next(response);
+      },
       onError: (error, handler) async {
         final request = error.requestOptions;
         final isUnauthorized = error.response?.statusCode == 401;
-        final shouldSkipRefresh = request.headers['x-skip-auth-refresh'] == true;
+        final shouldSkipRefresh =
+            request.headers['x-skip-auth-refresh'] == true;
         final isRefreshRequest = request.path == ApiEndpoints.authRefresh;
         final alreadyRetried = request.extra['retry'] == true;
 
@@ -57,15 +66,20 @@ final dioProvider = Provider<Dio>((ref) {
           return;
         }
 
-        if (!isUnauthorized || shouldSkipRefresh || isRefreshRequest || alreadyRetried) {
+        if (!isUnauthorized ||
+            shouldSkipRefresh ||
+            isRefreshRequest ||
+            alreadyRetried) {
           handler.next(error);
           return;
         }
 
-        final inMemoryRefreshToken = ref.read(authControllerProvider).session?.refreshToken;
-        final refreshToken = (inMemoryRefreshToken != null && inMemoryRefreshToken.isNotEmpty)
-            ? inMemoryRefreshToken
-            : await storage.readRefreshToken();
+        final inMemoryRefreshToken =
+            ref.read(authControllerProvider).session?.refreshToken;
+        final refreshToken =
+            (inMemoryRefreshToken != null && inMemoryRefreshToken.isNotEmpty)
+                ? inMemoryRefreshToken
+                : await storage.readRefreshToken();
         if (refreshToken == null || refreshToken.isEmpty) {
           await invalidateAuthState();
           handler.next(error);
@@ -80,9 +94,13 @@ final dioProvider = Provider<Dio>((ref) {
             options: Options(headers: {'x-skip-auth-refresh': true}),
           );
 
-          final newAccess = (refreshResponse.data['access'] ?? refreshResponse.data['access_token'] ?? '')
+          final newAccess = (refreshResponse.data['access'] ??
+                  refreshResponse.data['access_token'] ??
+                  '')
               .toString();
-          final newRefresh = (refreshResponse.data['refresh'] ?? refreshResponse.data['refresh_token'] ?? refreshToken)
+          final newRefresh = (refreshResponse.data['refresh'] ??
+                  refreshResponse.data['refresh_token'] ??
+                  refreshToken)
               .toString();
 
           if (newAccess.isEmpty) {
@@ -91,10 +109,10 @@ final dioProvider = Provider<Dio>((ref) {
             return;
           }
 
-          await storage.saveTokens(accessToken: newAccess, refreshToken: newRefresh);
-          ref
-              .read(authControllerProvider.notifier)
-              .updateSessionTokens(accessToken: newAccess, refreshToken: newRefresh);
+          await storage.saveTokens(
+              accessToken: newAccess, refreshToken: newRefresh);
+          ref.read(authControllerProvider.notifier).updateSessionTokens(
+              accessToken: newAccess, refreshToken: newRefresh);
 
           request.headers['Authorization'] = 'Bearer $newAccess';
           request.extra['retry'] = true;

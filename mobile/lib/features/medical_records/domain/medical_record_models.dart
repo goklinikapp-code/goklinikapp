@@ -1,3 +1,5 @@
+import '../../../core/utils/api_media_url.dart';
+
 class MedicalDocumentItem {
   const MedicalDocumentItem({
     required this.id,
@@ -24,9 +26,11 @@ class MedicalDocumentItem {
       id: (json['id'] ?? '').toString(),
       title: (json['titulo'] ?? json['title'] ?? '').toString(),
       description: (json['descricao'] ?? '').toString(),
-      fileUrl: (json['arquivo_url'] ?? json['file_url'] ?? '').toString(),
-      fileType: (json['tipo_arquivo'] ?? json['document_type'] ?? 'pdf')
-          .toString(),
+      fileUrl: resolveApiMediaUrl(
+        (json['arquivo_url'] ?? json['file_url'] ?? '').toString(),
+      ),
+      fileType:
+          (json['tipo_arquivo'] ?? json['document_type'] ?? 'pdf').toString(),
       uploadedBy: (json['uploaded_by'] ?? '').toString(),
       createdAt: DateTime.tryParse(createdRaw) ?? DateTime.now(),
     );
@@ -47,10 +51,9 @@ class ProcedureImageItem {
   factory ProcedureImageItem.fromJson(Map<String, dynamic> json) {
     return ProcedureImageItem(
       id: (json['id'] ?? '').toString(),
-      imageUrl: (json['image_url'] ?? '').toString(),
-      createdAt:
-          DateTime.tryParse((json['criado_em'] ?? '').toString()) ??
-              DateTime.now(),
+      imageUrl: resolveApiMediaUrl((json['image_url'] ?? '').toString()),
+      createdAt: DateTime.tryParse((json['criado_em'] ?? '').toString()) ??
+          DateTime.now(),
     );
   }
 }
@@ -79,10 +82,9 @@ class ProcedureHistoryItem {
         .whereType<Map<String, dynamic>>()
         .map(ProcedureImageItem.fromJson)
         .toList();
-    final rawDate = (json['data_procedimento'] ??
-            json['appointment_date'] ??
-            '')
-        .toString();
+    final rawDate =
+        (json['data_procedimento'] ?? json['appointment_date'] ?? '')
+            .toString();
     return ProcedureHistoryItem(
       id: (json['id'] ?? '').toString(),
       nomeProcedimento: (json['nome_procedimento'] ??
@@ -92,10 +94,9 @@ class ProcedureHistoryItem {
           .toString(),
       descricao: (json['descricao'] ?? '').toString(),
       dataProcedimento: DateTime.tryParse(rawDate),
-      profissionalResponsavel: (json['profissional_responsavel'] ??
-              json['professional_name'] ??
-              '')
-          .toString(),
+      profissionalResponsavel:
+          (json['profissional_responsavel'] ?? json['professional_name'] ?? '')
+              .toString(),
       observacoes: (json['observacoes'] ?? '').toString(),
       images: images,
     );
@@ -177,7 +178,8 @@ class MedicalRecordSummary {
   final List<MedicalDocumentItem> documents;
 
   factory MedicalRecordSummary.fromJson(Map<String, dynamic> json) {
-    final patient = (json['patient'] ?? <String, dynamic>{}) as Map<String, dynamic>;
+    final patient =
+        (json['patient'] ?? <String, dynamic>{}) as Map<String, dynamic>;
     final documents = (json['documents'] as List<dynamic>? ?? const [])
         .whereType<Map<String, dynamic>>()
         .map(MedicalDocumentItem.fromJson)
@@ -200,7 +202,7 @@ class MedicalRecordSummary {
       email: (patient['email'] ?? '').toString(),
       phone: (patient['phone'] ?? '').toString(),
       cpf: (patient['cpf'] ?? '').toString(),
-      avatarUrl: (patient['avatar_url'] ?? '').toString(),
+      avatarUrl: resolveApiMediaUrl((patient['avatar_url'] ?? '').toString()),
       dateOfBirth: (patient['date_of_birth'] ?? '').toString(),
       healthInsurance: (patient['health_insurance'] ?? '').toString(),
       allergies: (json['allergies'] ?? '').toString(),

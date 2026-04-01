@@ -1,3 +1,5 @@
+import '../../../core/utils/api_media_url.dart';
+
 class MedicalDocumentItem {
   const MedicalDocumentItem({
     required this.id,
@@ -24,9 +26,10 @@ class MedicalDocumentItem {
       id: (json['id'] ?? '').toString(),
       documentType: (json['document_type'] ?? '').toString(),
       title: (json['title'] ?? '').toString(),
-      fileUrl: (json['file_url'] ?? '').toString(),
+      fileUrl: resolveApiMediaUrl((json['file_url'] ?? '').toString()),
       uploadedBy: (json['uploaded_by'] ?? '').toString(),
-      createdAt: DateTime.tryParse((json['created_at'] ?? '').toString()) ?? DateTime.now(),
+      createdAt: DateTime.tryParse((json['created_at'] ?? '').toString()) ??
+          DateTime.now(),
       isSigned: json['is_signed'] == true,
       validUntil: DateTime.tryParse((json['valid_until'] ?? '').toString()),
     );
@@ -88,7 +91,8 @@ class MedicalRecordSummary {
   final List<MedicalDocumentItem> documents;
 
   factory MedicalRecordSummary.fromJson(Map<String, dynamic> json) {
-    final patient = (json['patient'] ?? <String, dynamic>{}) as Map<String, dynamic>;
+    final patient =
+        (json['patient'] ?? <String, dynamic>{}) as Map<String, dynamic>;
     final docs = (json['documents'] as List<dynamic>? ?? const [])
         .whereType<Map<String, dynamic>>()
         .map(MedicalDocumentItem.fromJson)

@@ -56,7 +56,11 @@ class MyTransactionsAPIView(APIView):
                     else None
                 ),
                 "open_balance": open_balance,
-                "transactions": TransactionListSerializer(queryset, many=True).data,
+                "transactions": TransactionListSerializer(
+                    queryset,
+                    many=True,
+                    context={"request": request},
+                ).data,
             },
             status=status.HTTP_200_OK,
         )
@@ -105,7 +109,11 @@ class AdminTransactionsAPIView(APIView):
         queryset = queryset.order_by("-created_at")
         paginator = AdminTransactionsPagination()
         page = paginator.paginate_queryset(queryset, request)
-        serializer = TransactionListSerializer(page, many=True)
+        serializer = TransactionListSerializer(
+            page,
+            many=True,
+            context={"request": request},
+        )
         return paginator.get_paginated_response(serializer.data)
 
 
@@ -133,7 +141,10 @@ class TransactionCreateAPIView(APIView):
             notes=payload.get("notes", ""),
             status=Transaction.StatusChoices.PENDING,
         )
-        data = TransactionListSerializer(transaction).data
+        data = TransactionListSerializer(
+            transaction,
+            context={"request": request},
+        ).data
         return Response(data, status=status.HTTP_201_CREATED)
 
 
@@ -157,7 +168,13 @@ class MarkPaidAPIView(APIView):
         transaction.paid_at = timezone.now()
         transaction.save(update_fields=["status", "paid_at"])
 
-        return Response(TransactionListSerializer(transaction).data, status=status.HTTP_200_OK)
+        return Response(
+            TransactionListSerializer(
+                transaction,
+                context={"request": request},
+            ).data,
+            status=status.HTTP_200_OK,
+        )
 
 
 class FinancialDashboardAPIView(APIView):

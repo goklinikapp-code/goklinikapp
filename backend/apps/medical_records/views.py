@@ -14,6 +14,8 @@ from rest_framework import permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from config.media_urls import absolute_media_url
+
 from apps.appointments.models import Appointment
 from apps.patients.models import Patient
 from apps.users.models import GoKlinikUser
@@ -53,14 +55,6 @@ STAFF_UPLOAD_ROLES = {
 }
 
 
-def _build_absolute_url(request, url: str) -> str:
-    if not url:
-        return ""
-    if url.startswith(("http://", "https://")):
-        return url
-    return request.build_absolute_uri(url)
-
-
 def _save_uploaded_file(*, request, upload, folder: str) -> str:
     filename = f"{uuid.uuid4()}_{upload.name}"
     storage_path = f"{folder}/{filename}"
@@ -78,7 +72,7 @@ def _save_uploaded_file(*, request, upload, folder: str) -> str:
             upload.seek(0)
         saved_path = fallback_storage.save(storage_path, upload)
         file_url = fallback_storage.url(saved_path)
-    return _build_absolute_url(request, file_url)
+    return absolute_media_url(file_url, request=request)
 
 
 def _extract_request_list(request, key: str) -> list[str]:
@@ -151,7 +145,11 @@ class MedicalDocumentListCreateAPIView(APIView):
 
         log_record_access(request, patient, MedicalRecordAccessLog.ActionChoices.VIEW)
         queryset = MedicalDocument.objects.filter(patient=patient).select_related("uploaded_by")
-        data = MedicalDocumentSerializer(queryset, many=True).data
+        data = MedicalDocumentSerializer(
+            queryset,
+            many=True,
+            context={"request": request},
+        ).data
         return Response(data, status=status.HTTP_200_OK)
 
     def post(self, request, patient_id):
@@ -173,6 +171,8 @@ class MedicalDocumentListCreateAPIView(APIView):
                 upload=payload["file"],
                 folder=f"medical_docs/{patient.id}",
             )
+        else:
+            file_url = absolute_media_url(file_url, request=request)
 
         document = MedicalDocument.objects.create(
             patient=patient,
@@ -185,7 +185,10 @@ class MedicalDocumentListCreateAPIView(APIView):
             valid_until=payload.get("valid_until"),
         )
         log_record_access(request, patient, MedicalRecordAccessLog.ActionChoices.EDIT)
-        return Response(MedicalDocumentSerializer(document).data, status=status.HTTP_201_CREATED)
+        return Response(
+            MedicalDocumentSerializer(document, context={"request": request}).data,
+            status=status.HTTP_201_CREATED,
+        )
 
 
 class MedicalRecordAccessLogAPIView(APIView):
@@ -203,7 +206,10 @@ class MedicalRecordAccessLogAPIView(APIView):
             return Response(status=status.HTTP_403_FORBIDDEN)
 
         logs = MedicalRecordAccessLog.objects.filter(patient=patient).select_related("accessed_by")
-        return Response(MedicalRecordAccessLogSerializer(logs, many=True).data, status=status.HTTP_200_OK)
+        return Response(
+            MedicalRecordAccessLogSerializer(logs, many=True).data,
+            status=status.HTTP_200_OK,
+        )
 
 
 class PatientMedicationListCreateAPIView(APIView):
@@ -220,7 +226,10 @@ class PatientMedicationListCreateAPIView(APIView):
             "-criado_em",
         )
         log_record_access(request, patient, MedicalRecordAccessLog.ActionChoices.VIEW)
-        return Response(PatientMedicationSerializer(rows, many=True).data, status=status.HTTP_200_OK)
+        return Response(
+            PatientMedicationSerializer(rows, many=True).data,
+            status=status.HTTP_200_OK,
+        )
 
     def post(self, request, patient_id):
         patient, error = _get_patient_or_404_or_forbidden(request=request, patient_id=patient_id)
@@ -234,7 +243,10 @@ class PatientMedicationListCreateAPIView(APIView):
         serializer.is_valid(raise_exception=True)
         medication = serializer.save(patient=patient, tenant=patient.tenant)
         log_record_access(request, patient, MedicalRecordAccessLog.ActionChoices.EDIT)
-        return Response(PatientMedicationSerializer(medication).data, status=status.HTTP_201_CREATED)
+        return Response(
+            PatientMedicationSerializer(medication).data,
+            status=status.HTTP_201_CREATED,
+        )
 
 
 class PatientMedicationDetailAPIView(APIView):
@@ -252,7 +264,10 @@ class PatientMedicationDetailAPIView(APIView):
         serializer.is_valid(raise_exception=True)
         updated = serializer.save()
         log_record_access(request, patient, MedicalRecordAccessLog.ActionChoices.EDIT)
-        return Response(PatientMedicationSerializer(updated).data, status=status.HTTP_200_OK)
+        return Response(
+            PatientMedicationSerializer(updated).data,
+            status=status.HTTP_200_OK,
+        )
 
     def delete(self, request, patient_id, medication_id):
         patient, error = _get_patient_or_404_or_forbidden(request=request, patient_id=patient_id)
@@ -280,7 +295,14 @@ class PatientProcedureListCreateAPIView(APIView):
 
         queryset = PatientProcedure.objects.filter(patient=patient).prefetch_related("images")
         log_record_access(request, patient, MedicalRecordAccessLog.ActionChoices.VIEW)
-        return Response(PatientProcedureSerializer(queryset, many=True).data, status=status.HTTP_200_OK)
+        return Response(
+            PatientProcedureSerializer(
+                queryset,
+                many=True,
+                context={"request": request},
+            ).data,
+            status=status.HTTP_200_OK,
+        )
 
     def post(self, request, patient_id):
         patient, error = _get_patient_or_404_or_forbidden(request=request, patient_id=patient_id)
@@ -317,12 +339,18 @@ class PatientProcedureListCreateAPIView(APIView):
             for image_url in image_urls:
                 PatientProcedureImage.objects.create(
                     procedure=procedure,
-                    image_url=_build_absolute_url(request, image_url),
+                    image_url=absolute_media_url(image_url, request=request),
                 )
 
         log_record_access(request, patient, MedicalRecordAccessLog.ActionChoices.EDIT)
         procedure = PatientProcedure.objects.prefetch_related("images").get(id=procedure.id)
-        return Response(PatientProcedureSerializer(procedure).data, status=status.HTTP_201_CREATED)
+        return Response(
+            PatientProcedureSerializer(
+                procedure,
+                context={"request": request},
+            ).data,
+            status=status.HTTP_201_CREATED,
+        )
 
 
 class PatientProcedureDetailAPIView(APIView):
@@ -370,12 +398,18 @@ class PatientProcedureDetailAPIView(APIView):
             for image_url in image_urls:
                 PatientProcedureImage.objects.create(
                     procedure=procedure,
-                    image_url=_build_absolute_url(request, image_url),
+                    image_url=absolute_media_url(image_url, request=request),
                 )
 
         log_record_access(request, patient, MedicalRecordAccessLog.ActionChoices.EDIT)
         procedure = PatientProcedure.objects.prefetch_related("images").get(id=procedure.id)
-        return Response(PatientProcedureSerializer(procedure).data, status=status.HTTP_200_OK)
+        return Response(
+            PatientProcedureSerializer(
+                procedure,
+                context={"request": request},
+            ).data,
+            status=status.HTTP_200_OK,
+        )
 
     def delete(self, request, patient_id, procedure_id):
         patient, error = _get_patient_or_404_or_forbidden(request=request, patient_id=patient_id)
@@ -417,7 +451,14 @@ class PatientDocumentListCreateAPIView(APIView):
 
         queryset = PatientDocument.objects.filter(patient=patient).select_related("uploaded_by")
         log_record_access(request, patient, MedicalRecordAccessLog.ActionChoices.VIEW)
-        return Response(PatientDocumentSerializer(queryset, many=True).data, status=status.HTTP_200_OK)
+        return Response(
+            PatientDocumentSerializer(
+                queryset,
+                many=True,
+                context={"request": request},
+            ).data,
+            status=status.HTTP_200_OK,
+        )
 
     def post(self, request, patient_id):
         patient, error = _get_patient_or_404_or_forbidden(request=request, patient_id=patient_id)
@@ -437,7 +478,7 @@ class PatientDocumentListCreateAPIView(APIView):
                 upload=payload["file"],
                 folder=f"patient_documents/{patient.id}",
             )
-        arquivo_url = _build_absolute_url(request, arquivo_url)
+        arquivo_url = absolute_media_url(arquivo_url, request=request)
 
         document = PatientDocument.objects.create(
             patient=patient,
@@ -449,7 +490,13 @@ class PatientDocumentListCreateAPIView(APIView):
             uploaded_by=request.user,
         )
         log_record_access(request, patient, MedicalRecordAccessLog.ActionChoices.EDIT)
-        return Response(PatientDocumentSerializer(document).data, status=status.HTTP_201_CREATED)
+        return Response(
+            PatientDocumentSerializer(
+                document,
+                context={"request": request},
+            ).data,
+            status=status.HTTP_201_CREATED,
+        )
 
 
 class PatientDocumentDetailAPIView(APIView):
@@ -478,11 +525,20 @@ class PatientDocumentDetailAPIView(APIView):
                 folder=f"patient_documents/{patient.id}",
             )
         elif payload.get("file_url"):
-            document.arquivo_url = _build_absolute_url(request, payload["file_url"])
+            document.arquivo_url = absolute_media_url(
+                payload["file_url"],
+                request=request,
+            )
 
         document.save()
         log_record_access(request, patient, MedicalRecordAccessLog.ActionChoices.EDIT)
-        return Response(PatientDocumentSerializer(document).data, status=status.HTTP_200_OK)
+        return Response(
+            PatientDocumentSerializer(
+                document,
+                context={"request": request},
+            ).data,
+            status=status.HTTP_200_OK,
+        )
 
     def delete(self, request, patient_id, document_id):
         patient, error = _get_patient_or_404_or_forbidden(request=request, patient_id=patient_id)
@@ -539,7 +595,10 @@ class MyMedicalRecordAPIView(APIView):
                     "images": [
                         {
                             "id": str(image.id),
-                            "image_url": image.image_url,
+                            "image_url": absolute_media_url(
+                                image.image_url,
+                                request=request,
+                            ),
                             "criado_em": image.criado_em,
                         }
                         for image in item.images.all()
@@ -592,7 +651,10 @@ class MyMedicalRecordAPIView(APIView):
                     "email": patient.email,
                     "phone": patient.phone,
                     "cpf": patient.cpf,
-                    "avatar_url": patient.avatar_url,
+                    "avatar_url": absolute_media_url(
+                        patient.avatar_url,
+                        request=request,
+                    ),
                     "date_of_birth": patient.date_of_birth,
                     "health_insurance": patient.health_insurance,
                 },
@@ -602,7 +664,11 @@ class MyMedicalRecordAPIView(APIView):
                 "medications": medication_items,
                 "latest_procedure": latest_procedure,
                 "procedure_history": procedure_history,
-                "documents": PatientDocumentSerializer(documents, many=True).data,
+                "documents": PatientDocumentSerializer(
+                    documents,
+                    many=True,
+                    context={"request": request},
+                ).data,
             },
             status=status.HTTP_200_OK,
         )

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from rest_framework import serializers
 
+from config.media_urls import AbsoluteMediaUrlsSerializerMixin
+
 from apps.patients.models import Patient
 from apps.users.models import GoKlinikUser
 
@@ -24,7 +26,7 @@ class ChatMessageCreateSerializer(serializers.Serializer):
     message_type = serializers.ChoiceField(choices=(Message.MessageTypeChoices.TEXT, Message.MessageTypeChoices.IMAGE))
 
 
-class MessageSerializer(serializers.ModelSerializer):
+class MessageSerializer(AbsoluteMediaUrlsSerializerMixin, serializers.ModelSerializer):
     sender = serializers.SerializerMethodField()
 
     class Meta:
@@ -39,7 +41,7 @@ class MessageSerializer(serializers.ModelSerializer):
         }
 
 
-class ChatRoomListSerializer(serializers.ModelSerializer):
+class ChatRoomListSerializer(AbsoluteMediaUrlsSerializerMixin, serializers.ModelSerializer):
     interlocutor_name = serializers.SerializerMethodField()
     interlocutor_avatar = serializers.SerializerMethodField()
     last_message_preview = serializers.SerializerMethodField()

@@ -76,6 +76,9 @@ DEFAULT_ALLOWED_HOSTS = [
 ]
 ALLOWED_HOSTS = sorted(set(DEFAULT_ALLOWED_HOSTS + env_list("DJANGO_ALLOWED_HOSTS", [])))
 
+DEFAULT_API_BASE_URL = "http://127.0.0.1:8000" if DEBUG else "https://api.goklinik.com"
+API_BASE_URL = (env("API_BASE_URL", DEFAULT_API_BASE_URL) or DEFAULT_API_BASE_URL).rstrip("/")
+
 INSTALLED_APPS = [
     "django.contrib.admin",
     "django.contrib.auth",
@@ -223,7 +226,8 @@ STORAGES = {
     "default": {"BACKEND": "storages.backends.s3boto3.S3Boto3Storage"},
     "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
 }
-MEDIA_URL = f"{SUPABASE_URL}/storage/v1/object/public/{SUPABASE_STORAGE_BUCKET}/"
+DEFAULT_MEDIA_URL = f"{SUPABASE_URL}/storage/v1/object/public/{SUPABASE_STORAGE_BUCKET}/"
+MEDIA_URL = env("MEDIA_URL", DEFAULT_MEDIA_URL) or DEFAULT_MEDIA_URL
 
 DEFAULT_CORS_ALLOWED_ORIGINS = [
     "https://goklinik.com",

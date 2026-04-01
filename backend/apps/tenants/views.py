@@ -8,6 +8,8 @@ from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from config.media_urls import absolute_media_url
+
 from apps.users.models import GoKlinikUser
 
 from .models import Tenant, TenantSpecialty
@@ -52,7 +54,10 @@ class TenantBrandingUpdateAPIView(APIView):
         tenant = resolve_tenant_for_branding(request.user, request.query_params.get("tenant_id"))
         if not tenant:
             return Response({"detail": "Tenant not found."}, status=status.HTTP_404_NOT_FOUND)
-        return Response(TenantBrandingSerializer(tenant).data, status=status.HTTP_200_OK)
+        return Response(
+            TenantBrandingSerializer(tenant, context={"request": request}).data,
+            status=status.HTTP_200_OK,
+        )
 
     def put(self, request, *args, **kwargs):
         user = request.user
@@ -71,7 +76,10 @@ class TenantBrandingUpdateAPIView(APIView):
         serializer.is_valid(raise_exception=True)
         serializer.save()
 
-        return Response(TenantBrandingSerializer(tenant).data, status=status.HTTP_200_OK)
+        return Response(
+            TenantBrandingSerializer(tenant, context={"request": request}).data,
+            status=status.HTTP_200_OK,
+        )
 
 
 class TenantBrandingLogoUploadAPIView(APIView):
@@ -116,13 +124,15 @@ class TenantBrandingLogoUploadAPIView(APIView):
             saved_path = fallback_storage.save(unique_name, logo_file)
             logo_url = fallback_storage.url(saved_path)
 
-        if logo_url and not str(logo_url).startswith(("http://", "https://")):
-            logo_url = request.build_absolute_uri(logo_url)
+        logo_url = absolute_media_url(logo_url, request=request)
 
         tenant.logo_url = logo_url
         tenant.save(update_fields=["logo_url", "updated_at"])
 
-        return Response(TenantBrandingSerializer(tenant).data, status=status.HTTP_200_OK)
+        return Response(
+            TenantBrandingSerializer(tenant, context={"request": request}).data,
+            status=status.HTTP_200_OK,
+        )
 
 
 class TenantSpecialtyListCreateAPIView(APIView):

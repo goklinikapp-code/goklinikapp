@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 
+import '../../../core/utils/api_media_url.dart';
 import '../../../core/widgets/gk_avatar.dart';
 import '../../auth/presentation/auth_controller.dart';
 import '../../branding/presentation/tenant_branding_controller.dart';
@@ -168,7 +169,8 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
               children: [
                 Text(
                   _isAiChat ? clinicName : 'Equipe da Clínica',
-                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+                  style: const TextStyle(
+                      fontSize: 14, fontWeight: FontWeight.w700),
                 ),
                 Text(
                   _isAiChat ? 'ATENDIMENTO DIGITAL' : 'ONLINE',
@@ -350,18 +352,27 @@ class _MessageImage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    if (content.startsWith('http://') || content.startsWith('https://')) {
+    final trimmedContent = content.trim();
+    final looksLikeRemoteImage = trimmedContent.startsWith('http://') ||
+        trimmedContent.startsWith('https://') ||
+        trimmedContent.startsWith('/');
+
+    if (looksLikeRemoteImage) {
       return ClipRRect(
         borderRadius: BorderRadius.circular(10),
-        child:
-            Image.network(content, width: 210, height: 160, fit: BoxFit.cover),
+        child: Image.network(
+          resolveApiMediaUrl(trimmedContent),
+          width: 210,
+          height: 160,
+          fit: BoxFit.cover,
+        ),
       );
     }
 
-    if (content.startsWith('data:image')) {
-      final commaIndex = content.indexOf(',');
+    if (trimmedContent.startsWith('data:image')) {
+      final commaIndex = trimmedContent.indexOf(',');
       if (commaIndex > 0) {
-        final encoded = content.substring(commaIndex + 1);
+        final encoded = trimmedContent.substring(commaIndex + 1);
         final bytes = base64Decode(encoded);
         return ClipRRect(
           borderRadius: BorderRadius.circular(10),

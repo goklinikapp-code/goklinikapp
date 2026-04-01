@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from rest_framework import serializers
 
+from config.media_urls import AbsoluteMediaUrlsSerializerMixin
+
 from .models import EvolutionPhoto, PostOpChecklist, UrgentMedicalRequest
 
 
@@ -12,7 +14,7 @@ class PostOpChecklistSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
-class EvolutionPhotoSerializer(serializers.ModelSerializer):
+class EvolutionPhotoSerializer(AbsoluteMediaUrlsSerializerMixin, serializers.ModelSerializer):
     class Meta:
         model = EvolutionPhoto
         fields = (
@@ -98,7 +100,7 @@ class UrgentMedicalRequestReplySerializer(serializers.Serializer):
     answer = serializers.CharField(min_length=3, max_length=4000)
 
 
-class UrgentMedicalRequestSerializer(serializers.ModelSerializer):
+class UrgentMedicalRequestSerializer(AbsoluteMediaUrlsSerializerMixin, serializers.ModelSerializer):
     patient_name = serializers.CharField(source="patient.full_name", read_only=True)
     patient_email = serializers.CharField(source="patient.email", read_only=True)
     patient_avatar_url = serializers.CharField(

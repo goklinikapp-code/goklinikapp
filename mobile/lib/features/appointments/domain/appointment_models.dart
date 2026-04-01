@@ -1,3 +1,5 @@
+import '../../../core/utils/api_media_url.dart';
+
 class AppointmentItem {
   const AppointmentItem({
     required this.id,
@@ -48,7 +50,9 @@ class AppointmentItem {
       professionalId: (json['professional'] ?? '').toString(),
       professionalName: (json['professional_name'] ?? '').toString(),
       professionalRole: (json['professional_role'] ?? '').toString(),
-      professionalAvatarUrl: (json['professional_avatar_url'] ?? '').toString(),
+      professionalAvatarUrl: resolveApiMediaUrl(
+        (json['professional_avatar_url'] ?? '').toString(),
+      ),
       clinicLocation: (json['clinic_location'] ?? '').toString(),
       specialtyId: (json['specialty'] ?? '').toString(),
       specialtyName: (json['specialty_name'] ?? '').toString(),
@@ -94,7 +98,7 @@ class AppointmentProfessional {
       id: (json['id'] ?? '').toString(),
       name: (json['name'] ?? '').toString(),
       email: (json['email'] ?? '').toString(),
-      avatarUrl: (json['avatar_url'] ?? '').toString(),
+      avatarUrl: resolveApiMediaUrl((json['avatar_url'] ?? '').toString()),
       isAssigned: (json['is_assigned'] ?? false) == true,
     );
   }

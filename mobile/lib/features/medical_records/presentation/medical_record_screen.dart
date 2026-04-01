@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/theme/app_theme.dart';
+import '../../../core/utils/api_media_url.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/gk_avatar.dart';
 import '../../../core/widgets/gk_badge.dart';
@@ -18,7 +19,8 @@ class MedicalRecordScreen extends ConsumerStatefulWidget {
   const MedicalRecordScreen({super.key});
 
   @override
-  ConsumerState<MedicalRecordScreen> createState() => _MedicalRecordScreenState();
+  ConsumerState<MedicalRecordScreen> createState() =>
+      _MedicalRecordScreenState();
 }
 
 class _MedicalRecordScreenState extends ConsumerState<MedicalRecordScreen>
@@ -46,7 +48,7 @@ class _MedicalRecordScreenState extends ConsumerState<MedicalRecordScreen>
 
   Future<void> _openDocument(String url) async {
     if (url.trim().isEmpty) return;
-    final uri = Uri.tryParse(url);
+    final uri = Uri.tryParse(resolveApiMediaUrl(url));
     if (uri == null) return;
     await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
@@ -78,9 +80,11 @@ class _MedicalRecordScreenState extends ConsumerState<MedicalRecordScreen>
         error: (error, _) =>
             Center(child: Text('Erro ao carregar prontuário: $error')),
         data: (record) {
-          final procedure =
-              record.procedureHistory.isNotEmpty ? record.procedureHistory.first : null;
-          final activeMeds = record.medications.where((item) => item.emUso).toList();
+          final procedure = record.procedureHistory.isNotEmpty
+              ? record.procedureHistory.first
+              : null;
+          final activeMeds =
+              record.medications.where((item) => item.emUso).toList();
           final medsSubtitle = activeMeds.isEmpty
               ? 'Sem informações'
               : '${activeMeds.length} medicamento(s) em uso';
@@ -95,7 +99,9 @@ class _MedicalRecordScreenState extends ConsumerState<MedicalRecordScreen>
                     children: [
                       GKAvatar(
                         name: record.fullName,
-                        imageUrl: record.avatarUrl.isNotEmpty ? record.avatarUrl : null,
+                        imageUrl: record.avatarUrl.isNotEmpty
+                            ? record.avatarUrl
+                            : null,
                         radius: 32,
                       ),
                       const SizedBox(height: 10),
@@ -222,7 +228,8 @@ class _MedicalRecordScreenState extends ConsumerState<MedicalRecordScreen>
                     controller: _tabController,
                     children: [
                       _HistoryTab(items: record.procedureHistory),
-                      _DocumentsTab(items: record.documents, onOpen: _openDocument),
+                      _DocumentsTab(
+                          items: record.documents, onOpen: _openDocument),
                       _MedicationsTab(items: record.medications),
                     ],
                   ),
@@ -239,7 +246,8 @@ class _MedicalRecordScreenState extends ConsumerState<MedicalRecordScreen>
     final chunks = record.allergies
         .split(RegExp(r'[\n,;]'))
         .map((item) => item.trim())
-        .where((item) => item.isNotEmpty && item.toLowerCase() != 'não informado')
+        .where(
+            (item) => item.isNotEmpty && item.toLowerCase() != 'não informado')
         .toList();
 
     if (chunks.isEmpty) {
@@ -336,7 +344,8 @@ class _HistoryTab extends StatelessWidget {
                             builder: (_) => Dialog(
                               insetPadding: const EdgeInsets.all(16),
                               child: InteractiveViewer(
-                                child: Image.network(image.imageUrl, fit: BoxFit.contain),
+                                child: Image.network(image.imageUrl,
+                                    fit: BoxFit.contain),
                               ),
                             ),
                           );
@@ -348,8 +357,8 @@ class _HistoryTab extends StatelessWidget {
                             width: 84,
                             height: 84,
                             fit: BoxFit.cover,
-                            errorBuilder: (_, __, ___) =>
-                                Container(width: 84, height: 84, color: GKColors.tealIce),
+                            errorBuilder: (_, __, ___) => Container(
+                                width: 84, height: 84, color: GKColors.tealIce),
                           ),
                         ),
                       );

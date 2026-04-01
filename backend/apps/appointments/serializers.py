@@ -5,6 +5,8 @@ from datetime import datetime
 from rest_framework import serializers
 from django.utils import timezone
 
+from config.media_urls import AbsoluteMediaUrlsSerializerMixin
+
 from apps.users.models import GoKlinikUser
 
 from .models import Appointment
@@ -34,7 +36,7 @@ ALLOWED_STATUS_TRANSITIONS = {
 }
 
 
-class AppointmentSerializer(serializers.ModelSerializer):
+class AppointmentSerializer(AbsoluteMediaUrlsSerializerMixin, serializers.ModelSerializer):
     patient_name = serializers.CharField(source="patient.full_name", read_only=True)
     professional_name = serializers.CharField(source="professional.full_name", read_only=True)
     professional_role = serializers.CharField(source="professional.role", read_only=True)

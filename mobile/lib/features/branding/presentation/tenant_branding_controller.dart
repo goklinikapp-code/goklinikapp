@@ -58,60 +58,17 @@ class TenantBrandingController extends StateNotifier<TenantBranding> {
           await _dio.get<dynamic>(ApiEndpoints.publicTenantBranding(slug));
       final payload = response.data;
       if (payload is Map<String, dynamic>) {
-        state = _normalizeAssetUrls(TenantBranding.fromJson(payload));
+        state = TenantBranding.fromJson(payload);
         return;
       }
       if (payload is Map) {
-        state = _normalizeAssetUrls(
-          TenantBranding.fromJson(Map<String, dynamic>.from(payload)),
-        );
+        state = TenantBranding.fromJson(Map<String, dynamic>.from(payload));
       }
     } catch (_) {
       if (state.slug != slug) {
         state = TenantBranding.defaultBranding;
       }
     }
-  }
-
-  TenantBranding _normalizeAssetUrls(TenantBranding branding) {
-    return branding.copyWith(
-      logoUrl: _normalizeAssetUrl(branding.logoUrl),
-      faviconUrl: _normalizeAssetUrl(branding.faviconUrl),
-    );
-  }
-
-  String? _normalizeAssetUrl(String? rawUrl) {
-    final value = (rawUrl ?? '').trim();
-    if (value.isEmpty) {
-      return null;
-    }
-
-    final apiBase = Uri.tryParse(_dio.options.baseUrl);
-    final source = Uri.tryParse(value);
-    if (apiBase == null || apiBase.host.isEmpty || source == null) {
-      return value;
-    }
-
-    if (!source.hasScheme && value.startsWith('/')) {
-      return apiBase
-          .replace(
-            path: value,
-            query: source.query.isEmpty ? null : source.query,
-            fragment: source.fragment.isEmpty ? null : source.fragment,
-          )
-          .toString();
-    }
-
-    if (!source.hasScheme || source.host != 'localhost') {
-      return value;
-    }
-
-    return source
-        .replace(
-          host: apiBase.host,
-          port: apiBase.hasPort ? apiBase.port : source.port,
-        )
-        .toString();
   }
 
   void _restartPolling() {

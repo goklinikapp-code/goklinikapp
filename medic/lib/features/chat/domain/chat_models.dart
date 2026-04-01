@@ -1,3 +1,5 @@
+import '../../../core/utils/api_media_url.dart';
+
 class DoctorInboxMessage {
   const DoctorInboxMessage({
     required this.id,
@@ -50,7 +52,9 @@ class DoctorInboxMessage {
       answer: (json['answer'] ?? '').toString(),
       patientName: (json['patient_name'] ?? '').toString(),
       patientEmail: (json['patient_email'] ?? '').toString(),
-      patientAvatarUrl: (json['patient_avatar_url'] ?? '').toString(),
+      patientAvatarUrl: resolveApiMediaUrl(
+        (json['patient_avatar_url'] ?? '').toString(),
+      ),
       assignedProfessionalName:
           (json['assigned_professional_name'] ?? '').toString(),
       answeredByName: (json['answered_by_name'] ?? '').toString(),

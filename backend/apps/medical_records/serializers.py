@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from rest_framework import serializers
 
+from config.media_urls import AbsoluteMediaUrlsSerializerMixin
+
 from .models import (
     MedicalDocument,
     MedicalRecordAccessLog,
@@ -12,7 +14,7 @@ from .models import (
 )
 
 
-class MedicalDocumentSerializer(serializers.ModelSerializer):
+class MedicalDocumentSerializer(AbsoluteMediaUrlsSerializerMixin, serializers.ModelSerializer):
     uploaded_by = serializers.SerializerMethodField()
 
     class Meta:
@@ -115,14 +117,14 @@ class PatientMedicationWriteSerializer(serializers.ModelSerializer):
         return attrs
 
 
-class PatientProcedureImageSerializer(serializers.ModelSerializer):
+class PatientProcedureImageSerializer(AbsoluteMediaUrlsSerializerMixin, serializers.ModelSerializer):
     class Meta:
         model = PatientProcedureImage
         fields = ("id", "image_url", "criado_em")
         read_only_fields = fields
 
 
-class PatientProcedureSerializer(serializers.ModelSerializer):
+class PatientProcedureSerializer(AbsoluteMediaUrlsSerializerMixin, serializers.ModelSerializer):
     images = PatientProcedureImageSerializer(many=True, read_only=True)
 
     class Meta:
@@ -168,7 +170,7 @@ class PatientProcedureWriteSerializer(serializers.ModelSerializer):
         return cleaned
 
 
-class PatientDocumentSerializer(serializers.ModelSerializer):
+class PatientDocumentSerializer(AbsoluteMediaUrlsSerializerMixin, serializers.ModelSerializer):
     uploaded_by = serializers.SerializerMethodField()
 
     class Meta:

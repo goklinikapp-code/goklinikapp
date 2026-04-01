@@ -1,6 +1,7 @@
 import axios from 'axios'
 
 import { useAuthStore } from '@/stores/authStore'
+import { normalizeMediaUrlsDeep } from '@/utils/mediaUrl'
 
 const API_URL = import.meta.env.VITE_API_URL || 'https://api.goklinik.com/api'
 
@@ -23,7 +24,10 @@ apiClient.interceptors.request.use((config) => {
 })
 
 apiClient.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    response.data = normalizeMediaUrlsDeep(response.data)
+    return response
+  },
   (error) => {
     if (error?.response?.status === 401) {
       useAuthStore.getState().logout()

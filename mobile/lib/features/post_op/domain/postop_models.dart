@@ -1,3 +1,5 @@
+import '../../../core/utils/api_media_url.dart';
+
 class PostOpChecklistItem {
   const PostOpChecklistItem({
     required this.id,
@@ -73,7 +75,8 @@ class PostOpJourney {
   final List<JourneyProtocolDay> protocol;
 
   factory PostOpJourney.fromJson(Map<String, dynamic> json) {
-    final specialty = (json['specialty'] ?? <String, dynamic>{}) as Map<String, dynamic>;
+    final specialty =
+        (json['specialty'] ?? <String, dynamic>{}) as Map<String, dynamic>;
     final protocol = (json['protocol'] as List<dynamic>? ?? const [])
         .whereType<Map<String, dynamic>>()
         .map(JourneyProtocolDay.fromJson)
@@ -82,7 +85,8 @@ class PostOpJourney {
     return PostOpJourney(
       id: (json['id'] ?? '').toString(),
       procedureName: (specialty['name'] ?? 'Procedimento').toString(),
-      surgeryDate: DateTime.tryParse((json['surgery_date'] ?? '').toString()) ?? DateTime.now(),
+      surgeryDate: DateTime.tryParse((json['surgery_date'] ?? '').toString()) ??
+          DateTime.now(),
       currentDay: int.tryParse((json['current_day'] ?? 1).toString()) ?? 1,
       protocol: protocol,
     );
@@ -145,8 +149,9 @@ class EvolutionPhotoItem {
     return EvolutionPhotoItem(
       id: (json['id'] ?? '').toString(),
       dayNumber: int.tryParse((json['day_number'] ?? 0).toString()) ?? 0,
-      photoUrl: (json['photo_url'] ?? '').toString(),
-      uploadedAt: DateTime.tryParse((json['uploaded_at'] ?? '').toString()) ?? DateTime.now(),
+      photoUrl: resolveApiMediaUrl((json['photo_url'] ?? '').toString()),
+      uploadedAt: DateTime.tryParse((json['uploaded_at'] ?? '').toString()) ??
+          DateTime.now(),
       isAnonymous: json['is_anonymous'] == true,
     );
   }
@@ -177,8 +182,8 @@ class UrgentMedicalRequest {
       status: (json['status'] ?? 'open').toString(),
       question: (json['question'] ?? '').toString(),
       answer: (json['answer'] ?? '').toString(),
-      createdAt:
-          DateTime.tryParse((json['created_at'] ?? '').toString()) ?? DateTime.now(),
+      createdAt: DateTime.tryParse((json['created_at'] ?? '').toString()) ??
+          DateTime.now(),
       answeredAt: DateTime.tryParse((json['answered_at'] ?? '').toString()),
     );
   }

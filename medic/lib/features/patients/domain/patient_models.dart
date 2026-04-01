@@ -1,3 +1,5 @@
+import '../../../core/utils/api_media_url.dart';
+
 enum MedicPatientStatus {
   scheduled,
   preOp,
@@ -88,7 +90,7 @@ class MedicPatient {
       specialtyName: (json['specialty_name'] ?? '').toString(),
       dateJoined: DateTime.tryParse((json['date_joined'] ?? '').toString()),
       dateOfBirth: DateTime.tryParse((json['date_of_birth'] ?? '').toString()),
-      avatarUrl: (json['avatar_url'] ?? '').toString(),
+      avatarUrl: resolveApiMediaUrl((json['avatar_url'] ?? '').toString()),
       bloodType: (json['blood_type'] ?? '').toString(),
       allergies: _splitCsv((json['allergies'] ?? '').toString()),
       currentMedications:
@@ -147,7 +149,7 @@ class MedicalDocumentItem {
       id: (json['id'] ?? '').toString(),
       title: (json['title'] ?? '').toString(),
       documentType: (json['document_type'] ?? '').toString(),
-      fileUrl: (json['file_url'] ?? '').toString(),
+      fileUrl: resolveApiMediaUrl((json['file_url'] ?? '').toString()),
       uploadedAt: DateTime.tryParse((json['uploaded_at'] ?? '').toString()),
     );
   }
@@ -187,7 +189,7 @@ class EvolutionPhotoItem {
     return EvolutionPhotoItem(
       id: (json['id'] ?? '').toString(),
       dayNumber: int.tryParse((json['day_number'] ?? 0).toString()) ?? 0,
-      photoUrl: (json['photo_url'] ?? '').toString(),
+      photoUrl: resolveApiMediaUrl((json['photo_url'] ?? '').toString()),
       uploadedAt: DateTime.tryParse((json['uploaded_at'] ?? '').toString()),
     );
   }
@@ -254,7 +256,7 @@ class ProntuarioProcedureImageItem {
   factory ProntuarioProcedureImageItem.fromJson(Map<String, dynamic> json) {
     return ProntuarioProcedureImageItem(
       id: (json['id'] ?? '').toString(),
-      imageUrl: (json['image_url'] ?? '').toString(),
+      imageUrl: resolveApiMediaUrl((json['image_url'] ?? '').toString()),
       criadoEm: DateTime.tryParse((json['criado_em'] ?? '').toString()),
     );
   }
@@ -328,7 +330,7 @@ class ProntuarioDocumentItem {
       id: (json['id'] ?? '').toString(),
       titulo: (json['titulo'] ?? '').toString(),
       descricao: (json['descricao'] ?? '').toString(),
-      arquivoUrl: (json['arquivo_url'] ?? '').toString(),
+      arquivoUrl: resolveApiMediaUrl((json['arquivo_url'] ?? '').toString()),
       tipoArquivo: (json['tipo_arquivo'] ?? '').toString(),
       uploadedBy: (json['uploaded_by'] ?? '').toString(),
       criadoEm: DateTime.tryParse((json['criado_em'] ?? '').toString()),

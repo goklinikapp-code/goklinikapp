@@ -14,6 +14,8 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 
+from config.media_urls import absolute_media_url
+
 from .models import GoKlinikUser, TutorialProgress, TutorialVideo
 from .serializers import (
     ActivityLogSerializer,
@@ -66,7 +68,10 @@ class RegisterAPIView(APIView):
             {
                 "access_token": str(refresh.access_token),
                 "refresh_token": str(refresh),
-                "user": GoKlinikUserSerializer(user).data,
+                "user": GoKlinikUserSerializer(
+                    user,
+                    context={"request": request},
+                ).data,
             },
             status=status.HTTP_201_CREATED,
         )
@@ -92,7 +97,10 @@ class LoginAPIView(APIView):
             {
                 "access_token": str(refresh.access_token),
                 "refresh_token": str(refresh),
-                "user": GoKlinikUserSerializer(user).data,
+                "user": GoKlinikUserSerializer(
+                    user,
+                    context={"request": request},
+                ).data,
             }
         )
 
@@ -144,7 +152,13 @@ class CurrentUserAPIView(APIView):
         },
     )
     def get(self, request, *args, **kwargs):
-        return Response(GoKlinikUserSerializer(request.user).data, status=status.HTTP_200_OK)
+        return Response(
+            GoKlinikUserSerializer(
+                request.user,
+                context={"request": request},
+            ).data,
+            status=status.HTTP_200_OK,
+        )
 
 
 class CurrentUserAvatarUploadAPIView(APIView):
@@ -181,7 +195,7 @@ class CurrentUserAvatarUploadAPIView(APIView):
 
         try:
             saved_path = default_storage._save(unique_name, avatar_file)
-            avatar_url = request.build_absolute_uri(default_storage.url(saved_path))
+            avatar_url = absolute_media_url(default_storage.url(saved_path), request=request)
         except Exception:
             local_root = Path(getattr(settings, "ROOT_DIR", Path.cwd())) / "media_uploads"
             fallback_storage = FileSystemStorage(
@@ -190,12 +204,18 @@ class CurrentUserAvatarUploadAPIView(APIView):
             )
             avatar_file.seek(0)
             saved_path = fallback_storage.save(unique_name, avatar_file)
-            avatar_url = fallback_storage.url(saved_path)
+            avatar_url = absolute_media_url(fallback_storage.url(saved_path), request=request)
 
         request.user.avatar_url = avatar_url
         request.user.save(update_fields=["avatar_url"])
 
-        return Response(GoKlinikUserSerializer(request.user).data, status=status.HTTP_200_OK)
+        return Response(
+            GoKlinikUserSerializer(
+                request.user,
+                context={"request": request},
+            ).data,
+            status=status.HTTP_200_OK,
+        )
 
 
 class TeamMembersAPIView(APIView):
@@ -222,7 +242,13 @@ class TeamMembersAPIView(APIView):
             queryset = queryset.filter(tenant_id=user.tenant_id)
 
         queryset = queryset.order_by("first_name", "last_name", "email")
-        return Response(TeamMemberSerializer(queryset, many=True).data)
+        return Response(
+            TeamMemberSerializer(
+                queryset,
+                many=True,
+                context={"request": request},
+            ).data
+        )
 
 
 class ActivityLogAPIView(APIView):
@@ -289,7 +315,13 @@ class InviteUserAPIView(APIView):
         serializer.is_valid(raise_exception=True)
         invited = serializer.save()
 
-        return Response(TeamMemberSerializer(invited).data, status=status.HTTP_201_CREATED)
+        return Response(
+            TeamMemberSerializer(
+                invited,
+                context={"request": request},
+            ).data,
+            status=status.HTTP_201_CREATED,
+        )
 
 
 class TeamMemberDetailAPIView(APIView):
@@ -327,7 +359,12 @@ class TeamMemberDetailAPIView(APIView):
             return Response(status=status.HTTP_403_FORBIDDEN)
 
         member = self._get_member_or_404(request, member_id)
-        return Response(TeamMemberDetailSerializer(member).data)
+        return Response(
+            TeamMemberDetailSerializer(
+                member,
+                context={"request": request},
+            ).data
+        )
 
     @extend_schema(
         request=TeamMemberUpdateSerializer,
@@ -374,7 +411,13 @@ class TeamMemberDetailAPIView(APIView):
             )
 
         updated = serializer.save()
-        return Response(TeamMemberDetailSerializer(updated).data, status=status.HTTP_200_OK)
+        return Response(
+            TeamMemberDetailSerializer(
+                updated,
+                context={"request": request},
+            ).data,
+            status=status.HTTP_200_OK,
+        )
 
     @extend_schema(
         responses={

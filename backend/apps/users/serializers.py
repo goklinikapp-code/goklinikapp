@@ -15,6 +15,8 @@ from django.utils.text import slugify
 from django.contrib.auth.hashers import make_password
 from rest_framework import serializers
 
+from config.media_urls import AbsoluteMediaUrlsSerializerMixin
+
 from apps.tenants.models import Tenant
 
 from .access import (
@@ -39,7 +41,7 @@ from .saas_email import send_saas_invite_email, send_signup_code_email
 from .supabase_client import supabase_send_reset_password, supabase_sign_in, supabase_sign_up
 
 
-class TenantEmbeddedSerializer(serializers.ModelSerializer):
+class TenantEmbeddedSerializer(AbsoluteMediaUrlsSerializerMixin, serializers.ModelSerializer):
     class Meta:
         model = Tenant
         fields = (
@@ -55,7 +57,7 @@ class TenantEmbeddedSerializer(serializers.ModelSerializer):
         )
 
 
-class GoKlinikUserSerializer(serializers.ModelSerializer):
+class GoKlinikUserSerializer(AbsoluteMediaUrlsSerializerMixin, serializers.ModelSerializer):
     tenant = TenantEmbeddedSerializer(read_only=True)
     full_name = serializers.CharField(read_only=True)
 
@@ -297,7 +299,7 @@ class ChangePasswordSerializer(serializers.Serializer):
         return user
 
 
-class TeamMemberSerializer(serializers.ModelSerializer):
+class TeamMemberSerializer(AbsoluteMediaUrlsSerializerMixin, serializers.ModelSerializer):
     full_name = serializers.CharField(read_only=True)
 
     class Meta:
@@ -313,7 +315,7 @@ class TeamMemberSerializer(serializers.ModelSerializer):
         )
 
 
-class TeamMemberDetailSerializer(serializers.ModelSerializer):
+class TeamMemberDetailSerializer(AbsoluteMediaUrlsSerializerMixin, serializers.ModelSerializer):
     full_name = serializers.CharField(read_only=True)
 
     class Meta:
