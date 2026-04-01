@@ -8,6 +8,11 @@ from django.urls import include, path
 from django.views.static import serve
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
+from apps.pre_operatory.views import (
+    PreOperatoryCreateAPIView,
+    PreOperatoryDetailAPIView,
+    PreOperatoryMeAPIView,
+)
 from apps.referrals.views import LeadAPIView, LeadDetailAPIView
 from apps.users.dashboard_views import AdminDashboardAPIView
 
@@ -17,6 +22,20 @@ def health_view(_request):
 
 
 urlpatterns = [
+    path("api/pre-operatory", PreOperatoryCreateAPIView.as_view(), name="api-pre-operatory"),
+    path("api/pre-operatory/me", PreOperatoryMeAPIView.as_view(), name="api-pre-operatory-me"),
+    path(
+        "api/pre-operatory/<uuid:pre_operatory_id>",
+        PreOperatoryDetailAPIView.as_view(),
+        name="api-pre-operatory-detail",
+    ),
+    path("pre-operatory", PreOperatoryCreateAPIView.as_view(), name="pre-operatory"),
+    path("pre-operatory/me", PreOperatoryMeAPIView.as_view(), name="pre-operatory-me"),
+    path(
+        "pre-operatory/<uuid:pre_operatory_id>",
+        PreOperatoryDetailAPIView.as_view(),
+        name="pre-operatory-detail",
+    ),
     path("api/leads", LeadAPIView.as_view(), name="api-leads"),
     path("api/leads/<uuid:lead_id>/", LeadDetailAPIView.as_view(), name="api-lead-detail"),
     path("leads", LeadAPIView.as_view(), name="leads"),

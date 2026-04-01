@@ -311,6 +311,14 @@ const _translations = <String, Map<String, String>>{
     'ru': 'Posleoperatsionnyy period',
     'tr': 'Post-op',
   },
+  'quick_pre_operatory': {
+    'pt': 'Pré-operatório',
+    'en': 'Pre-op',
+    'es': 'Preoperatorio',
+    'de': 'Prae-op',
+    'ru': 'Pre-operatsionnyy',
+    'tr': 'Pre-op',
+  },
   'quick_contact_clinic': {
     'pt': 'Comunicar Clínica',
     'en': 'Contact Clinic',

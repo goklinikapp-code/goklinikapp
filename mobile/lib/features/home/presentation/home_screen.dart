@@ -185,9 +185,9 @@ class HomeScreen extends ConsumerWidget {
                   icon: Icons.calendar_month,
                   onTap: () => context.go('/agendas')),
               _QuickAction(
-                  title: t('quick_postop'),
-                  icon: Icons.health_and_safety,
-                  onTap: () => context.go('/postop')),
+                  title: t('quick_pre_operatory'),
+                  icon: Icons.assignment_turned_in_outlined,
+                  onTap: () => context.push('/pre-operatory')),
               _QuickAction(
                   title: t('quick_contact_clinic'),
                   icon: Icons.chat_bubble_outline,

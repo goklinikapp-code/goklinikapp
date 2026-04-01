@@ -101,6 +101,7 @@ INSTALLED_APPS = [
     "apps.financial.apps.FinancialConfig",
     "apps.referrals.apps.ReferralsConfig",
     "apps.medical_records.apps.MedicalRecordsConfig",
+    "apps.pre_operatory.apps.PreOperatoryConfig",
 ]
 
 MIDDLEWARE = [

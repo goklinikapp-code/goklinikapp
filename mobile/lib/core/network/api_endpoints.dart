@@ -16,6 +16,10 @@ class ApiEndpoints {
   static String postOpCareCenter(String journeyId) =>
       '/api/post-op/care-center/$journeyId/';
   static const postOpUrgentRequests = '/api/post-op/urgent-requests/';
+  static const preOperatory = '/api/pre-operatory';
+  static const preOperatoryMe = '/api/pre-operatory/me';
+  static String preOperatoryDetail(String preOperatoryId) =>
+      '/api/pre-operatory/$preOperatoryId';
 
   static const chatRooms = '/api/chat/rooms/';
   static String chatRoomMessages(String roomId) =>

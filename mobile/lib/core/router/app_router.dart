@@ -22,6 +22,7 @@ import '../../features/post_op/presentation/postop_screen.dart';
 import '../../features/profile/presentation/edit_profile_screen.dart';
 import '../../features/profile/presentation/notification_preferences_screen.dart';
 import '../../features/profile/presentation/profile_screen.dart';
+import '../../features/pre_operatory/presentation/pre_operatory_screen.dart';
 import '../../features/referrals/presentation/referrals_screen.dart';
 import 'app_shell.dart';
 
@@ -117,6 +118,9 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
               path: '/financial',
               builder: (context, state) => const FinancialScreen()),
+          GoRoute(
+              path: '/pre-operatory',
+              builder: (context, state) => const PreOperatoryScreen()),
           GoRoute(
               path: '/referrals',
               builder: (context, state) => const ReferralsScreen()),
