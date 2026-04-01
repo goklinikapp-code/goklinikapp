@@ -120,6 +120,36 @@ function extractErrorMessage(error: unknown, fallback: string): string {
   return fallback
 }
 
+function readAvatarFromNestedEntity(value: unknown): string {
+  if (!value || typeof value !== 'object') return ''
+  const entry = value as Record<string, unknown>
+  return (
+    (entry.avatar_url ?? entry.avatar ?? entry.photo ?? '')
+      .toString()
+      .trim()
+  )
+}
+
+function resolvePatientAvatar(appointment: AppointmentItem): string {
+  const direct = (appointment.patient_avatar_url || '').trim()
+  if (direct) return direct
+
+  const raw = appointment as unknown as Record<string, unknown>
+  const rootFallback = (raw.patient_avatar ?? raw.patient_photo ?? '').toString().trim()
+  if (rootFallback) return rootFallback
+  return readAvatarFromNestedEntity(raw.patient)
+}
+
+function resolveProfessionalAvatar(appointment: AppointmentItem): string {
+  const direct = (appointment.professional_avatar_url || '').trim()
+  if (direct) return direct
+
+  const raw = appointment as unknown as Record<string, unknown>
+  const rootFallback = (raw.professional_avatar ?? raw.professional_photo ?? '').toString().trim()
+  if (rootFallback) return rootFallback
+  return readAvatarFromNestedEntity(raw.professional)
+}
+
 export default function SchedulePage() {
   const language = usePreferencesStore((state) => state.language)
   const locale = getLocaleForLanguage(language)
@@ -541,48 +571,64 @@ export default function SchedulePage() {
                 {formatLongDate(group.date)}
               </div>
 
-              {group.items.map((appointment) => (
-                <div
-                  key={appointment.id}
-                  className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-100 p-3"
-                >
-                  <div className="flex items-center gap-3">
-                    <Avatar name={appointment.patient_name} className="h-10 w-10" />
-                    <div>
-                      <p className="text-sm font-semibold text-night">{appointment.patient_name}</p>
-                      <p className="caption">
-                        {appointmentTypeLabels[normalizeAppointmentType(appointment.appointment_type)]}
-                      </p>
-                      <p className="caption text-slate-500">
-                        {t('schedule_professional_prefix')}: {appointment.professional_name}
-                      </p>
+              {group.items.map((appointment) => {
+                const patientAvatar = resolvePatientAvatar(appointment)
+                const professionalAvatar = resolveProfessionalAvatar(appointment)
+
+                return (
+                  <div
+                    key={appointment.id}
+                    className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-100 p-3"
+                  >
+                    <div className="flex items-center gap-3">
+                      <Avatar
+                        name={appointment.patient_name}
+                        src={patientAvatar || professionalAvatar || undefined}
+                        className="h-10 w-10"
+                      />
+                      <div>
+                        <p className="text-sm font-semibold text-night">{appointment.patient_name}</p>
+                        <p className="caption">
+                          {appointmentTypeLabels[normalizeAppointmentType(appointment.appointment_type)]}
+                        </p>
+                        <div className="caption flex items-center gap-1 text-slate-500">
+                          <Avatar
+                            name={appointment.professional_name}
+                            src={professionalAvatar || undefined}
+                            className="h-5 w-5 text-[10px]"
+                          />
+                          <span>
+                            {t('schedule_professional_prefix')}: {appointment.professional_name}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-3 text-sm text-slate-600">
+                      <span className="inline-flex items-center gap-1">
+                        <Clock4 className="h-4 w-4" /> {toInputTime(appointment.appointment_time)}
+                      </span>
+                      <span className="inline-flex items-center gap-1">
+                        <MapPin className="h-4 w-4" /> {appointment.clinic_location || t('schedule_default_room')}
+                      </span>
+                      <Badge status={appointment.status} />
+                      {appointment.status !== 'cancelled' ? (
+                        <Button
+                          size="sm"
+                          variant="danger"
+                          onClick={() => openCancelModal(appointment)}
+                          disabled={cancelMutation.isPending}
+                        >
+                          {t('schedule_cancel_appointment_button')}
+                        </Button>
+                      ) : null}
+                      <Button size="sm" variant="secondary" onClick={() => openDetailsModal(appointment)}>
+                        {t('schedule_details_button')}
+                      </Button>
                     </div>
                   </div>
-
-                  <div className="flex flex-wrap items-center gap-3 text-sm text-slate-600">
-                    <span className="inline-flex items-center gap-1">
-                      <Clock4 className="h-4 w-4" /> {toInputTime(appointment.appointment_time)}
-                    </span>
-                    <span className="inline-flex items-center gap-1">
-                      <MapPin className="h-4 w-4" /> {appointment.clinic_location || t('schedule_default_room')}
-                    </span>
-                    <Badge status={appointment.status} />
-                    {appointment.status !== 'cancelled' ? (
-                      <Button
-                        size="sm"
-                        variant="danger"
-                        onClick={() => openCancelModal(appointment)}
-                        disabled={cancelMutation.isPending}
-                      >
-                        {t('schedule_cancel_appointment_button')}
-                      </Button>
-                    ) : null}
-                    <Button size="sm" variant="secondary" onClick={() => openDetailsModal(appointment)}>
-                      {t('schedule_details_button')}
-                    </Button>
-                  </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           ))
         ) : (

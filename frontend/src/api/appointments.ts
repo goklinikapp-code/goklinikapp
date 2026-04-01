@@ -9,8 +9,10 @@ export interface AppointmentItem {
   tenant?: string
   patient: string
   patient_name: string
+  patient_avatar_url?: string | null
   professional: string
   professional_name: string
+  professional_avatar_url?: string | null
   clinic_location?: string | null
   specialty?: string | null
   specialty_name?: string | null

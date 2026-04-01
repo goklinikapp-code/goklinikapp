@@ -38,6 +38,12 @@ ALLOWED_STATUS_TRANSITIONS = {
 
 class AppointmentSerializer(AbsoluteMediaUrlsSerializerMixin, serializers.ModelSerializer):
     patient_name = serializers.CharField(source="patient.full_name", read_only=True)
+    patient_avatar_url = serializers.CharField(
+        source="patient.avatar_url",
+        read_only=True,
+        allow_blank=True,
+        allow_null=True,
+    )
     professional_name = serializers.CharField(source="professional.full_name", read_only=True)
     professional_role = serializers.CharField(source="professional.role", read_only=True)
     professional_avatar_url = serializers.CharField(
@@ -55,6 +61,7 @@ class AppointmentSerializer(AbsoluteMediaUrlsSerializerMixin, serializers.ModelS
             "tenant",
             "patient",
             "patient_name",
+            "patient_avatar_url",
             "professional",
             "professional_name",
             "professional_role",

@@ -188,7 +188,13 @@ class _AppointmentsScreenState extends ConsumerState<AppointmentsScreen> {
         child: Row(
           children: [
             GKAvatar(
-                name: item.patientName.isEmpty ? 'Paciente' : item.patientName),
+              name: item.patientName.isEmpty ? 'Paciente' : item.patientName,
+              imageUrl: item.patientAvatarUrl.isNotEmpty
+                  ? item.patientAvatarUrl
+                  : (item.professionalAvatarUrl.isNotEmpty
+                      ? item.professionalAvatarUrl
+                      : null),
+            ),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
