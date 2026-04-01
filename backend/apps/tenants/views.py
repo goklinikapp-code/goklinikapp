@@ -115,10 +115,11 @@ class TenantBrandingLogoUploadAPIView(APIView):
             logo_url = default_storage.url(saved_path)
         except Exception:
             # Fallback for local/dev environments without valid object-storage keys.
-            local_root = Path(getattr(settings, "ROOT_DIR", Path.cwd())) / "media_uploads"
+            local_root = Path(getattr(settings, "MEDIA_ROOT", Path.cwd()))
+            base_url = getattr(settings, "MEDIA_URL", "/media/")
             fallback_storage = FileSystemStorage(
                 location=str(local_root),
-                base_url="/media-uploads/",
+                base_url=base_url,
             )
             logo_file.seek(0)
             saved_path = fallback_storage.save(unique_name, logo_file)

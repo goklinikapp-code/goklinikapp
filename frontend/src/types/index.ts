@@ -214,3 +214,30 @@ export interface PatientDocumentRecord {
   uploaded_by?: string | null
   criado_em: string
 }
+
+export interface PreOperatoryFileRecord {
+  id: string
+  file_url: string
+  type: 'photo' | 'document'
+  created_at: string
+}
+
+export interface PreOperatoryRecord {
+  id: string
+  patient: string
+  tenant: string
+  allergies: string
+  medications: string
+  previous_surgeries: string
+  diseases: string
+  smoking: boolean
+  alcohol: boolean
+  height?: number | null
+  weight?: number | null
+  status: 'pending' | 'in_review' | 'approved' | 'rejected'
+  files: PreOperatoryFileRecord[]
+  photos: PreOperatoryFileRecord[]
+  documents: PreOperatoryFileRecord[]
+  created_at: string
+  updated_at: string
+}

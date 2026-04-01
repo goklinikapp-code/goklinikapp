@@ -3,14 +3,42 @@ import type { PatientDetail, PatientRow } from '@/types'
 
 interface PaginatedResponse<T> {
   results: T[]
+  next?: string | null
 }
 
 export async function getPatients(): Promise<PatientRow[]> {
-  const { data } = await apiClient.get<PaginatedResponse<PatientRow> | PatientRow[]>('/patients/')
-  if (Array.isArray(data)) {
-    return data
+  let nextPath: string | null = '/patients/'
+  const rows: PatientRow[] = []
+  let safety = 0
+
+  while (nextPath && safety < 20) {
+    safety += 1
+    const response = await apiClient.get<PaginatedResponse<PatientRow> | PatientRow[]>(
+      nextPath,
+    )
+    const payload: PaginatedResponse<PatientRow> | PatientRow[] = response.data
+
+    if (Array.isArray(payload)) {
+      return payload
+    }
+
+    rows.push(...(payload.results || []))
+
+    const next: string = (payload.next || '').trim()
+    if (!next) {
+      nextPath = null
+      continue
+    }
+
+    try {
+      const parsedUrl = new URL(next)
+      nextPath = `${parsedUrl.pathname}${parsedUrl.search}`
+    } catch {
+      nextPath = next
+    }
   }
-  return data.results || []
+
+  return rows
 }
 
 interface CreatePatientPayload {

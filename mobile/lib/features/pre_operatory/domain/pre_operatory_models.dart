@@ -63,11 +63,24 @@ class PreOperatoryRecord {
   List<PreOperatoryFileItem> get documents =>
       files.where((item) => item.isDocument).toList();
 
-  factory PreOperatoryRecord.fromJson(Map<String, dynamic> json) {
-    final files = (json['files'] as List<dynamic>? ?? const [])
+  static List<PreOperatoryFileItem> _readFiles(dynamic raw) {
+    if (raw is! List) return const [];
+    return raw
         .whereType<Map<String, dynamic>>()
         .map(PreOperatoryFileItem.fromJson)
         .toList();
+  }
+
+  factory PreOperatoryRecord.fromJson(Map<String, dynamic> json) {
+    final directFiles = _readFiles(json['files']);
+    final photoFiles = _readFiles(json['photos']);
+    final documentFiles = _readFiles(json['documents']);
+    final files = directFiles.isNotEmpty
+        ? directFiles
+        : <PreOperatoryFileItem>[
+            ...photoFiles,
+            ...documentFiles,
+          ];
 
     return PreOperatoryRecord(
       id: (json['id'] ?? '').toString(),

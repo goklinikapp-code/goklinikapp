@@ -671,25 +671,6 @@ export default function SettingsPage() {
               />
               </label>
 
-              <div className="mt-3">
-                <p className="mb-1 text-xs font-semibold text-slate-600">URL pública da logo</p>
-                <Input
-                  placeholder="https://..."
-                  value={brandingForm.logo_url || ''}
-                  onChange={(event) =>
-                    setBrandingForm((prev) => {
-                      const value = event.target.value.trim()
-                      setSelectedLogoFile(null)
-                      setLogoPreview(value || null)
-                      return {
-                        ...prev,
-                        logo_url: value,
-                      }
-                    })
-                  }
-                />
-              </div>
-
               {logoPreview ? (
                 <div className="mt-4 flex items-center gap-3 rounded-lg bg-tealIce p-3">
                   <img src={resolveMediaUrl(logoPreview)} alt="preview" className="h-12 w-auto" />

@@ -197,10 +197,11 @@ class CurrentUserAvatarUploadAPIView(APIView):
             saved_path = default_storage._save(unique_name, avatar_file)
             avatar_url = absolute_media_url(default_storage.url(saved_path), request=request)
         except Exception:
-            local_root = Path(getattr(settings, "ROOT_DIR", Path.cwd())) / "media_uploads"
+            local_root = Path(getattr(settings, "MEDIA_ROOT", Path.cwd()))
+            base_url = getattr(settings, "MEDIA_URL", "/media/")
             fallback_storage = FileSystemStorage(
                 location=str(local_root),
-                base_url="/media-uploads/",
+                base_url=base_url,
             )
             avatar_file.seek(0)
             saved_path = fallback_storage.save(unique_name, avatar_file)

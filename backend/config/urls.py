@@ -1,5 +1,3 @@
-from pathlib import Path
-
 from django.conf import settings
 from django.conf.urls.static import static
 from django.contrib import admin
@@ -12,6 +10,7 @@ from apps.pre_operatory.views import (
     PreOperatoryCreateAPIView,
     PreOperatoryDetailAPIView,
     PreOperatoryMeAPIView,
+    PreOperatoryPatientAPIView,
 )
 from apps.referrals.views import LeadAPIView, LeadDetailAPIView
 from apps.users.dashboard_views import AdminDashboardAPIView
@@ -24,6 +23,11 @@ def health_view(_request):
 urlpatterns = [
     path("api/pre-operatory", PreOperatoryCreateAPIView.as_view(), name="api-pre-operatory"),
     path("api/pre-operatory/me", PreOperatoryMeAPIView.as_view(), name="api-pre-operatory-me"),
+    path(
+        "api/pre-operatory/patient/<uuid:patient_id>",
+        PreOperatoryPatientAPIView.as_view(),
+        name="api-pre-operatory-patient",
+    ),
     path(
         "api/pre-operatory/<uuid:pre_operatory_id>",
         PreOperatoryDetailAPIView.as_view(),
@@ -61,7 +65,7 @@ urlpatterns = [
     path(
         "media-uploads/<path:path>",
         serve,
-        {"document_root": Path(getattr(settings, "ROOT_DIR", Path.cwd())) / "media_uploads"},
+        {"document_root": settings.MEDIA_ROOT},
     ),
 ]
 

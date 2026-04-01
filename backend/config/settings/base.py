@@ -247,6 +247,8 @@ CORS_ALLOW_ALL_HEADERS = True
 CORS_ALLOW_METHODS = [
     "GET",
     "POST",
+    "PUT",
+    "PATCH",
     "DELETE",
     "OPTIONS",
 ]

@@ -33,8 +33,8 @@ services:
       - ./apps:/app/apps
       - ./config:/app/config
       - ./manage.py:/app/manage.py
-      - ./media:/app/media
-      - ./media:/app/media_uploads
+      - goklinik_media_data:/app/media
+      - goklinik_media_data:/app/media_uploads
     depends_on:
       redis:
         condition: service_healthy
@@ -59,7 +59,8 @@ services:
       - ./apps:/app/apps
       - ./config:/app/config
       - ./manage.py:/app/manage.py
-      - ./media:/app/media
+      - goklinik_media_data:/app/media
+      - goklinik_media_data:/app/media_uploads
     depends_on:
       redis:
         condition: service_healthy
@@ -84,7 +85,12 @@ services:
       - ./apps:/app/apps
       - ./config:/app/config
       - ./manage.py:/app/manage.py
-      - ./media:/app/media
+      - goklinik_media_data:/app/media
+      - goklinik_media_data:/app/media_uploads
     depends_on:
       redis:
         condition: service_healthy
+
+volumes:
+  goklinik_media_data:
+    name: goklinik_media_data

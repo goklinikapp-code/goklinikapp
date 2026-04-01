@@ -63,10 +63,11 @@ def _save_uploaded_file(*, request, upload, folder: str) -> str:
         file_url = default_storage.url(saved_path)
     except Exception:
         # Fallback local para evitar falha em ambiente sem permissão completa no storage remoto.
-        local_root = Path(getattr(settings, "ROOT_DIR", Path.cwd())) / "media_uploads"
+        local_root = Path(getattr(settings, "MEDIA_ROOT", Path.cwd()))
+        base_url = getattr(settings, "MEDIA_URL", "/media/")
         fallback_storage = FileSystemStorage(
             location=str(local_root),
-            base_url="/media-uploads/",
+            base_url=base_url,
         )
         if hasattr(upload, "seek"):
             upload.seek(0)

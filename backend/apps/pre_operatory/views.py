@@ -56,6 +56,21 @@ def _active_pre_operatory_for_patient(user: GoKlinikUser) -> PreOperatory | None
     )
 
 
+def _can_staff_view_patient_pre_operatory(user: GoKlinikUser, patient: GoKlinikUser) -> bool:
+    if user.role == GoKlinikUser.RoleChoices.SUPER_ADMIN:
+        return True
+
+    if user.role in {
+        GoKlinikUser.RoleChoices.CLINIC_MASTER,
+        GoKlinikUser.RoleChoices.SURGEON,
+        GoKlinikUser.RoleChoices.NURSE,
+        GoKlinikUser.RoleChoices.SECRETARY,
+    }:
+        return str(user.tenant_id or "") == str(patient.tenant_id or "")
+
+    return False
+
+
 class PreOperatoryCreateAPIView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -232,6 +247,44 @@ class PreOperatoryDetailAPIView(APIView):
                 )
 
         pre_operatory = PreOperatory.objects.prefetch_related("files").get(id=pre_operatory.id)
+        return Response(
+            PreOperatorySerializer(
+                pre_operatory,
+                context={"request": request},
+            ).data,
+            status=status.HTTP_200_OK,
+        )
+
+
+class PreOperatoryPatientAPIView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, patient_id):
+        patient = GoKlinikUser.objects.filter(
+            id=patient_id,
+            role=GoKlinikUser.RoleChoices.PATIENT,
+        ).only("id", "tenant_id").first()
+        if not patient:
+            return Response(
+                {"detail": "Patient not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        if not _can_staff_view_patient_pre_operatory(request.user, patient):
+            return Response(status=status.HTTP_403_FORBIDDEN)
+
+        pre_operatory = (
+            PreOperatory.objects.filter(patient_id=patient.id)
+            .prefetch_related("files")
+            .order_by("-updated_at")
+            .first()
+        )
+        if not pre_operatory:
+            return Response(
+                {"detail": "Pre-operatory not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
         return Response(
             PreOperatorySerializer(
                 pre_operatory,

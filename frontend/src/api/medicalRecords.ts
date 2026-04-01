@@ -1,8 +1,11 @@
+import { isAxiosError } from 'axios'
+
 import { apiClient } from '@/lib/axios'
 import type {
   PatientDocumentRecord,
   PatientMedicationRecord,
   PatientProcedureRecord,
+  PreOperatoryRecord,
 } from '@/types'
 
 export interface PatientMedicationPayload {
@@ -209,4 +212,18 @@ export async function updatePatientDocument(
 
 export async function deletePatientDocument(patientId: string, documentId: string) {
   await apiClient.delete(`/patients/${patientId}/documents/${documentId}/`)
+}
+
+export async function getPatientPreOperatory(patientId: string) {
+  try {
+    const { data } = await apiClient.get<PreOperatoryRecord>(
+      `/pre-operatory/patient/${patientId}`,
+    )
+    return data
+  } catch (error) {
+    if (isAxiosError(error) && error.response?.status === 404) {
+      return null
+    }
+    throw error
+  }
 }

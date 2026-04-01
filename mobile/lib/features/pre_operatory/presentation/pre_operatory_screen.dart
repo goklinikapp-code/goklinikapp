@@ -566,9 +566,7 @@ class _PreOperatoryScreenState extends ConsumerState<PreOperatoryScreen> {
                           const SizedBox(width: 8),
                           Expanded(
                             child: GKButton(
-                              label: _isSubmitting
-                                  ? 'Salvando...'
-                                  : 'Salvar alterações',
+                              label: _isSubmitting ? 'Salvando...' : 'Salvar',
                               onPressed: _isSubmitting ? null : _submit,
                             ),
                           ),
