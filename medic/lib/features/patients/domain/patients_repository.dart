@@ -22,6 +22,9 @@ abstract class PatientsRepository {
 
   Future<List<MedicalDocumentItem>> getPatientDocuments(String patientId);
 
+  Future<PatientPreOperatoryRecord?> getPatientPreOperatory(String patientId);
+  Future<PatientPostOperatoryRecord?> getPatientPostOperatory(String patientId);
+
   Future<List<ProntuarioMedicationItem>> getPatientProntuarioMedications(
       String patientId);
   Future<ProntuarioMedicationItem> createPatientProntuarioMedication({
@@ -87,5 +90,11 @@ abstract class PatientsRepository {
     required String journeyId,
     required int dayNumber,
     required File file,
+  });
+
+  Future<List<UrgentTicketItem>> getUrgentTickets();
+  Future<UrgentTicketItem> updateUrgentTicketStatus({
+    required String ticketId,
+    required String status,
   });
 }

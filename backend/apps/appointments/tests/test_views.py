@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import time, timedelta
+from unittest.mock import patch
 
 from django.urls import reverse
 from django.utils import timezone
@@ -9,6 +10,7 @@ from rest_framework.test import APITestCase
 
 from apps.appointments.models import Appointment, ProfessionalAvailability
 from apps.patients.models import DoctorPatientAssignment, Patient
+from apps.post_op.models import PostOpJourney
 from apps.tenants.models import Tenant, TenantSpecialty
 from apps.users.models import GoKlinikUser
 
@@ -133,6 +135,166 @@ class AppointmentViewsTestCase(APITestCase):
         url = reverse("appointments-update-status", kwargs={"pk": appointment.id})
         response = self.client.put(url, {"status": "confirmed"}, format="json")
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    @patch("apps.appointments.views.create_postop_schedule")
+    @patch("apps.appointments.views.schedule_appointment_reminder.delay")
+    def test_confirmed_surgery_only_dispatches_reminder(
+        self,
+        reminder_delay,
+        create_postop_schedule_mock,
+    ):
+        appointment = Appointment.objects.create(
+            tenant=self.tenant,
+            patient=self.patient,
+            professional=self.surgeon,
+            specialty=self.specialty,
+            appointment_date=timezone.localdate() + timedelta(days=1),
+            appointment_time=timezone.localtime().time().replace(hour=15, minute=0, second=0, microsecond=0),
+            status=Appointment.StatusChoices.PENDING,
+            appointment_type=Appointment.AppointmentTypeChoices.SURGERY,
+            created_by=self.master,
+        )
+
+        self.client.force_authenticate(self.master)
+        url = reverse("appointments-update-status", kwargs={"pk": appointment.id})
+        response = self.client.put(url, {"status": "confirmed"}, format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        reminder_delay.assert_called_once_with(str(appointment.id))
+        create_postop_schedule_mock.assert_not_called()
+
+    @patch("apps.appointments.views.create_postop_schedule")
+    @patch("apps.appointments.views.schedule_appointment_reminder.delay")
+    def test_completed_surgery_dispatches_postop_creation(
+        self,
+        reminder_delay,
+        create_postop_schedule_mock,
+    ):
+        appointment = Appointment.objects.create(
+            tenant=self.tenant,
+            patient=self.patient,
+            professional=self.surgeon,
+            specialty=self.specialty,
+            appointment_date=timezone.localdate(),
+            appointment_time=timezone.localtime().time().replace(hour=16, minute=0, second=0, microsecond=0),
+            status=Appointment.StatusChoices.IN_PROGRESS,
+            appointment_type=Appointment.AppointmentTypeChoices.SURGERY,
+            created_by=self.master,
+        )
+
+        self.client.force_authenticate(self.master)
+        url = reverse("appointments-update-status", kwargs={"pk": appointment.id})
+        response = self.client.put(url, {"status": "completed"}, format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        create_postop_schedule_mock.assert_called_once_with(str(appointment.id))
+        reminder_delay.assert_not_called()
+
+    @patch("apps.appointments.views.create_postop_schedule")
+    @patch("apps.appointments.views.schedule_appointment_reminder.delay")
+    def test_pending_surgery_can_be_marked_completed_from_quick_action(
+        self,
+        reminder_delay,
+        create_postop_schedule_mock,
+    ):
+        appointment = Appointment.objects.create(
+            tenant=self.tenant,
+            patient=self.patient,
+            professional=self.surgeon,
+            specialty=self.specialty,
+            appointment_date=timezone.localdate(),
+            appointment_time=timezone.localtime().time().replace(hour=17, minute=30, second=0, microsecond=0),
+            status=Appointment.StatusChoices.PENDING,
+            appointment_type=Appointment.AppointmentTypeChoices.SURGERY,
+            created_by=self.master,
+        )
+
+        self.client.force_authenticate(self.master)
+        url = reverse("appointments-update-status", kwargs={"pk": appointment.id})
+        response = self.client.put(url, {"status": "completed"}, format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        appointment.refresh_from_db()
+        self.assertEqual(appointment.status, Appointment.StatusChoices.COMPLETED)
+        create_postop_schedule_mock.assert_called_once_with(str(appointment.id))
+        reminder_delay.assert_not_called()
+
+    @patch("apps.appointments.views.create_postop_schedule")
+    def test_patch_update_to_completed_also_dispatches_postop_creation(
+        self,
+        create_postop_schedule_mock,
+    ):
+        appointment = Appointment.objects.create(
+            tenant=self.tenant,
+            patient=self.patient,
+            professional=self.surgeon,
+            specialty=self.specialty,
+            appointment_date=timezone.localdate() + timedelta(days=1),
+            appointment_time=timezone.localtime().time().replace(hour=17, minute=0, second=0, microsecond=0),
+            status=Appointment.StatusChoices.IN_PROGRESS,
+            appointment_type=Appointment.AppointmentTypeChoices.SURGERY,
+            created_by=self.master,
+        )
+
+        self.client.force_authenticate(self.master)
+        url = reverse("appointments-detail", kwargs={"pk": appointment.id})
+        response = self.client.patch(
+            url,
+            {
+                "patient": str(self.patient.id),
+                "professional": str(self.surgeon.id),
+                "specialty": str(self.specialty.id),
+                "appointment_date": str(appointment.appointment_date),
+                "appointment_time": "17:00:00",
+                "duration_minutes": 60,
+                "status": "completed",
+                "appointment_type": "surgery",
+                "notes": "cirurgia realizada",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        create_postop_schedule_mock.assert_called_once_with(str(appointment.id))
+
+    def test_patch_update_to_completed_creates_postop_journey(self):
+        appointment = Appointment.objects.create(
+            tenant=self.tenant,
+            patient=self.patient,
+            professional=self.surgeon,
+            specialty=self.specialty,
+            appointment_date=timezone.localdate() + timedelta(days=1),
+            appointment_time=timezone.localtime().time().replace(hour=18, minute=0, second=0, microsecond=0),
+            status=Appointment.StatusChoices.IN_PROGRESS,
+            appointment_type=Appointment.AppointmentTypeChoices.SURGERY,
+            created_by=self.master,
+        )
+
+        self.client.force_authenticate(self.master)
+        url = reverse("appointments-detail", kwargs={"pk": appointment.id})
+        response = self.client.patch(
+            url,
+            {
+                "patient": str(self.patient.id),
+                "professional": str(self.surgeon.id),
+                "specialty": str(self.specialty.id),
+                "appointment_date": str(appointment.appointment_date),
+                "appointment_time": "18:00:00",
+                "duration_minutes": 60,
+                "status": "completed",
+                "appointment_type": "surgery",
+                "notes": "cirurgia realizada",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(
+            PostOpJourney.objects.filter(
+                appointment_id=appointment.id,
+                patient_id=self.patient.id,
+            ).exists()
+        )
 
     def test_available_professionals_for_patient_without_assignment(self):
         self.client.force_authenticate(self.patient)
@@ -259,6 +421,31 @@ class AppointmentViewsTestCase(APITestCase):
         ids = {str(item["id"]) for item in results}
         self.assertIn(str(own_appointment.id), ids)
         self.assertEqual(len(ids), 1)
+
+    def test_surgeon_cannot_create_appointment_for_another_surgeon(self):
+        self.client.force_authenticate(self.surgeon)
+        url = reverse("appointments-list")
+        date = timezone.localdate() + timedelta(days=1)
+
+        response = self.client.post(
+            url,
+            {
+                "patient": str(self.patient.id),
+                "professional": str(self.surgeon_2.id),
+                "specialty": str(self.specialty.id),
+                "appointment_date": str(date),
+                "appointment_time": "10:00:00",
+                "duration_minutes": 60,
+                "status": "pending",
+                "appointment_type": "first_visit",
+                "clinic_location": "Unidade Centro - Av. Principal, 123",
+                "notes": "agendamento inválido",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("professional", response.data)
 
     def test_professional_id_alias_filters_appointments_for_master(self):
         own_appointment = Appointment.objects.create(

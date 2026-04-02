@@ -80,6 +80,17 @@ export async function updateAppointment(
   return data
 }
 
+export async function updateAppointmentStatus(
+  appointmentId: string,
+  payload: {
+    status: string
+    internal_notes?: string
+  },
+) {
+  const { data } = await apiClient.put(`/appointments/${appointmentId}/status/`, payload)
+  return data
+}
+
 export async function cancelAppointment(
   appointmentId: string,
   reason: string,

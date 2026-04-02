@@ -141,6 +141,12 @@ class _PreOperatoryScreenState extends ConsumerState<PreOperatoryScreen> {
     });
   }
 
+  double? _parseLocalizedNumber(String raw) {
+    final normalized = raw.trim().replaceAll(',', '.');
+    if (normalized.isEmpty) return null;
+    return double.tryParse(normalized);
+  }
+
   PreOperatoryUpsertPayload _buildPayload() {
     return PreOperatoryUpsertPayload(
       allergies: _allergiesController.text.trim(),
@@ -149,8 +155,8 @@ class _PreOperatoryScreenState extends ConsumerState<PreOperatoryScreen> {
       diseases: _diseasesController.text.trim(),
       smoking: _smoking,
       alcohol: _alcohol,
-      height: double.tryParse(_heightController.text.trim()),
-      weight: double.tryParse(_weightController.text.trim()),
+      height: _parseLocalizedNumber(_heightController.text),
+      weight: _parseLocalizedNumber(_weightController.text),
       photoPaths: List<String>.from(_photoPaths),
       documentPaths: List<String>.from(_documentPaths),
     );

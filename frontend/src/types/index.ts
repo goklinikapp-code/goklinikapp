@@ -225,6 +225,7 @@ export interface PreOperatoryFileRecord {
 export interface PreOperatoryRecord {
   id: string
   patient: string
+  patient_name?: string
   tenant: string
   allergies: string
   medications: string
@@ -234,10 +235,110 @@ export interface PreOperatoryRecord {
   alcohol: boolean
   height?: number | null
   weight?: number | null
+  notes?: string
+  assigned_doctor?: string | null
+  assigned_doctor_name?: string | null
   status: 'pending' | 'in_review' | 'approved' | 'rejected'
   files: PreOperatoryFileRecord[]
   photos: PreOperatoryFileRecord[]
   documents: PreOperatoryFileRecord[]
   created_at: string
   updated_at: string
+}
+
+export interface PostOperatoryAdminItem {
+  patient_name: string
+  patient_id: string
+  patient_avatar_url?: string | null
+  status: 'active' | 'completed' | 'cancelled'
+  current_day: number
+  total_days: number
+  last_checkin_date?: string | null
+  last_pain_level?: number | null
+  has_alert: boolean
+  clinical_status: 'ok' | 'delayed' | 'risk'
+  has_open_urgent_ticket?: boolean
+  open_urgent_ticket_count?: number
+}
+
+export interface PostOperatoryCheckinRecord {
+  id: string
+  journey: string
+  day: number
+  pain_level: number
+  has_fever: boolean
+  notes: string
+  created_at: string
+}
+
+export interface PostOperatoryChecklistItemRecord {
+  id: string
+  day_number: number
+  item_text: string
+  is_completed: boolean
+  completed_at?: string | null
+}
+
+export interface PostOperatoryChecklistDayRecord {
+  day: number
+  items: PostOperatoryChecklistItemRecord[]
+}
+
+export interface PostOperatoryPhotoRecord {
+  id: string
+  journey: string
+  day_number: number
+  photo_url: string
+  uploaded_at: string
+  is_visible_to_clinic: boolean
+  is_anonymous: boolean
+  day: number
+  image: string
+  created_at: string
+}
+
+export interface PostOperatoryObservationRecord {
+  day: number
+  notes: string
+  created_at: string
+}
+
+export interface UrgentTicketRecord {
+  id: string
+  patient: string
+  patient_name: string
+  doctor?: string | null
+  doctor_name?: string | null
+  clinic: string
+  post_op_journey: string
+  message: string
+  images: string[]
+  severity: 'low' | 'medium' | 'high'
+  status: 'open' | 'viewed' | 'resolved'
+  created_at: string
+  updated_at: string
+}
+
+export interface PostOperatoryAdminDetail {
+  journey_id: string
+  patient_id: string
+  patient_name: string
+  patient_avatar_url?: string | null
+  status: 'active' | 'completed' | 'cancelled'
+  current_day: number
+  total_days: number
+  surgery_date: string
+  start_date?: string | null
+  end_date?: string | null
+  has_alert: boolean
+  clinical_status: 'ok' | 'delayed' | 'risk'
+  days_without_checkin: number
+  last_checkin_date?: string | null
+  last_pain_level?: number | null
+  checkins: PostOperatoryCheckinRecord[]
+  checklist_by_day: PostOperatoryChecklistDayRecord[]
+  photos: PostOperatoryPhotoRecord[]
+  observations: PostOperatoryObservationRecord[]
+  has_open_urgent_ticket?: boolean
+  urgent_tickets?: UrgentTicketRecord[]
 }

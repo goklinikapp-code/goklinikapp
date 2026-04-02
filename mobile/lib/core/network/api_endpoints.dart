@@ -8,14 +8,22 @@ class ApiEndpoints {
   static String publicReferralLookup(String code) => '/api/referral/$code/';
 
   static const postOpMyJourney = '/api/post-op/my-journey/';
+  static const postOperatoryMyJourney = '/api/post-operatory/my-journey/';
   static String postOpCompleteChecklist(String id) =>
       '/api/post-op/checklist/$id/complete/';
+  static String postOperatoryChecklist(String id) =>
+      '/api/post-operatory/checklist/$id/';
+  static const postOperatoryCheckin = '/api/post-operatory/checkin/';
   static const postOpPhotos = '/api/post-op/photos/';
+  static const postOperatoryPhoto = '/api/post-operatory/photo/';
   static String postOpPhotosByJourney(String journeyId) =>
       '/api/post-op/photos/$journeyId/';
   static String postOpCareCenter(String journeyId) =>
       '/api/post-op/care-center/$journeyId/';
   static const postOpUrgentRequests = '/api/post-op/urgent-requests/';
+  static const urgentTickets = '/api/urgent-tickets/';
+  static String urgentTicketDetail(String ticketId) =>
+      '/api/urgent-tickets/$ticketId/';
   static const preOperatory = '/api/pre-operatory';
   static const preOperatoryMe = '/api/pre-operatory/me';
   static String preOperatoryDetail(String preOperatoryId) =>

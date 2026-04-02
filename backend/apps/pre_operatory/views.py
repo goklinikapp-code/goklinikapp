@@ -8,16 +8,22 @@ from django.conf import settings
 from django.core.files.storage import FileSystemStorage
 from django.core.files.storage import default_storage
 from django.db import transaction
+from django.utils import timezone
 from rest_framework import permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from config.media_urls import absolute_media_url
 
+from apps.patients.models import DoctorPatientAssignment, Patient
 from apps.users.models import GoKlinikUser
 
 from .models import PreOperatory, PreOperatoryFile
-from .serializers import PreOperatorySerializer, PreOperatoryWriteSerializer
+from .serializers import (
+    PreOperatoryAdminUpdateSerializer,
+    PreOperatorySerializer,
+    PreOperatoryWriteSerializer,
+)
 
 
 def _save_uploaded_file(*, request, upload, folder: str) -> str:
@@ -44,7 +50,7 @@ def _save_uploaded_file(*, request, upload, folder: str) -> str:
 
 def _active_pre_operatory_for_patient(user: GoKlinikUser) -> PreOperatory | None:
     return (
-        PreOperatory.objects.filter(
+        _pre_operatory_queryset().filter(
             patient_id=user.id,
             status__in=[
                 PreOperatory.StatusChoices.PENDING,
@@ -52,18 +58,33 @@ def _active_pre_operatory_for_patient(user: GoKlinikUser) -> PreOperatory | None
                 PreOperatory.StatusChoices.APPROVED,
             ],
         )
-        .prefetch_related("files")
         .first()
     )
+
+
+def _pre_operatory_queryset():
+    return PreOperatory.objects.select_related("patient", "assigned_doctor").prefetch_related("files")
+
+
+def _is_clinic_admin(user: GoKlinikUser) -> bool:
+    return user.role == GoKlinikUser.RoleChoices.CLINIC_MASTER
 
 
 def _can_staff_view_patient_pre_operatory(user: GoKlinikUser, patient: GoKlinikUser) -> bool:
     if user.role == GoKlinikUser.RoleChoices.SUPER_ADMIN:
         return True
 
+    if user.role == GoKlinikUser.RoleChoices.SURGEON:
+        same_tenant = str(user.tenant_id or "") == str(patient.tenant_id or "")
+        if not same_tenant:
+            return False
+        return DoctorPatientAssignment.objects.filter(
+            patient_id=patient.id,
+            doctor_id=user.id,
+        ).exists()
+
     if user.role in {
         GoKlinikUser.RoleChoices.CLINIC_MASTER,
-        GoKlinikUser.RoleChoices.SURGEON,
         GoKlinikUser.RoleChoices.NURSE,
         GoKlinikUser.RoleChoices.SECRETARY,
     }:
@@ -118,6 +139,42 @@ def _delete_storage_file_from_url(file_url: str | None) -> None:
 
 class PreOperatoryCreateAPIView(APIView):
     permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        if not _is_clinic_admin(user):
+            return Response(status=status.HTTP_403_FORBIDDEN)
+        if not user.tenant_id:
+            return Response(
+                {"detail": "Clinic tenant not found."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        status_filter = (request.query_params.get("status") or "").strip()
+        if status_filter and status_filter not in PreOperatory.StatusChoices.values:
+            return Response(
+                {"status": ["Invalid status value."]},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        queryset = _pre_operatory_queryset().filter(tenant_id=user.tenant_id)
+        if status_filter:
+            queryset = queryset.filter(status=status_filter)
+        else:
+            queryset = queryset.filter(
+                status__in=[
+                    PreOperatory.StatusChoices.PENDING,
+                    PreOperatory.StatusChoices.IN_REVIEW,
+                ]
+            )
+
+        rows = queryset.order_by("-created_at")
+        payload = PreOperatorySerializer(
+            rows,
+            many=True,
+            context={"request": request},
+        ).data
+        return Response(payload, status=status.HTTP_200_OK)
 
     def post(self, request):
         user = request.user
@@ -181,7 +238,7 @@ class PreOperatoryCreateAPIView(APIView):
                     type=PreOperatoryFile.FileTypeChoices.DOCUMENT,
                 )
 
-        pre_operatory = PreOperatory.objects.prefetch_related("files").get(id=pre_operatory.id)
+        pre_operatory = _pre_operatory_queryset().get(id=pre_operatory.id)
         return Response(
             PreOperatorySerializer(
                 pre_operatory,
@@ -200,8 +257,7 @@ class PreOperatoryMeAPIView(APIView):
             return Response(status=status.HTTP_403_FORBIDDEN)
 
         pre_operatory = (
-            PreOperatory.objects.filter(patient_id=user.id)
-            .prefetch_related("files")
+            _pre_operatory_queryset().filter(patient_id=user.id)
             .order_by("-updated_at")
             .first()
         )
@@ -225,15 +281,26 @@ class PreOperatoryDetailAPIView(APIView):
 
     def put(self, request, pre_operatory_id):
         user = request.user
-        if user.role != GoKlinikUser.RoleChoices.PATIENT:
-            return Response(status=status.HTTP_403_FORBIDDEN)
+        if user.role == GoKlinikUser.RoleChoices.PATIENT:
+            return self._update_as_patient(
+                request=request,
+                pre_operatory_id=pre_operatory_id,
+            )
+        if _is_clinic_admin(user):
+            return self._update_as_clinic_admin(
+                request=request,
+                pre_operatory_id=pre_operatory_id,
+            )
+        return Response(status=status.HTTP_403_FORBIDDEN)
 
+    def _update_as_patient(self, *, request, pre_operatory_id):
+        user = request.user
         pre_operatory = (
-            PreOperatory.objects.filter(
+            _pre_operatory_queryset()
+            .filter(
                 id=pre_operatory_id,
                 patient_id=user.id,
             )
-            .prefetch_related("files")
             .first()
         )
         if not pre_operatory:
@@ -291,7 +358,86 @@ class PreOperatoryDetailAPIView(APIView):
                     type=PreOperatoryFile.FileTypeChoices.DOCUMENT,
                 )
 
-        pre_operatory = PreOperatory.objects.prefetch_related("files").get(id=pre_operatory.id)
+        pre_operatory = _pre_operatory_queryset().get(id=pre_operatory.id)
+        return Response(
+            PreOperatorySerializer(
+                pre_operatory,
+                context={"request": request},
+            ).data,
+            status=status.HTTP_200_OK,
+        )
+
+    def _update_as_clinic_admin(self, *, request, pre_operatory_id):
+        user = request.user
+        if not user.tenant_id:
+            return Response(
+                {"detail": "Clinic tenant not found."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        pre_operatory = (
+            _pre_operatory_queryset()
+            .filter(
+                id=pre_operatory_id,
+                tenant_id=user.tenant_id,
+            )
+            .first()
+        )
+        if not pre_operatory:
+            return Response(
+                {"detail": "Pre-operatory not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        serializer = PreOperatoryAdminUpdateSerializer(
+            data=request.data,
+            partial=True,
+        )
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        assigned_doctor = None
+        has_assigned_doctor_update = "assigned_doctor" in data
+        if has_assigned_doctor_update and data["assigned_doctor"] is not None:
+            assigned_doctor = (
+                GoKlinikUser.objects.filter(
+                    id=data["assigned_doctor"],
+                    tenant_id=user.tenant_id,
+                    role=GoKlinikUser.RoleChoices.SURGEON,
+                    is_active=True,
+                )
+                .only("id")
+                .first()
+            )
+            if not assigned_doctor:
+                return Response(
+                    {"assigned_doctor": ["Doctor not found for this tenant."]},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        with transaction.atomic():
+            if "status" in data:
+                pre_operatory.status = data["status"]
+            if "notes" in data:
+                pre_operatory.notes = (data.get("notes") or "").strip()
+            if has_assigned_doctor_update:
+                pre_operatory.assigned_doctor = assigned_doctor
+
+            pre_operatory.save()
+
+            if has_assigned_doctor_update and pre_operatory.assigned_doctor_id:
+                patient = Patient.objects.filter(id=pre_operatory.patient_id).first()
+                if patient:
+                    DoctorPatientAssignment.objects.update_or_create(
+                        patient=patient,
+                        defaults={
+                            "doctor": pre_operatory.assigned_doctor,
+                            "assigned_at": timezone.now(),
+                            "assigned_by": user,
+                        },
+                    )
+
+        pre_operatory = _pre_operatory_queryset().get(id=pre_operatory.id)
         return Response(
             PreOperatorySerializer(
                 pre_operatory,
@@ -319,8 +465,7 @@ class PreOperatoryPatientAPIView(APIView):
             return Response(status=status.HTTP_403_FORBIDDEN)
 
         pre_operatory = (
-            PreOperatory.objects.filter(patient_id=patient.id)
-            .prefetch_related("files")
+            _pre_operatory_queryset().filter(patient_id=patient.id)
             .order_by("-updated_at")
             .first()
         )

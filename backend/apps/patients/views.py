@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from django.db.models import Q
+from django.db.models import Exists, OuterRef, Q
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.pagination import PageNumberPagination
@@ -22,6 +22,13 @@ from .serializers import (
     PatientListSerializer,
 )
 
+ACTIVE_APPOINTMENT_STATUSES = [
+    Appointment.StatusChoices.PENDING,
+    Appointment.StatusChoices.CONFIRMED,
+    Appointment.StatusChoices.IN_PROGRESS,
+    Appointment.StatusChoices.RESCHEDULED,
+]
+
 
 class PatientPagination(PageNumberPagination):
     page_size = 25
@@ -38,6 +45,20 @@ class PatientViewSet(viewsets.ModelViewSet):
             "doctor_assignment",
             "doctor_assignment__doctor",
             "doctor_assignment__assigned_by",
+        ).prefetch_related("pre_operatory_records").annotate(
+            has_active_appointment=Exists(
+                Appointment.objects.filter(
+                    patient_id=OuterRef("pk"),
+                    status__in=ACTIVE_APPOINTMENT_STATUSES,
+                )
+            ),
+            has_completed_surgery=Exists(
+                Appointment.objects.filter(
+                    patient_id=OuterRef("pk"),
+                    appointment_type=Appointment.AppointmentTypeChoices.SURGERY,
+                    status=Appointment.StatusChoices.COMPLETED,
+                )
+            ),
         ).all()
         user = self.request.user
         if not getattr(user, "is_authenticated", False) or not hasattr(user, "role"):
@@ -120,12 +141,7 @@ class PatientViewSet(viewsets.ModelViewSet):
                 Q(doctor_assignment__doctor_id=user.id)
                 | Q(
                     appointments__professional_id=user.id,
-                    appointments__status__in=[
-                        Appointment.StatusChoices.PENDING,
-                        Appointment.StatusChoices.CONFIRMED,
-                        Appointment.StatusChoices.IN_PROGRESS,
-                        Appointment.StatusChoices.RESCHEDULED,
-                    ],
+                    appointments__status__in=ACTIVE_APPOINTMENT_STATUSES,
                 )
             ).distinct()
         elif user.role == GoKlinikUser.RoleChoices.NURSE:

@@ -189,6 +189,14 @@ class HomeScreen extends ConsumerWidget {
                   icon: Icons.assignment_turned_in_outlined,
                   onTap: () => context.push('/pre-operatory')),
               _QuickAction(
+                  title: t('quick_postop'),
+                  icon: Icons.health_and_safety_outlined,
+                  onTap: () => context.go('/postop')),
+              _QuickAction(
+                  title: t('quick_my_medical_record'),
+                  icon: Icons.folder_open_outlined,
+                  onTap: () => context.push('/medical-records')),
+              _QuickAction(
                   title: t('quick_contact_clinic'),
                   icon: Icons.chat_bubble_outline,
                   onTap: () => context.go('/chat')),
@@ -196,14 +204,6 @@ class HomeScreen extends ConsumerWidget {
                   title: t('quick_refer_friends'),
                   icon: Icons.share,
                   onTap: () => context.push('/referrals')),
-              _QuickAction(
-                  title: t('quick_my_medical_record'),
-                  icon: Icons.folder_open_outlined,
-                  onTap: () => context.push('/medical-records')),
-              _QuickAction(
-                  title: t('quick_results'),
-                  icon: Icons.trending_up,
-                  onTap: () => context.push('/financial')),
             ],
           ),
           const SizedBox(height: 16),

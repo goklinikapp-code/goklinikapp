@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import uuid
 from collections import defaultdict
+from datetime import timedelta
+from pathlib import Path
 
+from django.conf import settings
+from django.core.files.storage import FileSystemStorage
 from django.core.files.storage import default_storage
 from django.db import models
 from django.utils import timezone
@@ -18,10 +22,12 @@ from apps.users.models import GoKlinikUser
 
 from .models import (
     EvolutionPhoto,
+    PostOperatoryCheckin,
     PostOpChecklist,
     PostOpJourney,
     PostOpProtocol,
     UrgentMedicalRequest,
+    UrgentTicket,
 )
 from .serializers import (
     AdminJourneySerializer,
@@ -29,10 +35,19 @@ from .serializers import (
     EvolutionPhotoCreateSerializer,
     EvolutionPhotoSerializer,
     MyJourneyResponseSerializer,
+    PostOperatoryAdminDetailSerializer,
+    PostOperatoryAdminListItemSerializer,
+    PostOperatoryCheckinCreateSerializer,
+    PostOperatoryCheckinSerializer,
+    PostOperatoryChecklistUpdateSerializer,
+    PostOperatoryPhotoCreateSerializer,
     PostOpChecklistSerializer,
     UrgentMedicalRequestCreateSerializer,
     UrgentMedicalRequestReplySerializer,
     UrgentMedicalRequestSerializer,
+    UrgentTicketCreateSerializer,
+    UrgentTicketSerializer,
+    UrgentTicketStatusUpdateSerializer,
 )
 
 STAFF_ROLES = {
@@ -40,10 +55,73 @@ STAFF_ROLES = {
     GoKlinikUser.RoleChoices.SURGEON,
     GoKlinikUser.RoleChoices.NURSE,
 }
+URGENT_TICKET_DUPLICATE_WINDOW = timedelta(minutes=5)
+ALLOWED_URGENT_IMAGE_EXTENSIONS = {
+    ".jpg",
+    ".jpeg",
+    ".png",
+    ".webp",
+    ".heic",
+    ".heif",
+    ".gif",
+    ".bmp",
+    ".tif",
+    ".tiff",
+}
 
 
-def _appointment_payload(journey: PostOpJourney) -> dict:
+def _is_clinic_admin(user: GoKlinikUser) -> bool:
+    return user.role == GoKlinikUser.RoleChoices.CLINIC_MASTER
+
+
+def _can_view_postop_panel(user: GoKlinikUser) -> bool:
+    return user.role in {
+        GoKlinikUser.RoleChoices.CLINIC_MASTER,
+        GoKlinikUser.RoleChoices.SURGEON,
+    }
+
+
+def _days_without_checkin(
+    *,
+    journey: PostOpJourney,
+    last_checkin: PostOperatoryCheckin | None,
+) -> int:
+    if not last_checkin:
+        return max(journey.current_day, 0)
+    return max(journey.current_day - last_checkin.day, 0)
+
+
+def _build_alert_state(
+    *,
+    journey: PostOpJourney,
+    last_checkin: PostOperatoryCheckin | None,
+) -> dict:
+    days_without = _days_without_checkin(journey=journey, last_checkin=last_checkin)
+    pain_alert = bool(last_checkin and last_checkin.pain_level >= 8)
+    fever_alert = bool(last_checkin and last_checkin.has_fever)
+    has_checkin_today = bool(last_checkin and last_checkin.day >= journey.current_day)
+    missing_checkin_today = not has_checkin_today
+
+    if pain_alert or fever_alert:
+        clinical_status = "risk"
+    elif missing_checkin_today:
+        clinical_status = "delayed"
+    else:
+        clinical_status = "ok"
+
+    has_alert = clinical_status == "risk"
+
+    return {
+        "has_alert": has_alert,
+        "clinical_status": clinical_status,
+        "days_without_checkin": days_without,
+    }
+
+
+def _appointment_payload(journey: PostOpJourney) -> dict | None:
     appointment = journey.appointment
+    if not appointment:
+        return None
     return {
         "id": appointment.id,
         "appointment_type": appointment.appointment_type,
@@ -51,6 +129,61 @@ def _appointment_payload(journey: PostOpJourney) -> dict:
         "appointment_time": appointment.appointment_time,
         "professional_name": appointment.professional.full_name if appointment.professional else "",
     }
+
+
+def _refresh_journey_current_day(journey: PostOpJourney, *, persist: bool = False) -> int:
+    current_day = journey.calculate_current_day()
+    if journey.current_day != current_day:
+        journey.current_day = current_day
+        if persist:
+            journey.save(update_fields=["current_day", "updated_at"])
+    return journey.current_day
+
+
+def _active_journey_for_patient(patient_id: str) -> PostOpJourney | None:
+    journey = (
+        PostOpJourney.objects.select_related(
+            "appointment",
+            "specialty",
+            "appointment__professional",
+            "patient",
+        )
+        .prefetch_related("checklist_items", "checkins", "photos")
+        .filter(
+            patient_id=patient_id,
+            status=PostOpJourney.StatusChoices.ACTIVE,
+            appointment__status=Appointment.StatusChoices.COMPLETED,
+            appointment__appointment_type=Appointment.AppointmentTypeChoices.SURGERY,
+        )
+        .order_by("-surgery_date")
+        .first()
+    )
+    if journey:
+        _refresh_journey_current_day(journey, persist=True)
+    return journey
+
+
+def _resolve_patient_journey_for_write(
+    *,
+    user: GoKlinikUser,
+    journey_id: str | None = None,
+) -> PostOpJourney | None:
+    if journey_id:
+        journey = (
+            PostOpJourney.objects.select_related("patient")
+            .filter(
+                id=journey_id,
+                patient_id=user.id,
+                status=PostOpJourney.StatusChoices.ACTIVE,
+            )
+            .first()
+        )
+    else:
+        journey = _active_journey_for_patient(str(user.id))
+
+    if journey:
+        _refresh_journey_current_day(journey, persist=True)
+    return journey
 
 
 def _build_protocol_payload(journey: PostOpJourney) -> list[dict]:
@@ -81,10 +214,53 @@ def _build_protocol_payload(journey: PostOpJourney) -> list[dict]:
                 "description": protocol.description,
                 "is_milestone": protocol.is_milestone,
                 "status": day_status,
-                "checklist_items": PostOpChecklistSerializer(day_items, many=True).data,
+                "checklist_items": day_items,
             }
         )
     return payload
+
+
+def _build_history_payload(
+    *,
+    journey: PostOpJourney,
+    checklist_items: list[PostOpChecklist],
+    checkins: list[PostOperatoryCheckin],
+) -> list[dict]:
+    checklist_by_day: dict[int, list[PostOpChecklist]] = defaultdict(list)
+    for item in checklist_items:
+        checklist_by_day[item.day_number].append(item)
+
+    checkin_by_day: dict[int, PostOperatoryCheckin] = {}
+    for checkin in checkins:
+        checkin_by_day.setdefault(checkin.day, checkin)
+
+    history: list[dict] = []
+    current_day = journey.current_day
+    for day in range(1, current_day + 1):
+        checkin = checkin_by_day.get(day)
+        day_checklist = checklist_by_day.get(day, [])
+        completed = bool(day_checklist) and all(item.is_completed for item in day_checklist)
+
+        if checkin:
+            state = "enviado"
+        elif completed:
+            state = "ok"
+        elif day < current_day:
+            state = "pendente"
+        else:
+            state = "hoje"
+
+        history.append(
+            {
+                "day": day,
+                "title": f"Dia {day}",
+                "status": state,
+                "has_checkin": checkin is not None,
+                "checklist_completed": completed,
+            }
+        )
+
+    return history
 
 
 def _resolve_professional_for_urgent_request(patient) -> GoKlinikUser | None:
@@ -116,6 +292,82 @@ def _resolve_professional_for_urgent_request(patient) -> GoKlinikUser | None:
     )
 
 
+def _save_postop_upload(*, upload, journey_id, request) -> str:
+    safe_name = Path(getattr(upload, "name", "") or "upload.bin").name
+    filename = f"{uuid.uuid4()}_{safe_name}"
+    storage_path = f"post_op_photos/{journey_id}/{filename}"
+
+    try:
+        stored_path = default_storage.save(storage_path, upload)
+        file_url = default_storage.url(stored_path)
+    except Exception:
+        media_root = Path(getattr(settings, "MEDIA_ROOT", Path.cwd()))
+        base_url = getattr(settings, "MEDIA_URL", "/media/")
+        fallback_storage = FileSystemStorage(
+            location=str(media_root),
+            base_url=base_url,
+        )
+        if hasattr(upload, "seek"):
+            upload.seek(0)
+        stored_path = fallback_storage.save(storage_path, upload)
+        file_url = fallback_storage.url(stored_path)
+
+    return absolute_media_url(file_url, request=request)
+
+
+def _validate_urgent_ticket_upload(upload) -> None:
+    content_type = str(getattr(upload, "content_type", "") or "").lower()
+    name = str(getattr(upload, "name", "") or "").strip()
+    extension = Path(name).suffix.lower()
+
+    if content_type.startswith("image/"):
+        return
+    if extension in ALLOWED_URGENT_IMAGE_EXTENSIONS:
+        return
+
+    raise ValueError("Image file is required.")
+
+
+def _extract_urgent_ticket_uploads(request) -> list:
+    uploads = []
+
+    direct = request.FILES.get("image")
+    if direct is not None:
+        uploads.append(direct)
+
+    uploads.extend(request.FILES.getlist("images"))
+
+    deduped = []
+    seen = set()
+    for upload in uploads:
+        upload_id = id(upload)
+        if upload_id in seen:
+            continue
+        seen.add(upload_id)
+        deduped.append(upload)
+    return deduped
+
+
+def _resolve_doctor_for_urgent_ticket(*, patient: Patient, journey: PostOpJourney) -> GoKlinikUser | None:
+    assignment = (
+        DoctorPatientAssignment.objects.select_related("doctor")
+        .filter(patient_id=patient.id)
+        .first()
+    )
+    if assignment and assignment.doctor and assignment.doctor.is_active:
+        return assignment.doctor
+
+    professional = getattr(journey.appointment, "professional", None)
+    if (
+        professional
+        and professional.role == GoKlinikUser.RoleChoices.SURGEON
+        and professional.is_active
+    ):
+        return professional
+
+    return None
+
+
 class MyJourneyAPIView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -124,20 +376,25 @@ class MyJourneyAPIView(APIView):
         if user.role != GoKlinikUser.RoleChoices.PATIENT:
             return Response(status=status.HTTP_403_FORBIDDEN)
 
-        journey = (
-            PostOpJourney.objects.select_related("appointment", "specialty", "appointment__professional")
-            .filter(
-                patient_id=user.id,
-                status=PostOpJourney.StatusChoices.ACTIVE,
-            )
-            .order_by("-surgery_date")
-            .first()
-        )
+        journey = _active_journey_for_patient(str(user.id))
         if not journey:
             return Response(
                 {"detail": "No active post-op journey found for this patient."},
                 status=status.HTTP_404_NOT_FOUND,
             )
+
+        checklist = list(
+            PostOpChecklist.objects.filter(journey=journey).order_by("day_number", "id"),
+        )
+        checkins = list(
+            PostOperatoryCheckin.objects.filter(journey=journey).order_by("-day", "-created_at"),
+        )
+        photos = list(
+            EvolutionPhoto.objects.filter(journey=journey).order_by("-uploaded_at"),
+        )
+
+        today_checklist = [item for item in checklist if item.day_number == journey.current_day]
+        today_checkin = next((item for item in checkins if item.day == journey.current_day), None)
 
         specialty_payload = {
             "id": journey.specialty_id,
@@ -145,15 +402,29 @@ class MyJourneyAPIView(APIView):
         }
         response_data = {
             "id": journey.id,
+            "clinic": journey.clinic_id,
             "appointment": _appointment_payload(journey),
             "specialty": specialty_payload,
             "surgery_date": journey.surgery_date,
+            "start_date": journey.start_date,
+            "end_date": journey.end_date,
+            "total_days": journey.total_days,
             "current_day": journey.current_day,
             "status": journey.status,
             "protocol": _build_protocol_payload(journey),
+            "today_checklist": today_checklist,
+            "checkin_submitted_today": today_checkin is not None,
+            "today_checkin": today_checkin,
+            "checkins": checkins,
+            "photos": photos,
+            "history": _build_history_payload(
+                journey=journey,
+                checklist_items=checklist,
+                checkins=checkins,
+            ),
         }
 
-        serializer = MyJourneyResponseSerializer(response_data)
+        serializer = MyJourneyResponseSerializer(response_data, context={"request": request})
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 
@@ -184,6 +455,75 @@ class CompleteChecklistItemAPIView(APIView):
         return Response(PostOpChecklistSerializer(item).data, status=status.HTTP_200_OK)
 
 
+class PostOperatoryChecklistUpdateAPIView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def put(self, request, checklist_id):
+        user = request.user
+        if user.role != GoKlinikUser.RoleChoices.PATIENT:
+            return Response(status=status.HTTP_403_FORBIDDEN)
+
+        item = (
+            PostOpChecklist.objects.select_related("journey")
+            .filter(id=checklist_id, journey__patient_id=user.id)
+            .first()
+        )
+        if not item:
+            return Response({"detail": "Checklist item not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        serializer = PostOperatoryChecklistUpdateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        completed = serializer.validated_data["completed"]
+        item.is_completed = completed
+        item.completed_at = timezone.now() if completed else None
+        item.save(update_fields=["is_completed", "completed_at"])
+
+        return Response(PostOpChecklistSerializer(item).data, status=status.HTTP_200_OK)
+
+
+class PostOperatoryCheckinCreateAPIView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        user = request.user
+        if user.role != GoKlinikUser.RoleChoices.PATIENT:
+            return Response(status=status.HTTP_403_FORBIDDEN)
+
+        serializer = PostOperatoryCheckinCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        payload = serializer.validated_data
+
+        journey = _resolve_patient_journey_for_write(
+            user=user,
+            journey_id=str(payload.get("journey_id")) if payload.get("journey_id") else None,
+        )
+        if not journey:
+            return Response({"detail": "Active journey not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        day = journey.current_day
+        checkin, created = PostOperatoryCheckin.objects.get_or_create(
+            journey=journey,
+            day=day,
+            defaults={
+                "pain_level": payload["pain_level"],
+                "has_fever": payload.get("has_fever", False),
+                "notes": (payload.get("notes") or "").strip(),
+            },
+        )
+
+        if not created:
+            return Response(
+                {"detail": "Check-in for today has already been submitted."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return Response(
+            PostOperatoryCheckinSerializer(checkin).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+
 class EvolutionPhotoCreateAPIView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -211,14 +551,55 @@ class EvolutionPhotoCreateAPIView(APIView):
             return Response(status=status.HTTP_403_FORBIDDEN)
 
         upload = payload["photo"]
-        filename = f"{uuid.uuid4()}_{upload.name}"
-        storage_path = f"post_op_photos/{journey.id}/{filename}"
-        stored_path = default_storage.save(storage_path, upload)
-        photo_url = absolute_media_url(default_storage.url(stored_path), request=request)
+        photo_url = _save_postop_upload(
+            upload=upload,
+            journey_id=journey.id,
+            request=request,
+        )
 
         photo = EvolutionPhoto.objects.create(
             journey=journey,
             day_number=payload["day_number"],
+            photo_url=photo_url,
+            is_anonymous=payload.get("is_anonymous", False),
+        )
+        return Response(
+            EvolutionPhotoSerializer(photo, context={"request": request}).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class PostOperatoryPhotoCreateAPIView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        user = request.user
+        if user.role != GoKlinikUser.RoleChoices.PATIENT:
+            return Response(status=status.HTTP_403_FORBIDDEN)
+
+        serializer = PostOperatoryPhotoCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        payload = serializer.validated_data
+
+        journey = _resolve_patient_journey_for_write(
+            user=user,
+            journey_id=str(payload.get("journey_id")) if payload.get("journey_id") else None,
+        )
+        if not journey:
+            return Response({"detail": "Active journey not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        day_number = payload.get("day") or journey.current_day
+        upload = payload["image"]
+
+        photo_url = _save_postop_upload(
+            upload=upload,
+            journey_id=journey.id,
+            request=request,
+        )
+
+        photo = EvolutionPhoto.objects.create(
+            journey=journey,
+            day_number=day_number,
             photo_url=photo_url,
             is_anonymous=payload.get("is_anonymous", False),
         )
@@ -257,6 +638,224 @@ class EvolutionPhotoListAPIView(APIView):
         )
 
 
+class PostOperatoryAdminListAPIView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        if not _can_view_postop_panel(user):
+            return Response(status=status.HTTP_403_FORBIDDEN)
+        if not user.tenant_id:
+            return Response(
+                {"detail": "Clinic tenant not found."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        status_filter = (request.query_params.get("status") or "").strip()
+        valid_statuses = set(PostOpJourney.StatusChoices.values)
+        if status_filter and status_filter not in valid_statuses:
+            return Response(
+                {"status": ["Invalid status value."]},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        queryset = (
+            PostOpJourney.objects.select_related("patient")
+            .prefetch_related("checkins")
+            .filter(patient__tenant_id=user.tenant_id)
+            .filter(
+                appointment__status=Appointment.StatusChoices.COMPLETED,
+                appointment__appointment_type=Appointment.AppointmentTypeChoices.SURGERY,
+            )
+            .order_by("patient_id", "-surgery_date", "-created_at")
+        )
+        if user.role == GoKlinikUser.RoleChoices.SURGEON:
+            queryset = queryset.filter(
+                models.Q(patient__doctor_assignment__doctor_id=user.id)
+                | models.Q(appointment__professional_id=user.id)
+            ).distinct()
+        if status_filter:
+            queryset = queryset.filter(status=status_filter)
+
+        journey_ids = list(queryset.values_list("id", flat=True))
+        open_ticket_counts_by_patient: dict[str, int] = {}
+        if journey_ids:
+            open_counts = (
+                UrgentTicket.objects.filter(
+                    post_op_journey_id__in=journey_ids,
+                    status=UrgentTicket.StatusChoices.OPEN,
+                )
+                .values("patient_id")
+                .annotate(total=models.Count("id"))
+            )
+            open_ticket_counts_by_patient = {
+                str(item["patient_id"]): int(item["total"])
+                for item in open_counts
+            }
+
+        seen_patients: set[str] = set()
+        items: list[dict] = []
+
+        for journey in queryset:
+            patient_key = str(journey.patient_id)
+            if patient_key in seen_patients:
+                continue
+            seen_patients.add(patient_key)
+
+            if journey.status == PostOpJourney.StatusChoices.ACTIVE:
+                _refresh_journey_current_day(journey, persist=True)
+
+            last_checkin = (
+                PostOperatoryCheckin.objects.filter(journey_id=journey.id)
+                .order_by("-day", "-created_at")
+                .first()
+            )
+            alert_state = _build_alert_state(journey=journey, last_checkin=last_checkin)
+            open_ticket_count = open_ticket_counts_by_patient.get(patient_key, 0)
+
+            items.append(
+                {
+                    "patient_name": journey.patient.full_name,
+                    "patient_id": journey.patient_id,
+                    "patient_avatar_url": absolute_media_url(
+                        journey.patient.avatar_url,
+                        request=request,
+                    ),
+                    "status": journey.status,
+                    "current_day": journey.current_day,
+                    "total_days": journey.total_days,
+                    "last_checkin_date": last_checkin.created_at if last_checkin else None,
+                    "last_pain_level": last_checkin.pain_level if last_checkin else None,
+                    "has_alert": alert_state["has_alert"],
+                    "clinical_status": alert_state["clinical_status"],
+                    "has_open_urgent_ticket": open_ticket_count > 0,
+                    "open_urgent_ticket_count": open_ticket_count,
+                }
+            )
+
+        serializer = PostOperatoryAdminListItemSerializer(items, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+class PostOperatoryAdminDetailAPIView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, patient_id):
+        user = request.user
+        if not _can_view_postop_panel(user):
+            return Response(status=status.HTTP_403_FORBIDDEN)
+        if not user.tenant_id:
+            return Response(
+                {"detail": "Clinic tenant not found."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        queryset = (
+            PostOpJourney.objects.select_related("patient")
+            .prefetch_related("checklist_items", "checkins", "photos")
+            .filter(
+                patient_id=patient_id,
+                patient__tenant_id=user.tenant_id,
+            )
+            .filter(
+                appointment__status=Appointment.StatusChoices.COMPLETED,
+                appointment__appointment_type=Appointment.AppointmentTypeChoices.SURGERY,
+            )
+            .order_by("-surgery_date", "-created_at")
+        )
+        if user.role == GoKlinikUser.RoleChoices.SURGEON:
+            queryset = queryset.filter(
+                models.Q(patient__doctor_assignment__doctor_id=user.id)
+                | models.Q(appointment__professional_id=user.id)
+            ).distinct()
+
+        journey = queryset.first()
+        if not journey:
+            return Response(
+                {"detail": "Post-operatory journey not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        if journey.status == PostOpJourney.StatusChoices.ACTIVE:
+            _refresh_journey_current_day(journey, persist=True)
+
+        checkins = list(
+            PostOperatoryCheckin.objects.filter(journey_id=journey.id).order_by("-day", "-created_at"),
+        )
+        checklist = list(
+            PostOpChecklist.objects.filter(journey_id=journey.id).order_by("day_number", "id"),
+        )
+        photos = list(
+            EvolutionPhoto.objects.filter(journey_id=journey.id).order_by("-uploaded_at"),
+        )
+        urgent_tickets = list(
+            UrgentTicket.objects.select_related("patient", "doctor")
+            .filter(post_op_journey_id=journey.id)
+            .order_by("-created_at")
+        )
+
+        checklist_by_day_map: dict[int, list[PostOpChecklist]] = defaultdict(list)
+        for item in checklist:
+            checklist_by_day_map[item.day_number].append(item)
+
+        checklist_by_day = [
+            {"day": day, "items": items}
+            for day, items in sorted(checklist_by_day_map.items(), key=lambda pair: pair[0])
+        ]
+
+        observations = [
+            {
+                "day": item.day,
+                "notes": (item.notes or "").strip(),
+                "created_at": item.created_at,
+            }
+            for item in checkins
+            if (item.notes or "").strip()
+        ]
+
+        last_checkin = checkins[0] if checkins else None
+        alert_state = _build_alert_state(journey=journey, last_checkin=last_checkin)
+        open_urgent_ticket_count = sum(
+            1 for item in urgent_tickets if item.status == UrgentTicket.StatusChoices.OPEN
+        )
+
+        payload = {
+            "journey_id": journey.id,
+            "patient_id": journey.patient_id,
+            "patient_name": journey.patient.full_name,
+            "patient_avatar_url": absolute_media_url(
+                journey.patient.avatar_url,
+                request=request,
+            ),
+            "status": journey.status,
+            "current_day": journey.current_day,
+            "total_days": journey.total_days,
+            "surgery_date": journey.surgery_date,
+            "start_date": journey.start_date,
+            "end_date": journey.end_date,
+            "has_alert": alert_state["has_alert"],
+            "clinical_status": alert_state["clinical_status"],
+            "days_without_checkin": alert_state["days_without_checkin"],
+            "last_checkin_date": last_checkin.created_at if last_checkin else None,
+            "last_pain_level": last_checkin.pain_level if last_checkin else None,
+            "checkins": checkins,
+            "checklist_by_day": checklist_by_day,
+            "photos": photos,
+            "observations": observations,
+            "has_open_urgent_ticket": open_urgent_ticket_count > 0,
+            "urgent_tickets": UrgentTicketSerializer(
+                urgent_tickets,
+                many=True,
+                context={"request": request},
+            ).data,
+        }
+        serializer = PostOperatoryAdminDetailSerializer(
+            payload,
+            context={"request": request},
+        )
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+
 class AdminJourneysAPIView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -270,6 +869,8 @@ class AdminJourneysAPIView(APIView):
             .filter(
                 status=PostOpJourney.StatusChoices.ACTIVE,
                 patient__tenant_id=user.tenant_id,
+                appointment__status=Appointment.StatusChoices.COMPLETED,
+                appointment__appointment_type=Appointment.AppointmentTypeChoices.SURGERY,
             )
             .order_by("-surgery_date")
         )
@@ -356,6 +957,172 @@ class CareCenterAPIView(APIView):
         }
         serializer = CareCenterResponseSerializer(data)
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+class UrgentTicketListCreateAPIView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        queryset = UrgentTicket.objects.select_related(
+            "patient",
+            "doctor",
+            "post_op_journey",
+        )
+
+        if user.role == GoKlinikUser.RoleChoices.PATIENT:
+            queryset = queryset.filter(patient_id=user.id)
+        elif user.role == GoKlinikUser.RoleChoices.CLINIC_MASTER:
+            if not user.tenant_id:
+                return Response(
+                    {"detail": "Clinic tenant not found."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            queryset = queryset.filter(clinic_id=user.tenant_id)
+        elif user.role == GoKlinikUser.RoleChoices.SURGEON:
+            if not user.tenant_id:
+                return Response(
+                    {"detail": "Clinic tenant not found."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            queryset = queryset.filter(clinic_id=user.tenant_id, doctor_id=user.id)
+        else:
+            return Response(status=status.HTTP_403_FORBIDDEN)
+
+        return Response(
+            UrgentTicketSerializer(
+                queryset.order_by("-created_at"),
+                many=True,
+                context={"request": request},
+            ).data,
+            status=status.HTTP_200_OK,
+        )
+
+    def post(self, request):
+        user = request.user
+        if user.role != GoKlinikUser.RoleChoices.PATIENT:
+            return Response(status=status.HTTP_403_FORBIDDEN)
+
+        patient = Patient.objects.select_related("tenant").filter(id=user.id).first()
+        if not patient or not patient.tenant_id:
+            return Response(
+                {"detail": "Patient tenant not found."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        journey = _active_journey_for_patient(str(patient.id))
+        if not journey:
+            return Response(
+                {"detail": "Active post-op journey is required to open an urgent ticket."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        payload_serializer = UrgentTicketCreateSerializer(data=request.data)
+        payload_serializer.is_valid(raise_exception=True)
+
+        doctor = _resolve_doctor_for_urgent_ticket(patient=patient, journey=journey)
+        if not doctor:
+            return Response(
+                {"detail": "Assigned doctor not found for this patient."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        duplicate_cutoff = timezone.now() - URGENT_TICKET_DUPLICATE_WINDOW
+        has_duplicate = UrgentTicket.objects.filter(
+            patient_id=patient.id,
+            post_op_journey_id=journey.id,
+            status=UrgentTicket.StatusChoices.OPEN,
+            created_at__gte=duplicate_cutoff,
+        ).exists()
+        if has_duplicate:
+            return Response(
+                {"detail": "Já existe um ticket urgente aberto criado recentemente."},
+                status=status.HTTP_429_TOO_MANY_REQUESTS,
+            )
+
+        uploads = _extract_urgent_ticket_uploads(request)
+        image_urls: list[str] = []
+        for upload in uploads:
+            try:
+                _validate_urgent_ticket_upload(upload)
+            except ValueError as exc:
+                return Response({"images": [str(exc)]}, status=status.HTTP_400_BAD_REQUEST)
+
+            image_urls.append(
+                _save_postop_upload(
+                    upload=upload,
+                    journey_id=journey.id,
+                    request=request,
+                )
+            )
+
+        ticket = UrgentTicket.objects.create(
+            patient_id=patient.id,
+            doctor_id=doctor.id,
+            clinic_id=patient.tenant_id,
+            post_op_journey_id=journey.id,
+            message=payload_serializer.validated_data["message"],
+            images=image_urls,
+            severity=payload_serializer.validated_data.get(
+                "severity",
+                UrgentTicket.SeverityChoices.HIGH,
+            ),
+            status=UrgentTicket.StatusChoices.OPEN,
+        )
+
+        return Response(
+            UrgentTicketSerializer(ticket, context={"request": request}).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class UrgentTicketStatusUpdateAPIView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def patch(self, request, ticket_id):
+        user = request.user
+        if user.role not in {
+            GoKlinikUser.RoleChoices.CLINIC_MASTER,
+            GoKlinikUser.RoleChoices.SURGEON,
+        }:
+            return Response(status=status.HTTP_403_FORBIDDEN)
+        if not user.tenant_id:
+            return Response(
+                {"detail": "Clinic tenant not found."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        ticket = (
+            UrgentTicket.objects.select_related("doctor")
+            .filter(id=ticket_id, clinic_id=user.tenant_id)
+            .first()
+        )
+        if not ticket:
+            return Response({"detail": "Urgent ticket not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        if (
+            user.role == GoKlinikUser.RoleChoices.SURGEON
+            and ticket.doctor_id
+            and ticket.doctor_id != user.id
+        ):
+            return Response(status=status.HTTP_403_FORBIDDEN)
+
+        serializer = UrgentTicketStatusUpdateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        ticket.status = serializer.validated_data["status"]
+        update_fields = ["status", "updated_at"]
+
+        if user.role == GoKlinikUser.RoleChoices.SURGEON and not ticket.doctor_id:
+            ticket.doctor_id = user.id
+            update_fields.append("doctor")
+
+        ticket.save(update_fields=update_fields)
+
+        return Response(
+            UrgentTicketSerializer(ticket, context={"request": request}).data,
+            status=status.HTTP_200_OK,
+        )
 
 
 class UrgentMedicalRequestListCreateAPIView(APIView):

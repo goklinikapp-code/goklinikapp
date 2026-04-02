@@ -148,6 +148,7 @@ class AppointmentViewSet(viewsets.ModelViewSet):
             raise PermissionDenied("Role not allowed to update appointments.")
 
         appointment = self.get_object()
+        old_status = appointment.status
         professional = serializer.validated_data.get(
             "professional", appointment.professional
         )
@@ -189,6 +190,11 @@ class AppointmentViewSet(viewsets.ModelViewSet):
                     "assigned_by": user,
                 },
             )
+
+        self._dispatch_status_side_effects(
+            appointment=updated,
+            old_status=old_status,
+        )
 
     @action(detail=False, methods=["get"], url_path="available-slots")
     def available_slots(self, request):
@@ -258,13 +264,10 @@ class AppointmentViewSet(viewsets.ModelViewSet):
 
         appointment.save(update_fields=["status", "internal_notes", "updated_at"])
 
-        if old_status != Appointment.StatusChoices.CONFIRMED and appointment.status == Appointment.StatusChoices.CONFIRMED:
-            try:
-                schedule_appointment_reminder.delay(str(appointment.id))
-                if appointment.appointment_type == Appointment.AppointmentTypeChoices.SURGERY:
-                    create_postop_schedule.delay(str(appointment.id))
-            except Exception as exc:  # noqa: BLE001
-                logger.warning("Unable to dispatch appointment tasks for %s: %s", appointment.id, exc)
+        self._dispatch_status_side_effects(
+            appointment=appointment,
+            old_status=old_status,
+        )
 
         return Response(
             AppointmentSerializer(appointment, context={"request": request}).data
@@ -282,6 +285,33 @@ class AppointmentViewSet(viewsets.ModelViewSet):
         appointment.save(update_fields=["status", "cancellation_reason", "updated_at"])
 
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+    def _dispatch_status_side_effects(
+        self,
+        *,
+        appointment: Appointment,
+        old_status: str,
+    ) -> None:
+        if (
+            old_status != Appointment.StatusChoices.CONFIRMED
+            and appointment.status == Appointment.StatusChoices.CONFIRMED
+        ):
+            try:
+                schedule_appointment_reminder.delay(str(appointment.id))
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Unable to dispatch reminder task for %s: %s", appointment.id, exc)
+
+        if (
+            appointment.appointment_type == Appointment.AppointmentTypeChoices.SURGERY
+            and old_status != Appointment.StatusChoices.COMPLETED
+            and appointment.status == Appointment.StatusChoices.COMPLETED
+        ):
+            try:
+                # Keep this synchronous to guarantee immediate consistency across
+                # admin, doctor and patient experiences right after completion.
+                create_postop_schedule(str(appointment.id))
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Unable to create post-op schedule for %s: %s", appointment.id, exc)
 
     @action(detail=False, methods=["get"], url_path="available-professionals")
     def available_professionals(self, request):

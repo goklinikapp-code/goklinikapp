@@ -5,6 +5,8 @@ import {
   Bell,
   Building2,
   Calendar,
+  ClipboardCheck,
+  HeartPulse,
   Smartphone,
   GraduationCap,
   HelpCircle,
@@ -50,6 +52,8 @@ const clinicNavItems = [
   { icon: Smartphone, labelKey: "nav_app", to: "/app", permission: "app" },
   { icon: LayoutDashboard, labelKey: "nav_dashboard", to: "/dashboard", permission: "dashboard" },
   { icon: Users, labelKey: "nav_patients", to: "/patients", permission: "patients" },
+  { icon: ClipboardCheck, label: "Pré-operatório", to: "/pre-operatory", permission: "patients" },
+  { icon: HeartPulse, label: "Pós-operatório", to: "/post-operatory", permission: "patients" },
   { icon: Calendar, labelKey: "nav_schedule", to: "/schedule", permission: "schedule" },
   { icon: BarChart2, labelKey: "nav_reports", to: "/reports", permission: "reports" },
   { icon: Share2, labelKey: "nav_referrals", to: "/referrals", permission: "referrals" },
@@ -137,6 +141,16 @@ export function AppLayout() {
       : clinicNavItems.filter((item) => {
           if (!user) return false;
           if ((item.to === "/referrals" || item.to === "/tutorials") && user.role !== "clinic_master") {
+            return false;
+          }
+          if (item.to === "/pre-operatory" && user.role !== "clinic_master") {
+            return false;
+          }
+          if (
+            item.to === "/post-operatory" &&
+            user.role !== "clinic_master" &&
+            user.role !== "surgeon"
+          ) {
             return false;
           }
           return hasAccessPermission(

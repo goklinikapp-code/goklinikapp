@@ -136,6 +136,11 @@ class AppointmentSerializer(AbsoluteMediaUrlsSerializerMixin, serializers.ModelS
                 raise serializers.ValidationError(
                     {"patient": "Patient users can only create their own appointments."}
                 )
+        if user.role == GoKlinikUser.RoleChoices.SURGEON:
+            if not professional or str(professional.id) != str(user.id):
+                raise serializers.ValidationError(
+                    {"professional": "Surgeons can only schedule appointments for themselves."}
+                )
 
         tenant_for_location = attrs.get("tenant")
         tenant_addresses = []
@@ -170,6 +175,19 @@ class AppointmentStatusUpdateSerializer(serializers.Serializer):
     def validate(self, attrs):
         appointment: Appointment = self.context["appointment"]
         new_status = attrs["status"]
+
+        # Allow quick-complete flow for surgeries from schedule cards.
+        if (
+            appointment.appointment_type == Appointment.AppointmentTypeChoices.SURGERY
+            and new_status == Appointment.StatusChoices.COMPLETED
+            and appointment.status
+            in {
+                Appointment.StatusChoices.PENDING,
+                Appointment.StatusChoices.CONFIRMED,
+                Appointment.StatusChoices.IN_PROGRESS,
+            }
+        ):
+            return attrs
 
         allowed = ALLOWED_STATUS_TRANSITIONS.get(appointment.status, set())
         if new_status not in allowed and new_status != appointment.status:

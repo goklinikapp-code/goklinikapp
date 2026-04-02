@@ -44,6 +44,9 @@ def create_postop_schedule(appointment_id: str) -> str:
     if surgery_appointment.appointment_type != Appointment.AppointmentTypeChoices.SURGERY:
         return "appointment-not-surgery"
 
+    if surgery_appointment.status != Appointment.StatusChoices.COMPLETED:
+        return "appointment-not-completed"
+
     postop_types = [
         (7, Appointment.AppointmentTypeChoices.POST_OP_7D),
         (30, Appointment.AppointmentTypeChoices.POST_OP_30D),

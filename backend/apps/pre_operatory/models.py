@@ -35,6 +35,15 @@ class PreOperatory(models.Model):
     alcohol = models.BooleanField(default=False)
     height = models.FloatField(null=True, blank=True)
     weight = models.FloatField(null=True, blank=True)
+    notes = models.TextField(blank=True)
+    assigned_doctor = models.ForeignKey(
+        "users.GoKlinikUser",
+        on_delete=models.SET_NULL,
+        related_name="assigned_pre_operatory_records",
+        null=True,
+        blank=True,
+        limit_choices_to={"role": GoKlinikUser.RoleChoices.SURGEON},
+    )
     status = models.CharField(
         max_length=20,
         choices=StatusChoices.choices,

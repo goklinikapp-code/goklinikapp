@@ -33,12 +33,13 @@ import { Input } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { Select } from '@/components/ui/Select'
 import { TextArea } from '@/components/ui/TextArea'
+import { PreOperatoryModal } from '@/components/patients/PreOperatoryModal'
+import { preOperatoryStatusLabel } from '@/components/patients/preOperatoryStatus'
 import { useAuthStore } from '@/stores/authStore'
 import type {
   PatientDocumentRecord,
   PatientMedicationRecord,
   PatientProcedureRecord,
-  PreOperatoryRecord,
   TeamMember,
 } from '@/types'
 import { formatDate } from '@/utils/format'
@@ -166,20 +167,6 @@ function normalizeDocumentPayload(form: DocumentFormState, file: File | null): P
     descricao: form.descricao.trim(),
     tipo_arquivo: form.tipo_arquivo,
     file: file || undefined,
-  }
-}
-
-function preOperatoryStatusLabel(status?: PreOperatoryRecord['status']) {
-  switch (status) {
-    case 'approved':
-      return 'Aprovado'
-    case 'in_review':
-      return 'Em análise'
-    case 'rejected':
-      return 'Rejeitado'
-    case 'pending':
-    default:
-      return 'Pendente'
   }
 }
 
@@ -1075,146 +1062,18 @@ export function PatientMedicalRecordModule({ patientId }: PatientMedicalRecordMo
         </div>
       </Modal>
 
-      <Modal
+      <PreOperatoryModal
         isOpen={openSection === 'pre_operatory'}
         onClose={() => setOpenSection(null)}
-        title="Pré-operatório"
-        className="max-w-5xl"
-      >
-        {preOperatoryQuery.isLoading ? (
-          <p className="text-sm text-slate-500">Carregando pré-operatório...</p>
-        ) : preOperatoryQuery.isError ? (
-          <p className="text-sm text-slate-500">Não foi possível carregar o pré-operatório agora.</p>
-        ) : !preOperatoryRecord ? (
-          <p className="text-sm text-slate-500">Nenhum pré-operatório enviado para este paciente.</p>
-        ) : (
-          <div className="space-y-4">
-            <div className="flex items-center justify-between rounded-card border border-slate-200 bg-slate-50 p-3">
-              <p className="text-sm font-semibold text-night">Status da triagem</p>
-              <Badge
-                className={
-                  preOperatoryRecord.status === 'approved'
-                    ? 'bg-success/15 text-success'
-                    : preOperatoryRecord.status === 'rejected'
-                      ? 'bg-danger/15 text-danger'
-                    : preOperatoryRecord.status === 'in_review'
-                        ? 'bg-amber-100 text-amber-700'
-                        : 'bg-slate-200 text-slate-600'
-                }
-              >
-                {preOperatoryStatusText}
-              </Badge>
-            </div>
-
-            <div className="grid gap-3 md:grid-cols-2">
-              <div className="rounded-card border border-slate-200 bg-slate-50 p-3">
-                <p className="overline">Alergias</p>
-                <p className="text-sm text-slate-700">
-                  {preOperatoryRecord.allergies?.trim() || 'Não informado'}
-                </p>
-              </div>
-              <div className="rounded-card border border-slate-200 bg-slate-50 p-3">
-                <p className="overline">Medicamentos em uso</p>
-                <p className="text-sm text-slate-700">
-                  {preOperatoryRecord.medications?.trim() || 'Não informado'}
-                </p>
-              </div>
-              <div className="rounded-card border border-slate-200 bg-slate-50 p-3">
-                <p className="overline">Cirurgias anteriores</p>
-                <p className="text-sm text-slate-700">
-                  {preOperatoryRecord.previous_surgeries?.trim() || 'Não informado'}
-                </p>
-              </div>
-              <div className="rounded-card border border-slate-200 bg-slate-50 p-3">
-                <p className="overline">Doenças</p>
-                <p className="text-sm text-slate-700">
-                  {preOperatoryRecord.diseases?.trim() || 'Não informado'}
-                </p>
-              </div>
-              <div className="rounded-card border border-slate-200 bg-slate-50 p-3">
-                <p className="overline">Altura</p>
-                <p className="text-sm text-slate-700">
-                  {preOperatoryRecord.height != null ? `${preOperatoryRecord.height} m` : 'Não informado'}
-                </p>
-              </div>
-              <div className="rounded-card border border-slate-200 bg-slate-50 p-3">
-                <p className="overline">Peso</p>
-                <p className="text-sm text-slate-700">
-                  {preOperatoryRecord.weight != null ? `${preOperatoryRecord.weight} kg` : 'Não informado'}
-                </p>
-              </div>
-              <div className="rounded-card border border-slate-200 bg-slate-50 p-3">
-                <p className="overline">Fuma</p>
-                <p className="text-sm text-slate-700">{preOperatoryRecord.smoking ? 'Sim' : 'Não'}</p>
-              </div>
-              <div className="rounded-card border border-slate-200 bg-slate-50 p-3">
-                <p className="overline">Consome álcool</p>
-                <p className="text-sm text-slate-700">{preOperatoryRecord.alcohol ? 'Sim' : 'Não'}</p>
-              </div>
-            </div>
-
-            <div>
-              <p className="mb-2 text-sm font-semibold text-night">Fotos enviadas</p>
-              {(preOperatoryRecord.photos || []).length === 0 ? (
-                <p className="text-sm text-slate-500">Nenhuma foto enviada.</p>
-              ) : (
-                <div className="flex flex-wrap gap-2">
-                  {preOperatoryRecord.photos.map((item) => (
-                    <div
-                      key={item.id}
-                      className="relative h-20 w-20 overflow-hidden rounded-md border border-slate-200"
-                    >
-                      <a href={resolveMediaUrl(item.file_url)} target="_blank" rel="noreferrer">
-                        <img
-                          src={resolveMediaUrl(item.file_url)}
-                          alt="Foto pré-operatória"
-                          className="h-full w-full object-cover"
-                        />
-                      </a>
-                      <button
-                        type="button"
-                        className="absolute right-1 top-1 rounded-full bg-red-600 px-1.5 py-0.5 text-[10px] font-semibold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
-                        onClick={() => handleDeletePreOperatoryImage(item.id)}
-                        disabled={
-                          deletePreOperatoryFileMutation.isPending &&
-                          removingPreOperatoryImageId === item.id
-                        }
-                        title="Remover imagem"
-                      >
-                        {deletePreOperatoryFileMutation.isPending &&
-                        removingPreOperatoryImageId === item.id
-                          ? '...'
-                          : 'X'}
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div>
-              <p className="mb-2 text-sm font-semibold text-night">Documentos enviados</p>
-              {(preOperatoryRecord.documents || []).length === 0 ? (
-                <p className="text-sm text-slate-500">Nenhum documento enviado.</p>
-              ) : (
-                <div className="flex flex-wrap gap-2">
-                  {preOperatoryRecord.documents.map((item, index) => (
-                    <a
-                      key={item.id}
-                      href={resolveMediaUrl(item.file_url)}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="inline-flex items-center rounded-md border border-slate-200 px-3 py-2 text-sm text-primary hover:bg-tealIce"
-                    >
-                      Documento {index + 1}
-                    </a>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-      </Modal>
+        record={preOperatoryRecord}
+        isLoading={preOperatoryQuery.isLoading}
+        isError={preOperatoryQuery.isError}
+        allowPhotoDelete
+        onDeletePhoto={handleDeletePreOperatoryImage}
+        deletingPhotoId={
+          deletePreOperatoryFileMutation.isPending ? removingPreOperatoryImageId : null
+        }
+      />
 
       <Modal
         isOpen={Boolean(deleteImageDialog)}

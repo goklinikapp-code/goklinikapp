@@ -30,6 +30,20 @@ final patientDocumentsProvider =
   return ref.read(patientsRepositoryProvider).getPatientDocuments(patientId);
 });
 
+final patientPreOperatoryProvider =
+    FutureProvider.family<PatientPreOperatoryRecord?, String>(
+        (ref, patientId) async {
+  return ref.read(patientsRepositoryProvider).getPatientPreOperatory(patientId);
+});
+
+final patientPostOperatoryProvider =
+    FutureProvider.family<PatientPostOperatoryRecord?, String>(
+        (ref, patientId) async {
+  return ref
+      .read(patientsRepositoryProvider)
+      .getPatientPostOperatory(patientId);
+});
+
 final patientProntuarioMedicationsProvider =
     FutureProvider.family<List<ProntuarioMedicationItem>, String>(
         (ref, patientId) async {
@@ -67,3 +81,34 @@ final journeyPhotosProvider =
         (ref, journeyId) async {
   return ref.read(patientsRepositoryProvider).getJourneyPhotos(journeyId);
 });
+
+class UrgentTicketsController
+    extends StateNotifier<AsyncValue<List<UrgentTicketItem>>> {
+  UrgentTicketsController(this._ref) : super(const AsyncValue.loading()) {
+    load();
+  }
+
+  final Ref _ref;
+
+  Future<void> load() async {
+    state = await AsyncValue.guard(
+      () => _ref.read(patientsRepositoryProvider).getUrgentTickets(),
+    );
+  }
+
+  Future<void> updateStatus({
+    required String ticketId,
+    required String status,
+  }) async {
+    await _ref.read(patientsRepositoryProvider).updateUrgentTicketStatus(
+          ticketId: ticketId,
+          status: status,
+        );
+    await load();
+  }
+}
+
+final urgentTicketsProvider = StateNotifierProvider<UrgentTicketsController,
+    AsyncValue<List<UrgentTicketItem>>>(
+  (ref) => UrgentTicketsController(ref),
+);

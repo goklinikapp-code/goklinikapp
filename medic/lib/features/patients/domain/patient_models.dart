@@ -9,6 +9,13 @@ enum MedicPatientStatus {
   inactive,
 }
 
+enum PreOperatoryStatus {
+  pending,
+  inReview,
+  approved,
+  rejected,
+}
+
 class AssignedDoctorInfo {
   const AssignedDoctorInfo({
     required this.id,
@@ -49,6 +56,9 @@ class MedicPatient {
     required this.currentMedications,
     required this.notes,
     required this.assignedDoctor,
+    required this.preOperatoryStatus,
+    required this.hasActiveAppointment,
+    required this.hasCompletedSurgery,
   });
 
   final String id;
@@ -66,6 +76,9 @@ class MedicPatient {
   final List<String> currentMedications;
   final String notes;
   final AssignedDoctorInfo? assignedDoctor;
+  final PreOperatoryStatus? preOperatoryStatus;
+  final bool hasActiveAppointment;
+  final bool hasCompletedSurgery;
 
   int? get age {
     if (dateOfBirth == null) return null;
@@ -80,13 +93,25 @@ class MedicPatient {
   factory MedicPatient.fromJson(Map<String, dynamic> json) {
     final notes = (json['notes'] ?? '').toString();
     final rawStatus = (json['status'] ?? 'lead').toString();
+    final preOperatoryStatus = parsePreOperatoryStatus(
+      (json['pre_operatory_status'] ?? '').toString(),
+    );
+    final hasActiveAppointment = json['has_active_appointment'] == true;
+    final hasCompletedSurgery = json['has_completed_surgery'] == true;
+
     return MedicPatient(
       id: (json['id'] ?? '').toString(),
       fullName: (json['full_name'] ?? '').toString(),
       email: (json['email'] ?? '').toString(),
       phone: (json['phone'] ?? '').toString(),
       rawStatus: rawStatus,
-      medicStatus: resolveMedicStatus(rawStatus, notes),
+      medicStatus: resolveMedicStatus(
+        rawStatus,
+        notes,
+        hasActiveAppointment: hasActiveAppointment,
+        hasCompletedSurgery: hasCompletedSurgery,
+        preOperatoryStatus: preOperatoryStatus,
+      ),
       specialtyName: (json['specialty_name'] ?? '').toString(),
       dateJoined: DateTime.tryParse((json['date_joined'] ?? '').toString()),
       dateOfBirth: DateTime.tryParse((json['date_of_birth'] ?? '').toString()),
@@ -101,6 +126,9 @@ class MedicPatient {
               json['assigned_doctor'] as Map<String, dynamic>,
             )
           : null,
+      preOperatoryStatus: preOperatoryStatus,
+      hasActiveAppointment: hasActiveAppointment,
+      hasCompletedSurgery: hasCompletedSurgery,
     );
   }
 
@@ -192,6 +220,351 @@ class EvolutionPhotoItem {
       photoUrl: resolveApiMediaUrl((json['photo_url'] ?? '').toString()),
       uploadedAt: DateTime.tryParse((json['uploaded_at'] ?? '').toString()),
     );
+  }
+}
+
+class PreOperatoryAttachmentItem {
+  const PreOperatoryAttachmentItem({
+    required this.id,
+    required this.fileUrl,
+    required this.type,
+    required this.createdAt,
+  });
+
+  final String id;
+  final String fileUrl;
+  final String type;
+  final DateTime? createdAt;
+
+  bool get isPhoto => type == 'photo';
+  bool get isDocument => type == 'document';
+
+  factory PreOperatoryAttachmentItem.fromJson(Map<String, dynamic> json) {
+    return PreOperatoryAttachmentItem(
+      id: (json['id'] ?? '').toString(),
+      fileUrl: resolveApiMediaUrl((json['file_url'] ?? '').toString()),
+      type: (json['type'] ?? '').toString(),
+      createdAt: DateTime.tryParse((json['created_at'] ?? '').toString()),
+    );
+  }
+}
+
+class PatientPreOperatoryRecord {
+  const PatientPreOperatoryRecord({
+    required this.id,
+    required this.status,
+    required this.allergies,
+    required this.medications,
+    required this.previousSurgeries,
+    required this.diseases,
+    required this.height,
+    required this.weight,
+    required this.smokes,
+    required this.drinksAlcohol,
+    required this.notes,
+    required this.assignedDoctorId,
+    required this.photos,
+    required this.documents,
+  });
+
+  final String id;
+  final PreOperatoryStatus status;
+  final String allergies;
+  final String medications;
+  final String previousSurgeries;
+  final String diseases;
+  final double? height;
+  final double? weight;
+  final bool smokes;
+  final bool drinksAlcohol;
+  final String notes;
+  final String? assignedDoctorId;
+  final List<PreOperatoryAttachmentItem> photos;
+  final List<PreOperatoryAttachmentItem> documents;
+
+  static List<PreOperatoryAttachmentItem> _extractAttachments(dynamic raw) {
+    if (raw is! List) return const [];
+    return raw
+        .whereType<Map<String, dynamic>>()
+        .map(PreOperatoryAttachmentItem.fromJson)
+        .toList();
+  }
+
+  factory PatientPreOperatoryRecord.fromJson(Map<String, dynamic> json) {
+    final allFiles = _extractAttachments(json['files']);
+    final photoItems = _extractAttachments(json['photos']);
+    final documentItems = _extractAttachments(json['documents']);
+    final photos = photoItems.isNotEmpty
+        ? photoItems
+        : allFiles.where((f) => f.isPhoto).toList();
+    final documents = documentItems.isNotEmpty
+        ? documentItems
+        : allFiles.where((f) => f.isDocument).toList();
+
+    return PatientPreOperatoryRecord(
+      id: (json['id'] ?? '').toString(),
+      status: parsePreOperatoryStatus((json['status'] ?? '').toString()) ??
+          PreOperatoryStatus.pending,
+      allergies: (json['allergies'] ?? '').toString(),
+      medications: (json['medications'] ?? '').toString(),
+      previousSurgeries: (json['previous_surgeries'] ?? '').toString(),
+      diseases: (json['diseases'] ?? '').toString(),
+      height: double.tryParse((json['height'] ?? '').toString()),
+      weight: double.tryParse((json['weight'] ?? '').toString()),
+      smokes: json['smokes'] == true || json['smoking'] == true,
+      drinksAlcohol: json['drinks_alcohol'] == true || json['alcohol'] == true,
+      notes: (json['notes'] ?? '').toString(),
+      assignedDoctorId:
+          (json['assigned_doctor'] ?? '').toString().trim().isEmpty
+              ? null
+              : (json['assigned_doctor'] ?? '').toString(),
+      photos: photos,
+      documents: documents,
+    );
+  }
+}
+
+enum PostOperatoryClinicalStatus {
+  ok,
+  delayed,
+  risk,
+}
+
+enum PostOperatoryJourneyStatus {
+  active,
+  completed,
+  cancelled,
+}
+
+class UrgentTicketItem {
+  const UrgentTicketItem({
+    required this.id,
+    required this.patientId,
+    required this.patientName,
+    required this.message,
+    required this.status,
+    required this.severity,
+    required this.createdAt,
+    required this.images,
+  });
+
+  final String id;
+  final String patientId;
+  final String patientName;
+  final String message;
+  final String status;
+  final String severity;
+  final DateTime? createdAt;
+  final List<String> images;
+
+  bool get isOpen => status == 'open';
+  bool get isViewed => status == 'viewed';
+  bool get isResolved => status == 'resolved';
+
+  factory UrgentTicketItem.fromJson(Map<String, dynamic> json) {
+    final imageItems = (json['images'] as List<dynamic>? ?? const [])
+        .map((item) => resolveApiMediaUrl(item.toString()))
+        .where((item) => item.trim().isNotEmpty)
+        .toList();
+
+    return UrgentTicketItem(
+      id: (json['id'] ?? '').toString(),
+      patientId: (json['patient'] ?? '').toString(),
+      patientName: (json['patient_name'] ?? '').toString(),
+      message: (json['message'] ?? '').toString(),
+      status: (json['status'] ?? 'open').toString(),
+      severity: (json['severity'] ?? 'high').toString(),
+      createdAt: DateTime.tryParse((json['created_at'] ?? '').toString()),
+      images: imageItems,
+    );
+  }
+}
+
+class PatientPostOperatoryCheckin {
+  const PatientPostOperatoryCheckin({
+    required this.id,
+    required this.day,
+    required this.painLevel,
+    required this.hasFever,
+    required this.notes,
+    required this.createdAt,
+  });
+
+  final String id;
+  final int day;
+  final int painLevel;
+  final bool hasFever;
+  final String notes;
+  final DateTime? createdAt;
+
+  factory PatientPostOperatoryCheckin.fromJson(Map<String, dynamic> json) {
+    return PatientPostOperatoryCheckin(
+      id: (json['id'] ?? '').toString(),
+      day: int.tryParse((json['day'] ?? '').toString()) ?? 0,
+      painLevel: int.tryParse((json['pain_level'] ?? '').toString()) ?? 0,
+      hasFever: json['has_fever'] == true,
+      notes: (json['notes'] ?? '').toString(),
+      createdAt: DateTime.tryParse((json['created_at'] ?? '').toString()),
+    );
+  }
+}
+
+class PatientPostOperatoryPhoto {
+  const PatientPostOperatoryPhoto({
+    required this.id,
+    required this.day,
+    required this.imageUrl,
+    required this.createdAt,
+  });
+
+  final String id;
+  final int day;
+  final String imageUrl;
+  final DateTime? createdAt;
+
+  factory PatientPostOperatoryPhoto.fromJson(Map<String, dynamic> json) {
+    return PatientPostOperatoryPhoto(
+      id: (json['id'] ?? '').toString(),
+      day: int.tryParse((json['day'] ?? '').toString()) ?? 0,
+      imageUrl: resolveApiMediaUrl(
+        (json['image'] ?? json['photo_url'] ?? '').toString(),
+      ),
+      createdAt: DateTime.tryParse(
+        (json['created_at'] ?? json['uploaded_at'] ?? '').toString(),
+      ),
+    );
+  }
+}
+
+class PatientPostOperatoryObservation {
+  const PatientPostOperatoryObservation({
+    required this.day,
+    required this.notes,
+    required this.createdAt,
+  });
+
+  final int day;
+  final String notes;
+  final DateTime? createdAt;
+
+  factory PatientPostOperatoryObservation.fromJson(Map<String, dynamic> json) {
+    return PatientPostOperatoryObservation(
+      day: int.tryParse((json['day'] ?? '').toString()) ?? 0,
+      notes: (json['notes'] ?? '').toString(),
+      createdAt: DateTime.tryParse((json['created_at'] ?? '').toString()),
+    );
+  }
+}
+
+class PatientPostOperatoryRecord {
+  const PatientPostOperatoryRecord({
+    required this.journeyId,
+    required this.patientId,
+    required this.patientName,
+    required this.status,
+    required this.currentDay,
+    required this.totalDays,
+    required this.surgeryDate,
+    required this.lastCheckinDate,
+    required this.lastPainLevel,
+    required this.daysWithoutCheckin,
+    required this.clinicalStatus,
+    required this.checkins,
+    required this.photos,
+    required this.observations,
+  });
+
+  final String journeyId;
+  final String patientId;
+  final String patientName;
+  final PostOperatoryJourneyStatus status;
+  final int currentDay;
+  final int totalDays;
+  final DateTime? surgeryDate;
+  final DateTime? lastCheckinDate;
+  final int? lastPainLevel;
+  final int daysWithoutCheckin;
+  final PostOperatoryClinicalStatus clinicalStatus;
+  final List<PatientPostOperatoryCheckin> checkins;
+  final List<PatientPostOperatoryPhoto> photos;
+  final List<PatientPostOperatoryObservation> observations;
+
+  PatientPostOperatoryCheckin? get latestCheckin =>
+      checkins.isEmpty ? null : checkins.first;
+
+  bool get requiresAttention {
+    final latest = latestCheckin;
+    final noCheckin = latest == null || daysWithoutCheckin > 0;
+    final highPain = (latest?.painLevel ?? (lastPainLevel ?? 0)) >= 8;
+    final fever = latest?.hasFever == true;
+    return noCheckin || highPain || fever;
+  }
+
+  static List<T> _extractList<T>(
+    dynamic raw,
+    T Function(Map<String, dynamic>) parser,
+  ) {
+    if (raw is! List) return const [];
+    return raw
+        .whereType<Map<String, dynamic>>()
+        .map(parser)
+        .toList(growable: false);
+  }
+
+  factory PatientPostOperatoryRecord.fromJson(Map<String, dynamic> json) {
+    return PatientPostOperatoryRecord(
+      journeyId: (json['journey_id'] ?? '').toString(),
+      patientId: (json['patient_id'] ?? '').toString(),
+      patientName: (json['patient_name'] ?? '').toString(),
+      status: parsePostOperatoryJourneyStatus(
+        (json['status'] ?? '').toString(),
+      ),
+      currentDay: int.tryParse((json['current_day'] ?? '').toString()) ?? 1,
+      totalDays: int.tryParse((json['total_days'] ?? '').toString()) ?? 1,
+      surgeryDate: DateTime.tryParse((json['surgery_date'] ?? '').toString()),
+      lastCheckinDate:
+          DateTime.tryParse((json['last_checkin_date'] ?? '').toString()),
+      lastPainLevel: int.tryParse((json['last_pain_level'] ?? '').toString()),
+      daysWithoutCheckin:
+          int.tryParse((json['days_without_checkin'] ?? '').toString()) ?? 0,
+      clinicalStatus: parsePostOperatoryClinicalStatus(
+        (json['clinical_status'] ?? '').toString(),
+      ),
+      checkins: _extractList(
+        json['checkins'],
+        PatientPostOperatoryCheckin.fromJson,
+      ),
+      photos: _extractList(
+        json['photos'],
+        PatientPostOperatoryPhoto.fromJson,
+      ),
+      observations: _extractList(
+        json['observations'],
+        PatientPostOperatoryObservation.fromJson,
+      ),
+    );
+  }
+}
+
+PostOperatoryJourneyStatus parsePostOperatoryJourneyStatus(String rawStatus) {
+  switch (rawStatus.trim().toLowerCase()) {
+    case 'completed':
+      return PostOperatoryJourneyStatus.completed;
+    case 'cancelled':
+      return PostOperatoryJourneyStatus.cancelled;
+    default:
+      return PostOperatoryJourneyStatus.active;
+  }
+}
+
+PostOperatoryClinicalStatus parsePostOperatoryClinicalStatus(String rawStatus) {
+  switch (rawStatus.trim().toLowerCase()) {
+    case 'risk':
+      return PostOperatoryClinicalStatus.risk;
+    case 'delayed':
+      return PostOperatoryClinicalStatus.delayed;
+    default:
+      return PostOperatoryClinicalStatus.ok;
   }
 }
 
@@ -340,7 +713,28 @@ class ProntuarioDocumentItem {
 
 const _statusTagPrefix = '#medic_status:';
 
-MedicPatientStatus resolveMedicStatus(String rawStatus, String notes) {
+PreOperatoryStatus? parsePreOperatoryStatus(String rawStatus) {
+  switch (rawStatus.trim().toLowerCase()) {
+    case 'pending':
+      return PreOperatoryStatus.pending;
+    case 'in_review':
+      return PreOperatoryStatus.inReview;
+    case 'approved':
+      return PreOperatoryStatus.approved;
+    case 'rejected':
+      return PreOperatoryStatus.rejected;
+    default:
+      return null;
+  }
+}
+
+MedicPatientStatus resolveMedicStatus(
+  String rawStatus,
+  String notes, {
+  required bool hasActiveAppointment,
+  required bool hasCompletedSurgery,
+  required PreOperatoryStatus? preOperatoryStatus,
+}) {
   final normalizedRaw = rawStatus.trim().toLowerCase();
   final normalizedNotes = notes.toLowerCase();
 
@@ -351,9 +745,10 @@ MedicPatientStatus resolveMedicStatus(String rawStatus, String notes) {
           );
 
   final tag = tagLine.replaceFirst(_statusTagPrefix, '').trim();
+  if (tag == 'scheduled' && hasActiveAppointment && !hasCompletedSurgery) {
+    return MedicPatientStatus.scheduled;
+  }
   switch (tag) {
-    case 'scheduled':
-      return MedicPatientStatus.scheduled;
     case 'pre_op':
       return MedicPatientStatus.preOp;
     case 'recovering':
@@ -371,7 +766,10 @@ MedicPatientStatus resolveMedicStatus(String rawStatus, String notes) {
       normalizedNotes.contains('special case')) {
     return MedicPatientStatus.specialCase;
   }
-  if (normalizedRaw == 'lead') return MedicPatientStatus.scheduled;
+  if (hasCompletedSurgery) return MedicPatientStatus.recovering;
+  if (hasActiveAppointment) return MedicPatientStatus.scheduled;
+  if (preOperatoryStatus != null) return MedicPatientStatus.preOp;
+  if (normalizedRaw == 'lead') return MedicPatientStatus.preOp;
   return MedicPatientStatus.recovering;
 }
 

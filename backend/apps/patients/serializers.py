@@ -8,6 +8,8 @@ from config.media_urls import AbsoluteMediaUrlsSerializerMixin
 from apps.tenants.models import Tenant
 from apps.tenants.models import TenantSpecialty
 from apps.users.models import GoKlinikUser
+from apps.appointments.models import Appointment
+from apps.pre_operatory.models import PreOperatory
 
 from .models import Patient
 
@@ -16,6 +18,9 @@ class PatientListSerializer(AbsoluteMediaUrlsSerializerMixin, serializers.ModelS
     full_name = serializers.CharField(read_only=True)
     specialty_name = serializers.CharField(source="specialty.specialty_name", read_only=True)
     assigned_doctor = serializers.SerializerMethodField()
+    pre_operatory_status = serializers.SerializerMethodField()
+    has_active_appointment = serializers.SerializerMethodField()
+    has_completed_surgery = serializers.SerializerMethodField()
 
     class Meta:
         model = Patient
@@ -29,6 +34,9 @@ class PatientListSerializer(AbsoluteMediaUrlsSerializerMixin, serializers.ModelS
             "specialty",
             "specialty_name",
             "assigned_doctor",
+            "pre_operatory_status",
+            "has_active_appointment",
+            "has_completed_surgery",
             "date_joined",
         )
 
@@ -48,11 +56,58 @@ class PatientListSerializer(AbsoluteMediaUrlsSerializerMixin, serializers.ModelS
             "assigned_at": assignment.assigned_at,
         }
 
+    def get_pre_operatory_status(self, obj: Patient):
+        prefetched = getattr(obj, "_prefetched_objects_cache", {}).get(
+            "pre_operatory_records"
+        )
+        if prefetched is not None:
+            if not prefetched:
+                return None
+            latest = max(prefetched, key=lambda row: row.updated_at)
+            return latest.status
+
+        latest = (
+            PreOperatory.objects.filter(patient_id=obj.id)
+            .only("status", "updated_at")
+            .order_by("-updated_at")
+            .first()
+        )
+        return latest.status if latest else None
+
+    def get_has_active_appointment(self, obj: Patient):
+        annotated = getattr(obj, "has_active_appointment", None)
+        if annotated is not None:
+            return bool(annotated)
+
+        return Appointment.objects.filter(
+            patient_id=obj.id,
+            status__in=[
+                Appointment.StatusChoices.PENDING,
+                Appointment.StatusChoices.CONFIRMED,
+                Appointment.StatusChoices.IN_PROGRESS,
+                Appointment.StatusChoices.RESCHEDULED,
+            ],
+        ).exists()
+
+    def get_has_completed_surgery(self, obj: Patient):
+        annotated = getattr(obj, "has_completed_surgery", None)
+        if annotated is not None:
+            return bool(annotated)
+
+        return Appointment.objects.filter(
+            patient_id=obj.id,
+            appointment_type=Appointment.AppointmentTypeChoices.SURGERY,
+            status=Appointment.StatusChoices.COMPLETED,
+        ).exists()
+
 
 class PatientDetailSerializer(AbsoluteMediaUrlsSerializerMixin, serializers.ModelSerializer):
     full_name = serializers.CharField(read_only=True)
     specialty_name = serializers.CharField(source="specialty.specialty_name", read_only=True)
     assigned_doctor = serializers.SerializerMethodField()
+    pre_operatory_status = serializers.SerializerMethodField()
+    has_active_appointment = serializers.SerializerMethodField()
+    has_completed_surgery = serializers.SerializerMethodField()
 
     class Meta:
         model = Patient
@@ -80,6 +135,9 @@ class PatientDetailSerializer(AbsoluteMediaUrlsSerializerMixin, serializers.Mode
             "specialty_name",
             "notes",
             "assigned_doctor",
+            "pre_operatory_status",
+            "has_active_appointment",
+            "has_completed_surgery",
             "tenant",
             "date_joined",
         )
@@ -100,6 +158,50 @@ class PatientDetailSerializer(AbsoluteMediaUrlsSerializerMixin, serializers.Mode
             "notes": assignment.notes or "",
             "assigned_at": assignment.assigned_at,
         }
+
+    def get_pre_operatory_status(self, obj: Patient):
+        prefetched = getattr(obj, "_prefetched_objects_cache", {}).get(
+            "pre_operatory_records"
+        )
+        if prefetched is not None:
+            if not prefetched:
+                return None
+            latest = max(prefetched, key=lambda row: row.updated_at)
+            return latest.status
+
+        latest = (
+            PreOperatory.objects.filter(patient_id=obj.id)
+            .only("status", "updated_at")
+            .order_by("-updated_at")
+            .first()
+        )
+        return latest.status if latest else None
+
+    def get_has_active_appointment(self, obj: Patient):
+        annotated = getattr(obj, "has_active_appointment", None)
+        if annotated is not None:
+            return bool(annotated)
+
+        return Appointment.objects.filter(
+            patient_id=obj.id,
+            status__in=[
+                Appointment.StatusChoices.PENDING,
+                Appointment.StatusChoices.CONFIRMED,
+                Appointment.StatusChoices.IN_PROGRESS,
+                Appointment.StatusChoices.RESCHEDULED,
+            ],
+        ).exists()
+
+    def get_has_completed_surgery(self, obj: Patient):
+        annotated = getattr(obj, "has_completed_surgery", None)
+        if annotated is not None:
+            return bool(annotated)
+
+        return Appointment.objects.filter(
+            patient_id=obj.id,
+            appointment_type=Appointment.AppointmentTypeChoices.SURGERY,
+            status=Appointment.StatusChoices.COMPLETED,
+        ).exists()
 
 
 class PatientCreateUpdateSerializer(serializers.ModelSerializer):

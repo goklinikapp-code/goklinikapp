@@ -13,6 +13,16 @@ import '../../../core/widgets/gk_loading_shimmer.dart';
 import '../domain/appointment_models.dart';
 import 'appointments_controller.dart';
 
+enum AppointmentStatusFilterChip {
+  all,
+  pending,
+  confirmed,
+  inProgress,
+  completed,
+  cancelled,
+  rescheduled,
+}
+
 class AppointmentsScreen extends ConsumerStatefulWidget {
   const AppointmentsScreen({super.key});
 
@@ -24,6 +34,7 @@ class _AppointmentsScreenState extends ConsumerState<AppointmentsScreen> {
   bool _calendarView = false;
   DateTime _focusedDay = DateTime.now();
   DateTime _selectedDay = DateTime.now();
+  AppointmentStatusFilterChip _statusFilter = AppointmentStatusFilterChip.all;
 
   @override
   Widget build(BuildContext context) {
@@ -55,10 +66,39 @@ class _AppointmentsScreenState extends ConsumerState<AppointmentsScreen> {
         error: (error, _) =>
             Center(child: Text('Erro ao carregar agenda: $error')),
         data: (appointments) {
-          if (_calendarView) {
-            return _calendarMode(appointments);
-          }
-          return _listMode(appointments);
+          final filteredAppointments = appointments
+              .where((item) => _matchesStatusFilter(item, _statusFilter))
+              .toList();
+
+          return Column(
+            children: [
+              const SizedBox(height: 8),
+              SizedBox(
+                height: 44,
+                child: ListView(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  children: [
+                    _chip('Todos', AppointmentStatusFilterChip.all),
+                    _chip('Aguardando', AppointmentStatusFilterChip.pending),
+                    _chip('Confirmado', AppointmentStatusFilterChip.confirmed),
+                    _chip(
+                        'Em andamento', AppointmentStatusFilterChip.inProgress),
+                    _chip('Concluido', AppointmentStatusFilterChip.completed),
+                    _chip('Cancelado', AppointmentStatusFilterChip.cancelled),
+                    _chip(
+                        'Reagendado', AppointmentStatusFilterChip.rescheduled),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 8),
+              Expanded(
+                child: _calendarView
+                    ? _calendarMode(filteredAppointments)
+                    : _listMode(filteredAppointments),
+              ),
+            ],
+          );
         },
       ),
     );
@@ -66,8 +106,7 @@ class _AppointmentsScreenState extends ConsumerState<AppointmentsScreen> {
 
   Widget _listMode(List<AppointmentItem> appointments) {
     if (appointments.isEmpty) {
-      return const Center(
-          child: Text('Sem agendamentos para este profissional.'));
+      return const Center(child: Text('Sem agendamentos para este filtro.'));
     }
 
     return ListView.builder(
@@ -159,10 +198,20 @@ class _AppointmentsScreenState extends ConsumerState<AppointmentsScreen> {
 
   Widget _appointmentCard(AppointmentItem item) {
     final badge = switch (item.status) {
+      'completed' => const (
+          label: 'Concluido',
+          background: Color(0xFFDCFCE7),
+          foreground: Color(0xFF166534),
+        ),
       'confirmed' => const (
           label: 'Confirmado',
           background: Color(0xFFDCFCE7),
           foreground: Color(0xFF166534),
+        ),
+      'in_progress' => const (
+          label: 'Em andamento',
+          background: Color(0xFFE8F4F8),
+          foreground: GKColors.primary,
         ),
       'pending' => const (
           label: 'Aguardando',
@@ -173,6 +222,11 @@ class _AppointmentsScreenState extends ConsumerState<AppointmentsScreen> {
           label: 'Cancelado',
           background: Color(0xFFFEE2E2),
           foreground: Color(0xFFB91C1C),
+        ),
+      'rescheduled' => const (
+          label: 'Reagendado',
+          background: Color(0xFFEDE9FE),
+          foreground: Color(0xFF5B21B6),
         ),
       _ => const (
           label: 'Em andamento',
@@ -249,5 +303,46 @@ class _AppointmentsScreenState extends ConsumerState<AppointmentsScreen> {
       default:
         return rawType;
     }
+  }
+
+  bool _matchesStatusFilter(
+    AppointmentItem item,
+    AppointmentStatusFilterChip filter,
+  ) {
+    switch (filter) {
+      case AppointmentStatusFilterChip.all:
+        return true;
+      case AppointmentStatusFilterChip.pending:
+        return item.status == 'pending';
+      case AppointmentStatusFilterChip.confirmed:
+        return item.status == 'confirmed';
+      case AppointmentStatusFilterChip.inProgress:
+        return item.status == 'in_progress';
+      case AppointmentStatusFilterChip.completed:
+        return item.status == 'completed';
+      case AppointmentStatusFilterChip.cancelled:
+        return item.status == 'cancelled';
+      case AppointmentStatusFilterChip.rescheduled:
+        return item.status == 'rescheduled';
+    }
+  }
+
+  Widget _chip(String label, AppointmentStatusFilterChip value) {
+    final active = _statusFilter == value;
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: ChoiceChip(
+        label: Text(label),
+        selected: active,
+        onSelected: (_) => setState(() => _statusFilter = value),
+        selectedColor: GKColors.primary,
+        backgroundColor: Colors.white,
+        labelStyle: TextStyle(
+          color: active ? Colors.white : GKColors.darkBackground,
+          fontWeight: FontWeight.w600,
+          fontSize: 12,
+        ),
+      ),
+    );
   }
 }

@@ -12,17 +12,47 @@ class PostOpController extends StateNotifier<AsyncValue<PostOpJourney?>> {
 
   Future<void> load() async {
     state = const AsyncValue.loading();
-    state = await AsyncValue.guard(() => _ref.read(postOpRepositoryProvider).getMyJourney());
+    state = await AsyncValue.guard(
+        () => _ref.read(postOpRepositoryProvider).getMyJourney());
   }
 
   Future<void> completeChecklist(String checklistId) async {
-    await _ref.read(postOpRepositoryProvider).completeChecklistItem(checklistId);
+    await _ref
+        .read(postOpRepositoryProvider)
+        .completeChecklistItem(checklistId);
     await load();
+  }
+
+  Future<void> updateChecklist({
+    required String checklistId,
+    required bool completed,
+  }) async {
+    await _ref.read(postOpRepositoryProvider).updateChecklistItem(
+          checklistId: checklistId,
+          completed: completed,
+        );
+    await load();
+  }
+
+  Future<PostOperatoryCheckin> submitCheckin({
+    required int painLevel,
+    required bool hasFever,
+    required String notes,
+    String? journeyId,
+  }) async {
+    final checkin = await _ref.read(postOpRepositoryProvider).submitCheckin(
+          painLevel: painLevel,
+          hasFever: hasFever,
+          notes: notes,
+          journeyId: journeyId,
+        );
+    await load();
+    return checkin;
   }
 
   Future<void> uploadPhoto({
     required String journeyId,
-    required int dayNumber,
+    int? dayNumber,
     required String path,
     bool isAnonymous = false,
   }) async {
@@ -32,6 +62,20 @@ class PostOpController extends StateNotifier<AsyncValue<PostOpJourney?>> {
           filePath: path,
           isAnonymous: isAnonymous,
         );
+    await load();
+  }
+
+  Future<UrgentTicket> createUrgentTicket({
+    required String message,
+    String severity = 'high',
+    String? imagePath,
+  }) async {
+    final ticket = await _ref.read(postOpRepositoryProvider).createUrgentTicket(
+          message: message,
+          severity: severity,
+          imagePath: imagePath,
+        );
+    return ticket;
   }
 }
 
@@ -40,11 +84,13 @@ final postOpControllerProvider =
   return PostOpController(ref);
 });
 
-final careCenterProvider = FutureProvider.family<CareCenterData, String>((ref, journeyId) {
+final careCenterProvider =
+    FutureProvider.family<CareCenterData, String>((ref, journeyId) {
   return ref.read(postOpRepositoryProvider).getCareCenter(journeyId);
 });
 
-final journeyPhotosProvider = FutureProvider.family<List<EvolutionPhotoItem>, String>((ref, journeyId) {
+final journeyPhotosProvider =
+    FutureProvider.family<List<EvolutionPhotoItem>, String>((ref, journeyId) {
   return ref.read(postOpRepositoryProvider).getJourneyPhotos(journeyId);
 });
 
@@ -64,7 +110,9 @@ class UrgentMedicalRequestsController
   }
 
   Future<void> send(String question) async {
-    await _ref.read(postOpRepositoryProvider).sendUrgentRequest(question: question);
+    await _ref
+        .read(postOpRepositoryProvider)
+        .sendUrgentRequest(question: question);
     await load();
   }
 }

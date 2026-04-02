@@ -13,6 +13,10 @@ from apps.pre_operatory.views import (
     PreOperatoryMeAPIView,
     PreOperatoryPatientAPIView,
 )
+from apps.post_op.views import (
+    UrgentTicketListCreateAPIView,
+    UrgentTicketStatusUpdateAPIView,
+)
 from apps.referrals.views import LeadAPIView, LeadDetailAPIView
 from apps.users.dashboard_views import AdminDashboardAPIView
 
@@ -23,6 +27,7 @@ def health_view(_request):
 
 urlpatterns = [
     path("api/pre-operatory", PreOperatoryCreateAPIView.as_view(), name="api-pre-operatory"),
+    path("api/pre-operatory/", PreOperatoryCreateAPIView.as_view(), name="api-pre-operatory-slash"),
     path("api/pre-operatory/me", PreOperatoryMeAPIView.as_view(), name="api-pre-operatory-me"),
     path(
         "api/pre-operatory/files/<uuid:file_id>",
@@ -35,9 +40,19 @@ urlpatterns = [
         name="api-pre-operatory-patient",
     ),
     path(
+        "api/pre-operatory/patient/<uuid:patient_id>/",
+        PreOperatoryPatientAPIView.as_view(),
+        name="api-pre-operatory-patient-slash",
+    ),
+    path(
         "api/pre-operatory/<uuid:pre_operatory_id>",
         PreOperatoryDetailAPIView.as_view(),
         name="api-pre-operatory-detail",
+    ),
+    path(
+        "api/pre-operatory/<uuid:pre_operatory_id>/",
+        PreOperatoryDetailAPIView.as_view(),
+        name="api-pre-operatory-detail-slash",
     ),
     path("pre-operatory", PreOperatoryCreateAPIView.as_view(), name="pre-operatory"),
     path("pre-operatory/me", PreOperatoryMeAPIView.as_view(), name="pre-operatory-me"),
@@ -57,7 +72,28 @@ urlpatterns = [
     path("api/auth/", include("apps.users.urls")),
     path("api/patients/", include("apps.patients.urls")),
     path("api/appointments/", include("apps.appointments.urls")),
+    path(
+        "api/urgent-tickets",
+        UrgentTicketListCreateAPIView.as_view(),
+        name="api-urgent-tickets-noslash",
+    ),
+    path(
+        "api/urgent-tickets/",
+        UrgentTicketListCreateAPIView.as_view(),
+        name="api-urgent-tickets",
+    ),
+    path(
+        "api/urgent-tickets/<uuid:ticket_id>",
+        UrgentTicketStatusUpdateAPIView.as_view(),
+        name="api-urgent-ticket-detail-noslash",
+    ),
+    path(
+        "api/urgent-tickets/<uuid:ticket_id>/",
+        UrgentTicketStatusUpdateAPIView.as_view(),
+        name="api-urgent-ticket-detail",
+    ),
     path("api/post-op/", include("apps.post_op.urls")),
+    path("api/post-operatory/", include("apps.post_op.urls")),
     path("api/chat/", include("apps.chat.urls")),
     path("api/notifications/", include("apps.notifications.urls")),
     path("api/financial/", include("apps.financial.urls")),

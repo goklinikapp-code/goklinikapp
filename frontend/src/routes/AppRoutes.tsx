@@ -21,6 +21,8 @@ import TeamPage from "@/pages/Team";
 import AutomationsPage from "@/pages/Automations";
 import SettingsPage from "@/pages/Settings";
 import PatientDetailPage from "@/pages/PatientDetail";
+import PreOperatoryPage from "@/pages/PreOperatory";
+import PostOperatoryPage from "@/pages/PostOperatory";
 import { RouteErrorBoundary } from "@/components/shared/RouteErrorBoundary";
 import { PrivateRoute } from "@/routes/PrivateRoute";
 import { useAuthStore } from "@/stores/authStore";
@@ -162,6 +164,22 @@ export function AppRoutes() {
           element={
             <RoleRoute allow={clinicRoles} permission="schedule">
               <SchedulePage />
+            </RoleRoute>
+          }
+        />
+        <Route
+          path="/pre-operatory"
+          element={
+            <RoleRoute allow={["clinic_master"]} permission="patients">
+              <PreOperatoryPage />
+            </RoleRoute>
+          }
+        />
+        <Route
+          path="/post-operatory"
+          element={
+            <RoleRoute allow={["clinic_master", "surgeon"]} permission="patients">
+              <PostOperatoryPage />
             </RoleRoute>
           }
         />

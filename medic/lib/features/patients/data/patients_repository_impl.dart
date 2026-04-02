@@ -134,6 +134,42 @@ class PatientsRepositoryImpl implements PatientsRepository {
   }
 
   @override
+  Future<PatientPreOperatoryRecord?> getPatientPreOperatory(
+      String patientId) async {
+    try {
+      final response = await _dio.get<dynamic>(
+        ApiEndpoints.preOperatoryByPatient(patientId),
+      );
+      return PatientPreOperatoryRecord.fromJson(
+        response.data as Map<String, dynamic>,
+      );
+    } on DioException catch (error) {
+      if (error.response?.statusCode == 404) {
+        return null;
+      }
+      rethrow;
+    }
+  }
+
+  @override
+  Future<PatientPostOperatoryRecord?> getPatientPostOperatory(
+      String patientId) async {
+    try {
+      final response = await _dio.get<dynamic>(
+        ApiEndpoints.postOperatoryByPatient(patientId),
+      );
+      return PatientPostOperatoryRecord.fromJson(
+        response.data as Map<String, dynamic>,
+      );
+    } on DioException catch (error) {
+      if (error.response?.statusCode == 404) {
+        return null;
+      }
+      rethrow;
+    }
+  }
+
+  @override
   Future<List<ProntuarioMedicationItem>> getPatientProntuarioMedications(
       String patientId) async {
     final response = await _dio.get<dynamic>(
@@ -344,6 +380,26 @@ class PatientsRepositoryImpl implements PatientsRepository {
       options: Options(contentType: 'multipart/form-data'),
     );
     return EvolutionPhotoItem.fromJson(response.data as Map<String, dynamic>);
+  }
+
+  @override
+  Future<List<UrgentTicketItem>> getUrgentTickets() async {
+    final response = await _dio.get<dynamic>(ApiEndpoints.urgentTickets);
+    final list = _extractList(response.data);
+    return list.map(UrgentTicketItem.fromJson).toList();
+  }
+
+  @override
+  Future<UrgentTicketItem> updateUrgentTicketStatus({
+    required String ticketId,
+    required String status,
+  }) async {
+    final response = await _dio.patch<dynamic>(
+      ApiEndpoints.urgentTicketDetail(ticketId),
+      data: {'status': status},
+    );
+    final map = _extractMap(response.data) ?? <String, dynamic>{};
+    return UrgentTicketItem.fromJson(map);
   }
 
   DateTime? _mergeDateAndTime(DateTime? date, String timeRaw) {

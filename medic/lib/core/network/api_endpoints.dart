@@ -17,8 +17,12 @@ class ApiEndpoints {
       '/api/patients/$patientId/timeline/';
   static String patientAssignDoctor(String patientId) =>
       '/api/patients/$patientId/assign-doctor/';
+  static String preOperatoryByPatient(String patientId) =>
+      '/api/pre-operatory/patient/$patientId/';
 
   static const postOpMyJourney = '/api/post-op/my-journey/';
+  static String postOperatoryByPatient(String patientId) =>
+      '/api/post-operatory/$patientId/';
   static String postOpCompleteChecklist(String id) =>
       '/api/post-op/checklist/$id/complete/';
   static const postOpAdminJourneys = '/api/post-op/admin/journeys/';
@@ -30,6 +34,9 @@ class ApiEndpoints {
   static const postOpUrgentRequests = '/api/post-op/urgent-requests/';
   static String postOpUrgentRequestReply(String requestId) =>
       '/api/post-op/urgent-requests/$requestId/reply/';
+  static const urgentTickets = '/api/urgent-tickets/';
+  static String urgentTicketDetail(String ticketId) =>
+      '/api/urgent-tickets/$ticketId/';
 
   static const chatRooms = '/api/chat/rooms/';
   static String chatRoomMessages(String roomId) =>

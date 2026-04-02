@@ -1,9 +1,20 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { isAxiosError } from 'axios'
-import { addDays, format } from 'date-fns'
-import { AlertTriangle, CalendarDays, Clock4, MapPin, Plus, RefreshCw } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import {
+  addDays,
+  addMonths,
+  eachDayOfInterval,
+  endOfMonth,
+  endOfWeek,
+  format,
+  isSameMonth,
+  startOfMonth,
+  startOfWeek,
+  subMonths,
+} from 'date-fns'
+import { AlertTriangle, CalendarDays, CheckCircle2, Clock4, MapPin, Plus, RefreshCw } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
 import { useForm, useWatch } from 'react-hook-form'
 import toast from 'react-hot-toast'
 import { z } from 'zod'
@@ -14,6 +25,7 @@ import {
   getAppointments,
   getAvailableSlots,
   updateAppointment,
+  updateAppointmentStatus,
   type AppointmentItem,
   type UpdateAppointmentPayload,
 } from '@/api/appointments'
@@ -33,6 +45,7 @@ import {
   t as translate,
   type TranslationKey,
 } from '@/i18n/system'
+import { useAuthStore } from '@/stores/authStore'
 import { usePreferencesStore } from '@/stores/preferencesStore'
 import { formatLongDate } from '@/utils/format'
 
@@ -76,6 +89,9 @@ interface AppointmentCancelState {
   reason: string
 }
 
+type ScheduleViewMode = 'list' | 'calendar'
+const DEFAULT_SCHEDULE_VIEW_MODE: ScheduleViewMode = 'calendar'
+
 function normalizeAppointmentType(value?: string | null): AppointmentTypeValue {
   if (appointmentTypeValues.includes((value || '') as AppointmentTypeValue)) {
     return value as AppointmentTypeValue
@@ -92,6 +108,11 @@ function toApiTime(value?: string | null): string {
   if (!value) return ''
   if (value.length === 5) return `${value}:00`
   return value
+}
+
+function toDateOnly(value: string): string {
+  if (DATE_ONLY_PATTERN.test(value)) return value
+  return value.slice(0, 10)
 }
 
 function extractErrorMessage(error: unknown, fallback: string): string {
@@ -151,6 +172,7 @@ function resolveProfessionalAvatar(appointment: AppointmentItem): string {
 }
 
 export default function SchedulePage() {
+  const currentUser = useAuthStore((state) => state.user)
   const language = usePreferencesStore((state) => state.language)
   const locale = getLocaleForLanguage(language)
   const t = (key: TranslationKey) => translate(language, key)
@@ -162,6 +184,12 @@ export default function SchedulePage() {
   const [selectedAppointment, setSelectedAppointment] = useState<AppointmentItem | null>(null)
   const [editForm, setEditForm] = useState<AppointmentEditForm | null>(null)
   const [cancelState, setCancelState] = useState<AppointmentCancelState | null>(null)
+  const [viewMode, setViewMode] = useState<ScheduleViewMode>(DEFAULT_SCHEDULE_VIEW_MODE)
+  const [calendarReferenceDate, setCalendarReferenceDate] = useState(() => new Date())
+  const [selectedCalendarDate, setSelectedCalendarDate] = useState(() =>
+    format(new Date(), 'yyyy-MM-dd'),
+  )
+  const [completingAppointmentId, setCompletingAppointmentId] = useState<string | null>(null)
 
   const queryClient = useQueryClient()
 
@@ -238,23 +266,73 @@ export default function SchedulePage() {
   })
 
   const surgeons = useMemo(() => teamMembers.filter((member) => member.role === 'Surgeon'), [teamMembers])
+  const isSurgeonUser = currentUser?.role === 'surgeon'
+  const surgeonProfessionalId = isSurgeonUser ? (currentUser?.id || '') : ''
+  const surgeonProfessionalName = currentUser?.full_name || ''
 
-  const groupedAppointments = useMemo(() => {
-    const groups = new Map<string, typeof appointments>()
+  const appointmentsByDate = useMemo(() => {
+    const groups = new Map<string, AppointmentItem[]>()
     appointments.forEach((item) => {
-      const dateKey = item.appointment_date
+      const dateKey = toDateOnly(item.appointment_date)
       const current = groups.get(dateKey) || []
       current.push(item)
       groups.set(dateKey, current)
     })
 
-    return Array.from(groups.entries())
-      .sort((a, b) => a[0].localeCompare(b[0]))
-      .map(([date, items]) => ({
-        date,
-        items: items.sort((a, b) => a.appointment_time.localeCompare(b.appointment_time)),
-      }))
+    groups.forEach((items, key) => {
+      groups.set(
+        key,
+        [...items].sort((a, b) => a.appointment_time.localeCompare(b.appointment_time)),
+      )
+    })
+    return groups
   }, [appointments])
+
+  const groupedAppointments = useMemo(
+    () =>
+      Array.from(appointmentsByDate.entries())
+        .sort((a, b) => a[0].localeCompare(b[0]))
+        .map(([date, items]) => ({
+          date,
+          items,
+        })),
+    [appointmentsByDate],
+  )
+
+  const calendarMonthStart = useMemo(
+    () => startOfMonth(calendarReferenceDate),
+    [calendarReferenceDate],
+  )
+
+  const calendarGridDays = useMemo(() => {
+    const gridStart = startOfWeek(calendarMonthStart, { weekStartsOn: 1 })
+    const gridEnd = endOfWeek(endOfMonth(calendarMonthStart), { weekStartsOn: 1 })
+    return eachDayOfInterval({ start: gridStart, end: gridEnd })
+  }, [calendarMonthStart])
+
+  const calendarWeekdayLabels = useMemo(() => {
+    const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 })
+    return Array.from({ length: 7 }, (_, index) =>
+      new Intl.DateTimeFormat(locale, { weekday: 'short' })
+        .format(addDays(weekStart, index))
+        .replace('.', '')
+        .slice(0, 3)
+        .toUpperCase(),
+    )
+  }, [locale])
+
+  const activeMonthLabel = useMemo(() => {
+    const formatted = new Intl.DateTimeFormat(locale, {
+      month: 'long',
+      year: 'numeric',
+    }).format(calendarReferenceDate)
+    return formatted.charAt(0).toUpperCase() + formatted.slice(1)
+  }, [calendarReferenceDate, locale])
+
+  const selectedCalendarAppointments = useMemo(
+    () => appointmentsByDate.get(selectedCalendarDate) || [],
+    [appointmentsByDate, selectedCalendarDate],
+  )
 
   const appointmentsErrorMessage = useMemo(() => {
     return extractErrorMessage(appointmentsError, t('schedule_load_error'))
@@ -273,7 +351,7 @@ export default function SchedulePage() {
     resolver: zodResolver(appointmentSchema),
     defaultValues: {
       patient: '',
-      professional: '',
+      professional: surgeonProfessionalId,
       appointment_date: '',
       appointment_time: '',
       appointment_type: 'first_visit',
@@ -285,6 +363,11 @@ export default function SchedulePage() {
     control,
     name: 'professional',
   })
+
+  useEffect(() => {
+    if (!isModalOpen || !isSurgeonUser || !surgeonProfessionalId) return
+    setValue('professional', surgeonProfessionalId, { shouldValidate: true })
+  }, [isModalOpen, isSurgeonUser, surgeonProfessionalId, setValue])
 
   const {
     data: slotsByDay = {},
@@ -337,7 +420,7 @@ export default function SchedulePage() {
       setSelectedSlot('')
       reset({
         patient: '',
-        professional: '',
+        professional: isSurgeonUser ? surgeonProfessionalId : '',
         appointment_date: '',
         appointment_time: '',
         appointment_type: 'first_visit',
@@ -396,6 +479,28 @@ export default function SchedulePage() {
     },
   })
 
+  const completeSurgeryMutation = useMutation({
+    mutationFn: (appointmentId: string) =>
+      updateAppointmentStatus(appointmentId, {
+        status: 'completed',
+      }),
+    onMutate: (appointmentId) => {
+      setCompletingAppointmentId(appointmentId)
+    },
+    onSuccess: () => {
+      toast.success(t('schedule_mark_as_realized_success'))
+      void queryClient.invalidateQueries({ queryKey: ['schedule-appointments'], exact: false })
+      void queryClient.refetchQueries({ queryKey: ['schedule-appointments'], exact: false })
+      void queryClient.invalidateQueries({ queryKey: ['dashboard-data'] })
+    },
+    onError: (error) => {
+      toast.error(extractErrorMessage(error, t('schedule_mark_as_realized_error')))
+    },
+    onSettled: () => {
+      setCompletingAppointmentId(null)
+    },
+  })
+
   const onSubmit = (values: AppointmentForm) => {
     if (!effectiveSelectedDay) {
       setError('appointment_date', { type: 'manual', message: t('schedule_error_date_required') })
@@ -419,7 +524,7 @@ export default function SchedulePage() {
     setIsModalOpen(true)
     reset({
       patient: '',
-      professional: '',
+      professional: isSurgeonUser ? surgeonProfessionalId : '',
       appointment_date: '',
       appointment_time: '',
       appointment_type: 'first_visit',
@@ -428,14 +533,14 @@ export default function SchedulePage() {
   }
 
   const openDetailsModal = (appointment: AppointmentItem) => {
-    const isoDate = DATE_ONLY_PATTERN.test(appointment.appointment_date)
-      ? appointment.appointment_date
-      : appointment.appointment_date.slice(0, 10)
+    const isoDate = toDateOnly(appointment.appointment_date)
 
     setSelectedAppointment(appointment)
     setEditForm({
       patient: appointment.patient,
-      professional: appointment.professional,
+      professional: isSurgeonUser && surgeonProfessionalId
+        ? surgeonProfessionalId
+        : appointment.professional,
       appointment_date: isoDate,
       appointment_time: toInputTime(appointment.appointment_time),
       appointment_type: normalizeAppointmentType(appointment.appointment_type),
@@ -504,7 +609,9 @@ export default function SchedulePage() {
       appointmentId: selectedAppointment.id,
       payload: {
         patient: editForm.patient,
-        professional: editForm.professional,
+        professional: isSurgeonUser && surgeonProfessionalId
+          ? surgeonProfessionalId
+          : editForm.professional,
         appointment_date: editForm.appointment_date,
         appointment_time: toApiTime(editForm.appointment_time),
         appointment_type: editForm.appointment_type,
@@ -527,6 +634,82 @@ export default function SchedulePage() {
       hour: '2-digit',
       minute: '2-digit',
     }).format(date)
+  }
+
+  const renderAppointmentCard = (appointment: AppointmentItem) => {
+    const patientAvatar = resolvePatientAvatar(appointment)
+    const professionalAvatar = resolveProfessionalAvatar(appointment)
+
+    const canMarkAsPerformed =
+      appointment.appointment_type === 'surgery' &&
+      appointment.status !== 'completed' &&
+      appointment.status !== 'cancelled'
+    const isCompletingThisAppointment =
+      completeSurgeryMutation.isPending && completingAppointmentId === appointment.id
+
+    return (
+      <div
+        key={appointment.id}
+        className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-100 bg-white p-3 transition hover:border-slate-200 hover:bg-slate-50/40"
+      >
+        <div className="flex items-center gap-3">
+          <Avatar
+            name={appointment.patient_name}
+            src={patientAvatar || professionalAvatar || undefined}
+            className="h-10 w-10"
+          />
+          <div>
+            <p className="text-sm font-semibold text-night">{appointment.patient_name}</p>
+            <p className="caption">
+              {appointmentTypeLabels[normalizeAppointmentType(appointment.appointment_type)]}
+            </p>
+            <div className="caption flex items-center gap-1 text-slate-500">
+              <Avatar
+                name={appointment.professional_name}
+                src={professionalAvatar || undefined}
+                className="h-5 w-5 text-[10px]"
+              />
+              <span>
+                {t('schedule_professional_prefix')}: {appointment.professional_name}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-3 text-sm text-slate-600">
+          <span className="inline-flex items-center gap-1">
+            <Clock4 className="h-4 w-4" /> {toInputTime(appointment.appointment_time)}
+          </span>
+          <span className="inline-flex items-center gap-1">
+            <MapPin className="h-4 w-4" /> {appointment.clinic_location || t('schedule_default_room')}
+          </span>
+          <Badge status={appointment.status} />
+          {canMarkAsPerformed ? (
+            <Button
+              size="sm"
+              onClick={() => completeSurgeryMutation.mutate(appointment.id)}
+              disabled={isCompletingThisAppointment}
+            >
+              {!isCompletingThisAppointment ? <CheckCircle2 className="h-4 w-4" /> : null}
+              {isCompletingThisAppointment ? t('schedule_saving') : t('schedule_mark_as_realized')}
+            </Button>
+          ) : null}
+          {appointment.status !== 'cancelled' ? (
+            <Button
+              size="sm"
+              variant="danger"
+              onClick={() => openCancelModal(appointment)}
+              disabled={cancelMutation.isPending}
+            >
+              {t('schedule_cancel_appointment_button')}
+            </Button>
+          ) : null}
+          <Button size="sm" variant="secondary" onClick={() => openDetailsModal(appointment)}>
+            {t('schedule_details_button')}
+          </Button>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -553,6 +736,57 @@ export default function SchedulePage() {
       />
 
       <Card className="space-y-4">
+        {!isLoadingAppointments && !isAppointmentsError ? (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50/70 p-2">
+            <div className="inline-flex rounded-lg border border-slate-200 bg-white p-1">
+              <button
+                type="button"
+                onClick={() => setViewMode('calendar')}
+                className={[
+                  'rounded-md px-3 py-1.5 text-xs font-semibold transition',
+                  viewMode === 'calendar' ? 'bg-primary text-white' : 'text-slate-600 hover:bg-slate-100',
+                ].join(' ')}
+              >
+                Calendário
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode('list')}
+                className={[
+                  'rounded-md px-3 py-1.5 text-xs font-semibold transition',
+                  viewMode === 'list' ? 'bg-primary text-white' : 'text-slate-600 hover:bg-slate-100',
+                ].join(' ')}
+              >
+                Lista
+              </button>
+            </div>
+
+            {viewMode === 'calendar' ? (
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setCalendarReferenceDate((current) => subMonths(current, 1))}
+                  className="rounded-md border border-slate-200 bg-white px-2 py-1 text-sm font-semibold text-slate-600 transition hover:bg-slate-100"
+                  aria-label="Mês anterior"
+                >
+                  ‹
+                </button>
+                <span className="min-w-[160px] text-center text-sm font-semibold text-night">
+                  {activeMonthLabel}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setCalendarReferenceDate((current) => addMonths(current, 1))}
+                  className="rounded-md border border-slate-200 bg-white px-2 py-1 text-sm font-semibold text-slate-600 transition hover:bg-slate-100"
+                  aria-label="Próximo mês"
+                >
+                  ›
+                </button>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
         {isLoadingAppointments ? (
           <p className="text-sm text-slate-500">{t('schedule_loading')}</p>
         ) : isAppointmentsError ? (
@@ -563,7 +797,9 @@ export default function SchedulePage() {
               {t('schedule_retry')}
             </Button>
           </div>
-        ) : groupedAppointments.length ? (
+        ) : !groupedAppointments.length ? (
+          <p className="text-sm text-slate-500">{t('schedule_empty')}</p>
+        ) : viewMode === 'list' ? (
           groupedAppointments.map((group) => (
             <div key={group.date} className="space-y-3">
               <div className="flex items-center gap-2 text-sm text-slate-600">
@@ -571,68 +807,74 @@ export default function SchedulePage() {
                 {formatLongDate(group.date)}
               </div>
 
-              {group.items.map((appointment) => {
-                const patientAvatar = resolvePatientAvatar(appointment)
-                const professionalAvatar = resolveProfessionalAvatar(appointment)
-
-                return (
-                  <div
-                    key={appointment.id}
-                    className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-100 p-3"
-                  >
-                    <div className="flex items-center gap-3">
-                      <Avatar
-                        name={appointment.patient_name}
-                        src={patientAvatar || professionalAvatar || undefined}
-                        className="h-10 w-10"
-                      />
-                      <div>
-                        <p className="text-sm font-semibold text-night">{appointment.patient_name}</p>
-                        <p className="caption">
-                          {appointmentTypeLabels[normalizeAppointmentType(appointment.appointment_type)]}
-                        </p>
-                        <div className="caption flex items-center gap-1 text-slate-500">
-                          <Avatar
-                            name={appointment.professional_name}
-                            src={professionalAvatar || undefined}
-                            className="h-5 w-5 text-[10px]"
-                          />
-                          <span>
-                            {t('schedule_professional_prefix')}: {appointment.professional_name}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex flex-wrap items-center gap-3 text-sm text-slate-600">
-                      <span className="inline-flex items-center gap-1">
-                        <Clock4 className="h-4 w-4" /> {toInputTime(appointment.appointment_time)}
-                      </span>
-                      <span className="inline-flex items-center gap-1">
-                        <MapPin className="h-4 w-4" /> {appointment.clinic_location || t('schedule_default_room')}
-                      </span>
-                      <Badge status={appointment.status} />
-                      {appointment.status !== 'cancelled' ? (
-                        <Button
-                          size="sm"
-                          variant="danger"
-                          onClick={() => openCancelModal(appointment)}
-                          disabled={cancelMutation.isPending}
-                        >
-                          {t('schedule_cancel_appointment_button')}
-                        </Button>
-                      ) : null}
-                      <Button size="sm" variant="secondary" onClick={() => openDetailsModal(appointment)}>
-                        {t('schedule_details_button')}
-                      </Button>
-                    </div>
-                  </div>
-                )
-              })}
+              {group.items.map(renderAppointmentCard)}
             </div>
           ))
         ) : (
-          <p className="text-sm text-slate-500">{t('schedule_empty')}</p>
+          <div className="space-y-4">
+            <div className="grid grid-cols-7 gap-2 text-center text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+              {calendarWeekdayLabels.map((label) => (
+                <div key={label}>{label}</div>
+              ))}
+            </div>
+
+            <div className="grid grid-cols-7 gap-2">
+              {calendarGridDays.map((day) => {
+                const dayKey = format(day, 'yyyy-MM-dd')
+                const dayAppointments = appointmentsByDate.get(dayKey) || []
+                const isCurrentMonth = isSameMonth(day, calendarMonthStart)
+                const isSelected = dayKey === selectedCalendarDate
+                const isToday = dayKey === today
+
+                return (
+                  <button
+                    key={dayKey}
+                    type="button"
+                    onClick={() => {
+                      setSelectedCalendarDate(dayKey)
+                      if (!isCurrentMonth) {
+                        setCalendarReferenceDate(day)
+                      }
+                    }}
+                    className={[
+                      'flex h-20 flex-col items-start justify-between rounded-xl border p-2 text-left transition',
+                      isSelected
+                        ? 'border-primary bg-primary/10'
+                        : isCurrentMonth
+                          ? 'border-slate-200 bg-white hover:bg-slate-50'
+                          : 'border-slate-100 bg-slate-50 text-slate-400',
+                    ].join(' ')}
+                  >
+                    <span className={`text-sm font-semibold ${isToday ? 'text-primary' : ''}`}>
+                      {format(day, 'd')}
+                    </span>
+                    {dayAppointments.length ? (
+                      <span className="inline-flex items-center rounded-full bg-primary/15 px-2 py-0.5 text-[11px] font-semibold text-primary">
+                        {dayAppointments.length}
+                      </span>
+                    ) : (
+                      <span className="h-5" />
+                    )}
+                  </button>
+                )
+              })}
+            </div>
+
+            <div className="rounded-xl border border-slate-200 bg-slate-50/40 p-4">
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <p className="text-sm font-semibold text-night">{formatLongDate(selectedCalendarDate)}</p>
+                <span className="caption text-slate-500">
+                  {selectedCalendarAppointments.length}{' '}
+                  {selectedCalendarAppointments.length === 1 ? 'agendamento' : 'agendamentos'}
+                </span>
+              </div>
+              {selectedCalendarAppointments.length ? (
+                <div className="space-y-3">{selectedCalendarAppointments.map(renderAppointmentCard)}</div>
+              ) : (
+                <p className="text-sm text-slate-500">Sem agendamentos para o dia selecionado.</p>
+              )}
+            </div>
+          </div>
         )}
       </Card>
 
@@ -656,6 +898,7 @@ export default function SchedulePage() {
           <Select
             {...register('professional', {
               onChange: () => {
+                if (isSurgeonUser) return
                 setSelectedSlot('')
                 setValue('appointment_date', '')
                 setValue('appointment_time', '')
@@ -663,12 +906,20 @@ export default function SchedulePage() {
               },
             })}
           >
-            <option value="">{t('schedule_select_professional')}</option>
-            {surgeons.map((surgeon) => (
-              <option key={surgeon.id} value={surgeon.id}>
-                {surgeon.name}
+            {isSurgeonUser ? (
+              <option value={surgeonProfessionalId}>
+                {surgeonProfessionalName || t('role_surgeon')}
               </option>
-            ))}
+            ) : (
+              <>
+                <option value="">{t('schedule_select_professional')}</option>
+                {surgeons.map((surgeon) => (
+                  <option key={surgeon.id} value={surgeon.id}>
+                    {surgeon.name}
+                  </option>
+                ))}
+              </>
+            )}
           </Select>
           {errors.professional ? <p className="caption text-danger">{errors.professional.message}</p> : null}
 
@@ -838,12 +1089,20 @@ export default function SchedulePage() {
                   setEditForm((prev) => (prev ? { ...prev, professional: event.target.value } : prev))
                 }
               >
-                <option value="">{t('schedule_select_professional')}</option>
-                {surgeons.map((surgeon) => (
-                  <option key={surgeon.id} value={surgeon.id}>
-                    {surgeon.name}
+                {isSurgeonUser ? (
+                  <option value={surgeonProfessionalId}>
+                    {surgeonProfessionalName || t('role_surgeon')}
                   </option>
-                ))}
+                ) : (
+                  <>
+                    <option value="">{t('schedule_select_professional')}</option>
+                    {surgeons.map((surgeon) => (
+                      <option key={surgeon.id} value={surgeon.id}>
+                        {surgeon.name}
+                      </option>
+                    ))}
+                  </>
+                )}
               </Select>
             </div>
 

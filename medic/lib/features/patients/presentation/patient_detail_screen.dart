@@ -15,6 +15,8 @@ import '../../../core/widgets/gk_button.dart';
 import '../../../core/widgets/gk_card.dart';
 import '../data/patients_repository_impl.dart';
 import '../domain/patient_models.dart';
+import 'post_operatory_view.dart';
+import 'pre_operatory_view.dart';
 import 'prontuario_manager_tab.dart';
 import 'patients_controller.dart';
 
@@ -36,7 +38,7 @@ class _PatientDetailScreenState extends ConsumerState<PatientDetailScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 5, vsync: this);
+    _tabController = TabController(length: 7, vsync: this);
   }
 
   @override
@@ -114,6 +116,8 @@ class _PatientDetailScreenState extends ConsumerState<PatientDetailScreen>
                   Tab(text: 'Historico'),
                   Tab(text: 'Fotos'),
                   Tab(text: 'Documentos'),
+                  Tab(text: 'Pre-operatorio'),
+                  Tab(text: 'Pos-operatorio'),
                   Tab(text: 'Prontuario'),
                 ],
               ),
@@ -125,6 +129,8 @@ class _PatientDetailScreenState extends ConsumerState<PatientDetailScreen>
                     _historyTab(),
                     _photosTab(patient.id),
                     _documentsTab(),
+                    PreOperatoryView(patientId: patient.id),
+                    PostOperatoryView(patientId: patient.id),
                     ProntuarioManagerTab(patientId: patient.id),
                   ],
                 ),

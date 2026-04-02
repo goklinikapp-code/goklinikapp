@@ -151,15 +151,16 @@ class _AppointmentsScreenState extends ConsumerState<AppointmentsScreen> {
 
   Widget _appointmentCard(AppointmentItem item, String Function(String) t,
       ColorScheme colorScheme) {
-    final specialtyLabel = _normalizeSpecialtyLabel(
-      specialtyName: item.specialtyName,
-      professionalRole: item.professionalRole,
-      t: t,
-    );
+    final appointmentTypeLabel = _appointmentTypeLabel(item.type, t);
+    final statusLabel = _appointmentStatusLabel(item.status, t);
+    final appointmentTime = _formatAppointmentTime(item.time);
 
     final statusColor = switch (item.status) {
+      'completed' => colorScheme.primary,
       'confirmed' => colorScheme.secondary,
       'pending' => colorScheme.tertiary,
+      'in_progress' => colorScheme.secondary,
+      'rescheduled' => colorScheme.secondary,
       'cancelled' => colorScheme.error,
       _ => colorScheme.primary,
     };
@@ -183,7 +184,7 @@ class _AppointmentsScreenState extends ConsumerState<AppointmentsScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      specialtyLabel,
+                      appointmentTypeLabel,
                       style: const TextStyle(fontWeight: FontWeight.w700),
                     ),
                     const SizedBox(height: 2),
@@ -196,7 +197,7 @@ class _AppointmentsScreenState extends ConsumerState<AppointmentsScreen> {
                 ),
               ),
               GKBadge(
-                label: item.status.toUpperCase(),
+                label: statusLabel,
                 background: statusColor,
                 foreground: Colors.white,
               ),
@@ -213,7 +214,7 @@ class _AppointmentsScreenState extends ConsumerState<AppointmentsScreen> {
               Icon(Icons.schedule,
                   size: 16, color: colorScheme.onSurfaceVariant),
               const SizedBox(width: 6),
-              Text(item.time),
+              Text(appointmentTime),
             ],
           ),
           if (item.clinicLocation.trim().isNotEmpty) ...[
@@ -238,50 +239,56 @@ class _AppointmentsScreenState extends ConsumerState<AppointmentsScreen> {
     );
   }
 
-  String _normalizeSpecialtyLabel({
-    required String specialtyName,
-    required String professionalRole,
-    required String Function(String) t,
-  }) {
-    final roleBased = _roleLabelFromProfessionalRole(
-      professionalRole: professionalRole,
-      t: t,
-    );
-    if (roleBased.isNotEmpty) {
-      return roleBased;
+  String _appointmentTypeLabel(
+    String type,
+    String Function(String) t,
+  ) {
+    switch (type.trim().toLowerCase()) {
+      case 'first_visit':
+        return t('appointments_type_first_visit');
+      case 'return':
+        return t('appointments_type_return');
+      case 'surgery':
+        return t('appointments_type_surgery');
+      case 'post_op_7d':
+        return t('appointments_type_post_op_7d');
+      case 'post_op_30d':
+        return t('appointments_type_post_op_30d');
+      case 'post_op_90d':
+        return t('appointments_type_post_op_90d');
+      default:
+        return t('appointments_type_unknown');
     }
-
-    final normalized = specialtyName.trim();
-    if (normalized.isEmpty) {
-      return t('surgeon_role');
-    }
-
-    final lower = normalized.toLowerCase();
-    if (lower == 'especialidade' || lower == 'specialty') {
-      return t('surgeon_role');
-    }
-
-    return normalized;
   }
 
-  String _roleLabelFromProfessionalRole({
-    required String professionalRole,
-    required String Function(String) t,
-  }) {
-    switch (professionalRole.trim().toLowerCase()) {
-      case 'surgeon':
-        return t('surgeon_role');
-      case 'nurse':
-        return t('nurse_role');
-      case 'secretary':
-        return t('secretary_role');
-      case 'clinic_master':
-        return t('clinic_master_role');
-      case 'patient':
-        return t('patient_role');
+  String _appointmentStatusLabel(
+    String status,
+    String Function(String) t,
+  ) {
+    switch (status.trim().toLowerCase()) {
+      case 'pending':
+        return t('appointments_status_pending');
+      case 'confirmed':
+        return t('appointments_status_confirmed');
+      case 'in_progress':
+        return t('appointments_status_in_progress');
+      case 'completed':
+        return t('appointments_status_completed');
+      case 'cancelled':
+        return t('appointments_status_cancelled');
+      case 'rescheduled':
+        return t('appointments_status_rescheduled');
       default:
-        return '';
+        return status;
     }
+  }
+
+  String _formatAppointmentTime(String rawTime) {
+    final normalized = rawTime.trim();
+    if (normalized.length >= 5) {
+      return normalized.substring(0, 5);
+    }
+    return normalized;
   }
 
   Widget _infoCard({

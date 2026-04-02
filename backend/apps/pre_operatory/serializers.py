@@ -7,6 +7,22 @@ from config.media_urls import AbsoluteMediaUrlsSerializerMixin
 from .models import PreOperatory, PreOperatoryFile
 
 
+class LenientFloatField(serializers.FloatField):
+    """Accept both comma and dot as decimal separator."""
+
+    def to_internal_value(self, data):
+        if data is None:
+            return None
+
+        if isinstance(data, str):
+            normalized = data.strip()
+            if not normalized:
+                return None
+            data = normalized.replace(",", ".")
+
+        return super().to_internal_value(data)
+
+
 class PreOperatoryFileSerializer(AbsoluteMediaUrlsSerializerMixin, serializers.ModelSerializer):
     class Meta:
         model = PreOperatoryFile
@@ -18,12 +34,21 @@ class PreOperatorySerializer(AbsoluteMediaUrlsSerializerMixin, serializers.Model
     files = PreOperatoryFileSerializer(many=True, read_only=True)
     photos = serializers.SerializerMethodField()
     documents = serializers.SerializerMethodField()
+    smokes = serializers.SerializerMethodField()
+    drinks_alcohol = serializers.SerializerMethodField()
+    patient_name = serializers.CharField(source="patient.full_name", read_only=True)
+    assigned_doctor_name = serializers.CharField(
+        source="assigned_doctor.full_name",
+        read_only=True,
+        allow_null=True,
+    )
 
     class Meta:
         model = PreOperatory
         fields = (
             "id",
             "patient",
+            "patient_name",
             "tenant",
             "allergies",
             "medications",
@@ -31,8 +56,13 @@ class PreOperatorySerializer(AbsoluteMediaUrlsSerializerMixin, serializers.Model
             "diseases",
             "smoking",
             "alcohol",
+            "smokes",
+            "drinks_alcohol",
             "height",
             "weight",
+            "notes",
+            "assigned_doctor",
+            "assigned_doctor_name",
             "status",
             "files",
             "photos",
@@ -68,8 +98,16 @@ class PreOperatorySerializer(AbsoluteMediaUrlsSerializerMixin, serializers.Model
             context=self.context,
         ).data
 
+    def get_smokes(self, obj: PreOperatory) -> bool:
+        return bool(obj.smoking)
+
+    def get_drinks_alcohol(self, obj: PreOperatory) -> bool:
+        return bool(obj.alcohol)
+
 
 class PreOperatoryWriteSerializer(serializers.ModelSerializer):
+    height = LenientFloatField(required=False, allow_null=True)
+    weight = LenientFloatField(required=False, allow_null=True)
     photos = serializers.ListField(
         child=serializers.FileField(),
         required=False,
@@ -108,3 +146,18 @@ class PreOperatoryWriteSerializer(serializers.ModelSerializer):
     def validate_diseases(self, value: str) -> str:
         return (value or "").strip()
 
+
+class PreOperatoryAdminUpdateSerializer(serializers.Serializer):
+    status = serializers.ChoiceField(
+        choices=PreOperatory.StatusChoices.choices,
+        required=False,
+    )
+    notes = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        allow_null=True,
+    )
+    assigned_doctor = serializers.UUIDField(
+        required=False,
+        allow_null=True,
+    )
