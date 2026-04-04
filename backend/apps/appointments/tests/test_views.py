@@ -220,7 +220,7 @@ class AppointmentViewsTestCase(APITestCase):
         reminder_delay.assert_not_called()
 
     @patch("apps.appointments.views.create_postop_schedule")
-    def test_patch_update_to_completed_also_dispatches_postop_creation(
+    def test_update_status_rejects_completed_for_future_surgery_date(
         self,
         create_postop_schedule_mock,
     ):
@@ -230,6 +230,33 @@ class AppointmentViewsTestCase(APITestCase):
             professional=self.surgeon,
             specialty=self.specialty,
             appointment_date=timezone.localdate() + timedelta(days=1),
+            appointment_time=timezone.localtime().time().replace(hour=17, minute=45, second=0, microsecond=0),
+            status=Appointment.StatusChoices.IN_PROGRESS,
+            appointment_type=Appointment.AppointmentTypeChoices.SURGERY,
+            created_by=self.master,
+        )
+
+        self.client.force_authenticate(self.master)
+        url = reverse("appointments-update-status", kwargs={"pk": appointment.id})
+        response = self.client.put(url, {"status": "completed"}, format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("status", response.data)
+        appointment.refresh_from_db()
+        self.assertEqual(appointment.status, Appointment.StatusChoices.IN_PROGRESS)
+        create_postop_schedule_mock.assert_not_called()
+
+    @patch("apps.appointments.views.create_postop_schedule")
+    def test_patch_update_to_completed_also_dispatches_postop_creation(
+        self,
+        create_postop_schedule_mock,
+    ):
+        appointment = Appointment.objects.create(
+            tenant=self.tenant,
+            patient=self.patient,
+            professional=self.surgeon,
+            specialty=self.specialty,
+            appointment_date=timezone.localdate(),
             appointment_time=timezone.localtime().time().replace(hour=17, minute=0, second=0, microsecond=0),
             status=Appointment.StatusChoices.IN_PROGRESS,
             appointment_type=Appointment.AppointmentTypeChoices.SURGERY,
@@ -257,13 +284,54 @@ class AppointmentViewsTestCase(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         create_postop_schedule_mock.assert_called_once_with(str(appointment.id))
 
+    @patch("apps.appointments.views.create_postop_schedule")
+    def test_patch_update_rejects_completed_for_future_surgery_date(
+        self,
+        create_postop_schedule_mock,
+    ):
+        appointment = Appointment.objects.create(
+            tenant=self.tenant,
+            patient=self.patient,
+            professional=self.surgeon,
+            specialty=self.specialty,
+            appointment_date=timezone.localdate() + timedelta(days=2),
+            appointment_time=timezone.localtime().time().replace(hour=18, minute=0, second=0, microsecond=0),
+            status=Appointment.StatusChoices.IN_PROGRESS,
+            appointment_type=Appointment.AppointmentTypeChoices.SURGERY,
+            created_by=self.master,
+        )
+
+        self.client.force_authenticate(self.master)
+        url = reverse("appointments-detail", kwargs={"pk": appointment.id})
+        response = self.client.patch(
+            url,
+            {
+                "patient": str(self.patient.id),
+                "professional": str(self.surgeon.id),
+                "specialty": str(self.specialty.id),
+                "appointment_date": str(appointment.appointment_date),
+                "appointment_time": "18:00:00",
+                "duration_minutes": 60,
+                "status": "completed",
+                "appointment_type": "surgery",
+                "notes": "tentativa antecipada",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("status", response.data)
+        appointment.refresh_from_db()
+        self.assertEqual(appointment.status, Appointment.StatusChoices.IN_PROGRESS)
+        create_postop_schedule_mock.assert_not_called()
+
     def test_patch_update_to_completed_creates_postop_journey(self):
         appointment = Appointment.objects.create(
             tenant=self.tenant,
             patient=self.patient,
             professional=self.surgeon,
             specialty=self.specialty,
-            appointment_date=timezone.localdate() + timedelta(days=1),
+            appointment_date=timezone.localdate(),
             appointment_time=timezone.localtime().time().replace(hour=18, minute=0, second=0, microsecond=0),
             status=Appointment.StatusChoices.IN_PROGRESS,
             appointment_type=Appointment.AppointmentTypeChoices.SURGERY,

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -27,6 +29,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   final _referralCodeController = TextEditingController();
 
   ProviderSubscription<ReferralDeepLinkState>? _referralSubscription;
+  Timer? _referralLookupDebounce;
 
   List<SignupClinic> _clinics = const [];
   String? _selectedClinicId;
@@ -37,6 +40,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   bool _loadingDeepLink = false;
   bool _lockClinicByReferral = false;
   bool _lockReferralByLink = false;
+  bool _suppressReferralCodeListener = false;
   bool _acceptTerms = false;
   bool _obscurePassword = true;
   bool _obscureConfirm = true;
@@ -51,6 +55,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
         selection: TextSelection.collapsed(offset: text.length),
       );
     });
+    _referralCodeController.addListener(_onReferralCodeChanged);
     _referralSubscription = ref.listenManual<ReferralDeepLinkState>(
       referralDeepLinkProvider,
       (previous, next) {
@@ -70,6 +75,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   @override
   void dispose() {
     _referralSubscription?.close();
+    _referralLookupDebounce?.cancel();
     _nameController.dispose();
     _phoneController.dispose();
     _emailController.dispose();
@@ -77,6 +83,48 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     _confirmController.dispose();
     _referralCodeController.dispose();
     super.dispose();
+  }
+
+  void _setReferralCodeText(String text) {
+    _suppressReferralCodeListener = true;
+    _referralCodeController.value = TextEditingValue(
+      text: text,
+      selection: TextSelection.collapsed(offset: text.length),
+    );
+    _suppressReferralCodeListener = false;
+  }
+
+  void _onReferralCodeChanged() {
+    if (_suppressReferralCodeListener || _lockReferralByLink) {
+      return;
+    }
+
+    final code = _referralCodeController.text.trim();
+    _referralLookupDebounce?.cancel();
+
+    if (code.isEmpty) {
+      if (_lockClinicByReferral) {
+        setState(() {
+          _lockClinicByReferral = false;
+          _deepLinkError = null;
+        });
+      } else if (_deepLinkError != null) {
+        setState(() => _deepLinkError = null);
+      }
+      return;
+    }
+
+    if (code.length < 4) {
+      setState(() {
+        _lockClinicByReferral = false;
+        _deepLinkError = null;
+      });
+      return;
+    }
+
+    _referralLookupDebounce = Timer(const Duration(milliseconds: 600), () {
+      _resolveTypedReferralCode(code);
+    });
   }
 
   Future<void> _submit() async {
@@ -172,7 +220,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
         _lastProcessedDeepLinkCode = result.code;
         _clinics = updatedClinics;
         _selectedClinicId = result.clinicId;
-        _referralCodeController.text = result.code;
+        _setReferralCodeText(result.code);
         _lockClinicByReferral = true;
         _lockReferralByLink = true;
       });
@@ -180,11 +228,64 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       if (!mounted) return;
       setState(() {
         _lastProcessedDeepLinkCode = code;
-        _referralCodeController.text = code;
+        _setReferralCodeText(code);
         _lockClinicByReferral = false;
         _lockReferralByLink = false;
         _deepLinkError =
             'Código de indicação inválido. Você pode escolher a clínica e editar o código.';
+      });
+    } finally {
+      if (mounted) {
+        setState(() => _loadingDeepLink = false);
+      }
+    }
+  }
+
+  Future<void> _resolveTypedReferralCode(String code) async {
+    if (_lockReferralByLink) return;
+
+    setState(() {
+      _loadingDeepLink = true;
+      _deepLinkError = null;
+    });
+
+    try {
+      final result =
+          await ref.read(authRepositoryProvider).lookupReferralCode(code);
+      if (!mounted) return;
+
+      final currentCode = _referralCodeController.text.trim();
+      if (currentCode != code) return;
+
+      final hasClinicInList =
+          _clinics.any((clinic) => clinic.id == result.clinicId);
+      final updatedClinics = hasClinicInList
+          ? _clinics
+          : <SignupClinic>[
+              ..._clinics,
+              SignupClinic(
+                id: result.clinicId,
+                name: result.clinicName,
+                slug: '',
+              ),
+            ];
+
+      setState(() {
+        _clinics = updatedClinics;
+        _selectedClinicId = result.clinicId;
+        _lockClinicByReferral = true;
+        _deepLinkError = null;
+      });
+    } catch (_) {
+      if (!mounted) return;
+
+      final currentCode = _referralCodeController.text.trim();
+      if (currentCode != code) return;
+
+      setState(() {
+        _lockClinicByReferral = false;
+        _deepLinkError =
+            'Código de indicação inválido. Você pode escolher a clínica manualmente.';
       });
     } finally {
       if (mounted) {

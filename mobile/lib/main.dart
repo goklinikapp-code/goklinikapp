@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'firebase_options.dart';
 
 import 'package:app_links/app_links.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -43,7 +44,9 @@ Future<void> _initIntl() async {
 
 Future<void> _initFirebase() async {
   try {
-    await Firebase.initializeApp();
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+   );
   } catch (_) {
     // Firebase can be initialized later when google-services files are added.
   }

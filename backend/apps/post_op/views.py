@@ -132,11 +132,44 @@ def _appointment_payload(journey: PostOpJourney) -> dict | None:
 
 
 def _refresh_journey_current_day(journey: PostOpJourney, *, persist: bool = False) -> int:
+    prefetched_checkins = getattr(journey, "_prefetched_objects_cache", {}).get("checkins")
+    if prefetched_checkins is None:
+        first_checkin = (
+            PostOperatoryCheckin.objects.filter(journey_id=journey.id)
+            .order_by("day", "created_at")
+            .first()
+        )
+    else:
+        first_checkin = min(
+            prefetched_checkins,
+            key=lambda item: (item.day, item.created_at),
+            default=None,
+        )
+
+    fields_to_update: list[str] = []
+    if first_checkin:
+        base_start = journey.start_date or journey.surgery_date
+        inferred_start = timezone.localdate(first_checkin.created_at) - timedelta(
+            days=max(first_checkin.day - 1, 0),
+        )
+        if inferred_start < base_start:
+            duration_days = max((journey.end_date - base_start).days, 0) if journey.end_date else 89
+            journey.start_date = inferred_start
+            fields_to_update.append("start_date")
+            if journey.end_date:
+                journey.end_date = inferred_start + timedelta(days=duration_days)
+                fields_to_update.append("end_date")
+
     current_day = journey.calculate_current_day()
     if journey.current_day != current_day:
         journey.current_day = current_day
+        fields_to_update.append("current_day")
         if persist:
-            journey.save(update_fields=["current_day", "updated_at"])
+            update_fields = list(dict.fromkeys([*fields_to_update, "updated_at"]))
+            journey.save(update_fields=update_fields)
+    elif persist and fields_to_update:
+        update_fields = list(dict.fromkeys([*fields_to_update, "updated_at"]))
+        journey.save(update_fields=update_fields)
     return journey.current_day
 
 
@@ -500,6 +533,13 @@ class PostOperatoryCheckinCreateAPIView(APIView):
         )
         if not journey:
             return Response({"detail": "Active journey not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        start_date = journey.start_date or journey.surgery_date
+        if start_date and timezone.localdate() < start_date:
+            return Response(
+                {"detail": "Check-in is only available from the journey start date."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         day = journey.current_day
         checkin, created = PostOperatoryCheckin.objects.get_or_create(

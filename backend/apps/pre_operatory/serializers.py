@@ -37,6 +37,12 @@ class PreOperatorySerializer(AbsoluteMediaUrlsSerializerMixin, serializers.Model
     smokes = serializers.SerializerMethodField()
     drinks_alcohol = serializers.SerializerMethodField()
     patient_name = serializers.CharField(source="patient.full_name", read_only=True)
+    patient_avatar_url = serializers.CharField(
+        source="patient.avatar_url",
+        read_only=True,
+        allow_blank=True,
+        allow_null=True,
+    )
     assigned_doctor_name = serializers.CharField(
         source="assigned_doctor.full_name",
         read_only=True,
@@ -49,6 +55,7 @@ class PreOperatorySerializer(AbsoluteMediaUrlsSerializerMixin, serializers.Model
             "id",
             "patient",
             "patient_name",
+            "patient_avatar_url",
             "tenant",
             "allergies",
             "medications",

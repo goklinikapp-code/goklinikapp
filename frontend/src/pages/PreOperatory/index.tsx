@@ -14,6 +14,7 @@ import { getDoctors } from '@/api/patients'
 import { SectionHeader } from '@/components/shared/SectionHeader'
 import { PreOperatoryModal } from '@/components/patients/PreOperatoryModal'
 import { preOperatoryStatusLabel } from '@/components/patients/preOperatoryStatus'
+import { Avatar } from '@/components/ui/Avatar'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
@@ -225,8 +226,17 @@ export default function PreOperatoryPage() {
               ) : (
                 (listQuery.data || []).map((item) => (
                   <tr key={item.id} className="hover:bg-tealIce/50">
-                    <td className="px-4 py-3 text-sm font-semibold text-night">
-                      {item.patient_name || 'Paciente'}
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-3">
+                        <Avatar
+                          name={item.patient_name || 'Paciente'}
+                          src={item.patient_avatar_url || undefined}
+                          className="h-8 w-8"
+                        />
+                        <span className="text-sm font-semibold text-night">
+                          {item.patient_name || 'Paciente'}
+                        </span>
+                      </div>
                     </td>
                     <td className="px-4 py-3">
                       <Badge className={statusBadgeClass(item.status)}>

@@ -226,6 +226,7 @@ export interface PreOperatoryRecord {
   id: string
   patient: string
   patient_name?: string
+  patient_avatar_url?: string | null
   tenant: string
   allergies: string
   medications: string

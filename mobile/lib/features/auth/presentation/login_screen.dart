@@ -123,26 +123,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       onPressed: _submit,
                       isLoading: authState.loading,
                     ),
-                    const SizedBox(height: 14),
-                    const Row(
-                      children: [
-                        Expanded(child: Divider()),
-                        Padding(
-                          padding: EdgeInsets.symmetric(horizontal: 8),
-                          child: Text('OU CONTINUE COM',
-                              style: TextStyle(
-                                  fontSize: 11, color: GKColors.neutral)),
-                        ),
-                        Expanded(child: Divider()),
-                      ],
-                    ),
-                    const SizedBox(height: 14),
-                    GKButton(
-                      label: 'Conta Google',
-                      variant: GKButtonVariant.secondary,
-                      icon: const Icon(Icons.g_mobiledata, size: 24),
-                      onPressed: () {},
-                    ),
                     const SizedBox(height: 16),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,

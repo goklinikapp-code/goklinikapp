@@ -36,6 +36,26 @@ ALLOWED_STATUS_TRANSITIONS = {
 }
 
 
+def _validate_surgery_completion_timing(
+    *,
+    appointment_type: str | None,
+    status_value: str | None,
+    appointment_date,
+) -> None:
+    if appointment_type != Appointment.AppointmentTypeChoices.SURGERY:
+        return
+    if status_value != Appointment.StatusChoices.COMPLETED:
+        return
+    if not appointment_date:
+        return
+    if appointment_date > timezone.localdate():
+        raise serializers.ValidationError(
+            {
+                "status": "Surgery cannot be marked as completed before its scheduled date."
+            }
+        )
+
+
 class AppointmentSerializer(AbsoluteMediaUrlsSerializerMixin, serializers.ModelSerializer):
     patient_name = serializers.CharField(source="patient.full_name", read_only=True)
     patient_avatar_url = serializers.CharField(
@@ -99,6 +119,7 @@ class AppointmentSerializer(AbsoluteMediaUrlsSerializerMixin, serializers.ModelS
         request = self.context["request"]
         user = request.user
         tenant = user.tenant
+        instance = getattr(self, "instance", None)
 
         patient = attrs.get("patient")
         professional = attrs.get("professional")
@@ -165,6 +186,18 @@ class AppointmentSerializer(AbsoluteMediaUrlsSerializerMixin, serializers.ModelS
             if starts_at < timezone.localtime().replace(tzinfo=None):
                 raise serializers.ValidationError("Appointment cannot be created in the past.")
 
+        _validate_surgery_completion_timing(
+            appointment_type=attrs.get(
+                "appointment_type",
+                getattr(instance, "appointment_type", None),
+            ),
+            status_value=attrs.get("status", getattr(instance, "status", None)),
+            appointment_date=attrs.get(
+                "appointment_date",
+                getattr(instance, "appointment_date", None),
+            ),
+        )
+
         return attrs
 
 
@@ -175,6 +208,12 @@ class AppointmentStatusUpdateSerializer(serializers.Serializer):
     def validate(self, attrs):
         appointment: Appointment = self.context["appointment"]
         new_status = attrs["status"]
+
+        _validate_surgery_completion_timing(
+            appointment_type=appointment.appointment_type,
+            status_value=new_status,
+            appointment_date=appointment.appointment_date,
+        )
 
         # Allow quick-complete flow for surgeries from schedule cards.
         if (

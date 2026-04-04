@@ -128,6 +128,97 @@ class PostOpViewsTestCase(APITestCase):
         self.assertEqual(second_response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertEqual(PostOperatoryCheckin.objects.filter(journey=self.journey).count(), 1)
 
+    def test_checkin_rejected_before_journey_start_date(self):
+        future_start = timezone.localdate() + timedelta(days=2)
+        self.journey.surgery_date = future_start
+        self.journey.start_date = future_start
+        self.journey.end_date = future_start + timedelta(days=89)
+        self.journey.current_day = 1
+        self.journey.save(update_fields=["surgery_date", "start_date", "end_date", "current_day", "updated_at"])
+
+        self.client.force_authenticate(self.patient)
+        response = self.client.post(
+            reverse("postoperatory-checkin-create"),
+            {
+                "journey_id": str(self.journey.id),
+                "pain_level": 5,
+                "has_fever": False,
+                "notes": "Tentativa adiantada",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(
+            response.data["detail"],
+            "Check-in is only available from the journey start date.",
+        )
+        self.assertEqual(PostOperatoryCheckin.objects.filter(journey=self.journey).count(), 0)
+
+    def test_my_journey_realigns_start_date_from_first_checkin_when_journey_starts_in_future(self):
+        future_start = timezone.localdate() + timedelta(days=3)
+        self.journey.surgery_date = future_start
+        self.journey.start_date = future_start
+        self.journey.end_date = future_start + timedelta(days=89)
+        self.journey.current_day = 1
+        self.journey.save(update_fields=["surgery_date", "start_date", "end_date", "current_day", "updated_at"])
+
+        first_checkin = PostOperatoryCheckin.objects.create(
+            journey=self.journey,
+            day=1,
+            pain_level=4,
+            has_fever=False,
+            notes="Primeiro registro",
+        )
+        checkin_date = timezone.now() - timedelta(days=2)
+        PostOperatoryCheckin.objects.filter(id=first_checkin.id).update(created_at=checkin_date)
+
+        self.client.force_authenticate(self.patient)
+        response = self.client.get(reverse("postop-my-journey"))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["current_day"], 3)
+        self.assertFalse(response.data["checkin_submitted_today"])
+
+        self.journey.refresh_from_db()
+        self.assertEqual(self.journey.start_date, timezone.localdate(checkin_date))
+        self.assertEqual(self.journey.current_day, 3)
+
+    def test_checkin_create_advances_day_after_first_checkin_with_future_journey_start(self):
+        future_start = timezone.localdate() + timedelta(days=3)
+        self.journey.surgery_date = future_start
+        self.journey.start_date = future_start
+        self.journey.end_date = future_start + timedelta(days=89)
+        self.journey.current_day = 1
+        self.journey.save(update_fields=["surgery_date", "start_date", "end_date", "current_day", "updated_at"])
+
+        first_checkin = PostOperatoryCheckin.objects.create(
+            journey=self.journey,
+            day=1,
+            pain_level=3,
+            has_fever=False,
+            notes="Dia anterior",
+        )
+        first_day_timestamp = timezone.now() - timedelta(days=1)
+        PostOperatoryCheckin.objects.filter(id=first_checkin.id).update(created_at=first_day_timestamp)
+
+        self.client.force_authenticate(self.patient)
+        payload = {
+            "journey_id": str(self.journey.id),
+            "pain_level": 6,
+            "has_fever": False,
+            "notes": "Segundo dia",
+        }
+        response = self.client.post(reverse("postoperatory-checkin-create"), payload, format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["day"], 2)
+        self.assertEqual(PostOperatoryCheckin.objects.filter(journey=self.journey).count(), 2)
+
+        self.journey.refresh_from_db()
+        self.assertEqual(self.journey.start_date, timezone.localdate(first_day_timestamp))
+        self.assertEqual(self.journey.current_day, 2)
+
     def test_patient_can_upload_postop_photo_with_heic_mime(self):
         self.client.force_authenticate(self.patient)
         url = reverse("postoperatory-photo-create")

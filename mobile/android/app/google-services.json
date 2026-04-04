@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "989198183507",
+    "project_id": "goklinik-push",
+    "storage_bucket": "goklinik-push.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:989198183507:android:15a53b06528e678166eaa6",
+        "android_client_info": {
+          "package_name": "com.goklinik.goklinik_mobile"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDMZb8IFWERZPxee2-k0Usmydy3sP2DAXg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

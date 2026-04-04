@@ -105,35 +105,6 @@ export function LoginPage() {
           <Button type="submit" fullWidth disabled={loginMutation.isPending}>
             {loginMutation.isPending ? 'Entrando...' : 'Entrar'}
           </Button>
-
-          <div className="relative py-2 text-center">
-            <div className="absolute left-0 right-0 top-1/2 border-t border-slate-200" />
-            <span className="relative bg-white px-3 text-[10px] font-semibold uppercase tracking-wider text-slate-500">
-              ou continue com
-            </span>
-          </div>
-
-          <Button type="button" variant="secondary" fullWidth>
-            <svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden="true">
-              <path
-                fill="currentColor"
-                d="M21.35 11.1H12v2.98h5.39c-.23 1.5-1.13 2.77-2.4 3.62v3h3.88c2.27-2.09 3.48-5.16 3.48-8.8 0-.6-.06-1.18-.17-1.74z"
-              />
-              <path
-                fill="currentColor"
-                d="M12 22c2.7 0 4.96-.9 6.61-2.45l-3.88-3c-1.08.73-2.46 1.16-3.73 1.16-2.88 0-5.33-1.94-6.2-4.55H.8v2.84A10 10 0 0 0 12 22z"
-              />
-              <path
-                fill="currentColor"
-                d="M5.8 13.16A5.99 5.99 0 0 1 5.45 12c0-.4.07-.78.2-1.16V8H.8A10 10 0 0 0 0 12c0 1.6.38 3.1 1.05 4.44l4.75-3.28z"
-              />
-              <path
-                fill="currentColor"
-                d="M12 4.28c1.47 0 2.8.5 3.84 1.48l2.88-2.88C16.96 1.23 14.7 0 12 0A10 10 0 0 0 .8 8l4.85 2.84c.87-2.62 3.32-4.56 6.35-4.56z"
-              />
-            </svg>
-            Google
-          </Button>
         </form>
 
         <p className="mt-4 text-center text-xs text-slate-500">
