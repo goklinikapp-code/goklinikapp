@@ -28,3 +28,4 @@ mobile/.flutter-plugins-dependencies
 medic/.dart_tool/
 medic/build/
 medic/.flutter-plugins-dependencies
+backend/firebase/*.json
