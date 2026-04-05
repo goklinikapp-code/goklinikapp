@@ -158,12 +158,93 @@ export interface ActivityLog {
   ip: string
 }
 
+export type WorkflowTriggerType = 'appointment_created' | 'reminder_before' | 'post_op_followup'
+
 export interface WorkflowItem {
   id: string
-  title: string
-  trigger: string
-  action: string
+  name: string
   is_active: boolean
+  trigger_type: WorkflowTriggerType
+  trigger_offset: string
+  template?: string | null
+  template_code?: string
+  created_at: string
+  updated_at: string
+}
+
+export interface NotificationTemplateOption {
+  id: string
+  code: string
+  title_template: string
+  body_template: string
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface NotificationRecipientOption {
+  id: string
+  full_name: string
+  email: string
+  phone: string
+  has_active_push_token: boolean
+  active_push_tokens: number
+}
+
+export interface AppNotificationItem {
+  id: string
+  title: string
+  body: string
+  notification_type: string
+  is_read: boolean
+  sent_at?: string | null
+  related_object_id?: string | null
+  created_at: string
+}
+
+export interface BroadcastPushResponse {
+  detail: string
+  campaign_status: 'success' | 'partial' | 'error' | 'no_recipients'
+  segment: string
+  total_recipients: number
+  sent: number
+  error: number
+  skipped: number
+  rate_limited: number
+}
+
+export interface NotificationCampaignLog {
+  id: string
+  user: string
+  user_name?: string
+  user_email?: string
+  title: string
+  body: string
+  channel: 'push' | string
+  status: 'sent' | 'error' | 'skipped' | 'rate_limited' | string
+  event_code?: string
+  segment?: string
+  data_extra?: Record<string, string>
+  error_message?: string
+  created_at: string
+}
+
+export interface ScheduledNotificationItem {
+  id: string
+  run_at: string
+  segment: 'all_patients' | 'future_appointments' | 'inactive_patients'
+  title: string
+  body: string
+  template?: string | null
+  template_code?: string
+  template_context?: Record<string, string>
+  data_extra?: Record<string, string>
+  status: 'pending' | 'running' | 'completed' | 'error' | 'canceled'
+  summary?: Record<string, number>
+  error_message?: string
+  processed_at?: string | null
+  created_at: string
+  updated_at: string
 }
 
 export interface FinancialKpi {
@@ -316,6 +397,23 @@ export interface UrgentTicketRecord {
   images: string[]
   severity: 'low' | 'medium' | 'high'
   status: 'open' | 'viewed' | 'resolved'
+  created_at: string
+  updated_at: string
+}
+
+export interface UrgentMedicalRequestRecord {
+  id: string
+  status: 'open' | 'answered' | 'closed'
+  question: string
+  answer: string
+  patient_name: string
+  patient_email: string
+  patient_avatar_url?: string | null
+  assigned_professional?: string | null
+  assigned_professional_name?: string | null
+  answered_by?: string | null
+  answered_by_name?: string | null
+  answered_at?: string | null
   created_at: string
   updated_at: string
 }

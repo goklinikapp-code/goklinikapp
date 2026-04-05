@@ -16,6 +16,7 @@ import 'core/theme/app_theme.dart';
 import 'features/auth/presentation/auth_controller.dart';
 import 'features/auth/presentation/referral_deep_link_controller.dart';
 import 'features/branding/presentation/tenant_branding_controller.dart';
+import 'features/notifications/presentation/notifications_controller.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -46,7 +47,7 @@ Future<void> _initFirebase() async {
   try {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
-   );
+    );
   } catch (_) {
     // Firebase can be initialized later when google-services files are added.
   }
@@ -59,7 +60,8 @@ class GoKlinikApp extends ConsumerStatefulWidget {
   ConsumerState<GoKlinikApp> createState() => _GoKlinikAppState();
 }
 
-class _GoKlinikAppState extends ConsumerState<GoKlinikApp> {
+class _GoKlinikAppState extends ConsumerState<GoKlinikApp>
+    with WidgetsBindingObserver {
   ProviderSubscription<AuthViewState>? _authSubscription;
   final AppLinks _appLinks = AppLinks();
   StreamSubscription<Uri>? _deepLinkSubscription;
@@ -67,6 +69,7 @@ class _GoKlinikAppState extends ConsumerState<GoKlinikApp> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await ref.read(appPreferencesControllerProvider.notifier).initialize();
       await ref.read(pushNotificationServiceProvider).initialize();
@@ -86,9 +89,18 @@ class _GoKlinikAppState extends ConsumerState<GoKlinikApp> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _deepLinkSubscription?.cancel();
     _authSubscription?.close();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) return;
+
+    ref.read(pushNotificationServiceProvider).registerTokenIfAuthenticated();
+    ref.read(notificationsControllerProvider.notifier).load();
   }
 
   Future<void> _setupDeepLinks() async {

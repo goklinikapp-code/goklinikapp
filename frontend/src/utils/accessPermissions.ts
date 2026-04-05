@@ -36,7 +36,7 @@ export const ALL_ACCESS_PERMISSIONS = ACCESS_PERMISSION_DEFINITIONS.map((item) =
 const DEFAULT_ROLE_ACCESS: Record<UserRole, AccessPermissionKey[]> = {
   super_admin: [],
   clinic_master: ALL_ACCESS_PERMISSIONS,
-  surgeon: ['dashboard', 'app', 'patients', 'schedule', 'reports'],
+  surgeon: ['dashboard', 'patients', 'schedule'],
   secretary: ['dashboard', 'app', 'patients', 'schedule', 'reports'],
   nurse: ['dashboard', 'app', 'patients', 'schedule'],
   patient: [],
@@ -72,4 +72,3 @@ export function hasAccessPermission(
 
   return getDefaultAccessPermissionsForRole(user.role).includes(permission)
 }
-

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import uuid
 from collections import defaultdict
 from datetime import timedelta
@@ -68,6 +69,7 @@ ALLOWED_URGENT_IMAGE_EXTENSIONS = {
     ".tif",
     ".tiff",
 }
+logger = logging.getLogger(__name__)
 
 
 def _is_clinic_admin(user: GoKlinikUser) -> bool:
@@ -323,6 +325,149 @@ def _resolve_professional_for_urgent_request(patient) -> GoKlinikUser | None:
         .order_by("first_name", "last_name", "email")
         .first()
     )
+
+
+def _resolve_urgent_request_recipients(urgent_request: UrgentMedicalRequest) -> list[GoKlinikUser]:
+    recipients: dict[str, GoKlinikUser] = {}
+    patient_id = urgent_request.patient_id
+
+    assigned = urgent_request.assigned_professional
+    if assigned and assigned.is_active and assigned.id != patient_id:
+        recipients[str(assigned.id)] = assigned
+
+    clinic_masters = GoKlinikUser.objects.filter(
+        tenant_id=urgent_request.tenant_id,
+        role=GoKlinikUser.RoleChoices.CLINIC_MASTER,
+        is_active=True,
+    ).exclude(id=patient_id)
+    for clinic_master in clinic_masters:
+        recipients[str(clinic_master.id)] = clinic_master
+
+    return list(recipients.values())
+
+
+def _urgent_request_preview(question: str) -> str:
+    raw = " ".join((question or "").strip().split())
+    if not raw:
+        return "Nova mensagem."
+    if len(raw) > 140:
+        return f"{raw[:137]}..."
+    return raw
+
+
+def _notify_urgent_request_created(urgent_request: UrgentMedicalRequest) -> None:
+    from apps.notifications.services import NotificationService
+
+    recipients = _resolve_urgent_request_recipients(urgent_request)
+    if not recipients:
+        return
+
+    sender_name = urgent_request.patient.full_name
+    preview = _urgent_request_preview(urgent_request.question)
+    request_id = str(urgent_request.id)
+
+    for recipient in recipients:
+        title = f"Nova mensagem de {sender_name}"
+        body = f"{sender_name}: {preview}"
+        payload = {
+            "event": "urgent_request_created",
+            "urgent_request_id": request_id,
+            "sender_id": str(urgent_request.patient_id),
+            "sender_role": GoKlinikUser.RoleChoices.PATIENT,
+        }
+
+        try:
+            NotificationService.send_push_to_user(
+                user=recipient,
+                title=title,
+                body=body,
+                data_extra=payload,
+                event_code="urgent_request_created",
+                segment="post_op_urgent_request",
+                idempotency_key=f"urgent_request_created:{request_id}:{recipient.id}",
+                notification_type="new_message",
+                related_object_id=urgent_request.id,
+                create_in_app_notification=False,
+            )
+        except Exception:  # noqa: BLE001
+            logger.exception(
+                "Unable to send urgent-request push request=%s recipient=%s",
+                request_id,
+                recipient.id,
+            )
+
+        try:
+            NotificationService.create_in_app_notification(
+                recipient=recipient,
+                title=title,
+                body=body,
+                notification_type="new_message",
+                related_object_id=urgent_request.id,
+            )
+        except Exception:  # noqa: BLE001
+            logger.exception(
+                "Unable to persist urgent-request in-app notification request=%s recipient=%s",
+                request_id,
+                recipient.id,
+            )
+
+
+def _notify_urgent_request_answered(urgent_request: UrgentMedicalRequest) -> None:
+    from apps.notifications.services import NotificationService
+
+    patient = urgent_request.patient
+    if not patient or not patient.is_active:
+        return
+
+    responder_name = (
+        urgent_request.answered_by.full_name
+        if urgent_request.answered_by
+        else "Equipe da clínica"
+    )
+    answer = _urgent_request_preview(urgent_request.answer or "")
+    request_id = str(urgent_request.id)
+    title = "Resposta da clínica"
+    body = f"{responder_name}: {answer}"
+    payload = {
+        "event": "urgent_request_answered",
+        "urgent_request_id": request_id,
+        "responder_id": str(urgent_request.answered_by_id or ""),
+    }
+
+    try:
+        NotificationService.send_push_to_user(
+            user=patient,
+            title=title,
+            body=body,
+            data_extra=payload,
+            event_code="urgent_request_answered",
+            segment="post_op_urgent_request",
+            idempotency_key=f"urgent_request_answered:{request_id}:{patient.id}",
+            notification_type="new_message",
+            related_object_id=urgent_request.id,
+            create_in_app_notification=False,
+        )
+    except Exception:  # noqa: BLE001
+        logger.exception(
+            "Unable to send urgent-request reply push request=%s recipient=%s",
+            request_id,
+            patient.id,
+        )
+
+    try:
+        NotificationService.create_in_app_notification(
+            recipient=patient,
+            title=title,
+            body=body,
+            notification_type="new_message",
+            related_object_id=urgent_request.id,
+        )
+    except Exception:  # noqa: BLE001
+        logger.exception(
+            "Unable to persist urgent-request reply in-app notification request=%s recipient=%s",
+            request_id,
+            patient.id,
+        )
 
 
 def _save_postop_upload(*, upload, journey_id, request) -> str:
@@ -1228,6 +1373,7 @@ class UrgentMedicalRequestListCreateAPIView(APIView):
             question=serializer.validated_data["question"].strip(),
             status=UrgentMedicalRequest.StatusChoices.OPEN,
         )
+        _notify_urgent_request_created(urgent_request)
         return Response(
             UrgentMedicalRequestSerializer(
                 urgent_request,
@@ -1280,6 +1426,7 @@ class UrgentMedicalRequestReplyAPIView(APIView):
                 "updated_at",
             ]
         )
+        _notify_urgent_request_answered(urgent_request)
 
         return Response(
             UrgentMedicalRequestSerializer(

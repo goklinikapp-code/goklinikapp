@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 from celery import shared_task
-from django.utils import timezone
 
-from apps.notifications.tasks import send_appointment_reminder_task
+from apps.notifications.services import NotificationAutomationService
+from apps.notifications.tasks import schedule_postop_followup_workflows_task
 from apps.post_op.models import PostOpJourney
 from apps.post_op.services import bootstrap_journey_checklist
 
@@ -14,25 +14,8 @@ from .models import Appointment
 
 @shared_task(name="appointments.schedule_appointment_reminder")
 def schedule_appointment_reminder(appointment_id: str) -> str:
-    appointment = Appointment.objects.filter(id=appointment_id).first()
-    if not appointment:
-        return "appointment-not-found"
-
-    scheduled_dt = timezone.make_aware(
-        datetime.combine(appointment.appointment_date, appointment.appointment_time),
-        timezone.get_current_timezone(),
-    )
-    reminder_eta = scheduled_dt - timedelta(hours=24)
-
-    if reminder_eta <= timezone.now():
-        send_appointment_reminder_task.delay(str(appointment.id))
-        return "reminder-dispatched-immediately"
-
-    send_appointment_reminder_task.apply_async(
-        args=[str(appointment.id)],
-        eta=reminder_eta,
-    )
-    return "reminder-scheduled"
+    total = NotificationAutomationService.schedule_appointment_reminder_workflows(appointment_id)
+    return f"scheduled-{total}"
 
 
 @shared_task(name="appointments.create_postop_schedule")
@@ -82,5 +65,9 @@ def create_postop_schedule(appointment_id: str) -> str:
         },
     )
     bootstrap_journey_checklist(journey)
+    try:
+        schedule_postop_followup_workflows_task.delay(str(surgery_appointment.id))
+    except Exception:  # noqa: BLE001
+        pass
 
     return "postop-schedule-created"

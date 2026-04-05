@@ -1,4 +1,5 @@
 import uuid
+import logging
 from pathlib import Path
 
 from django.contrib.admin.models import LogEntry
@@ -15,6 +16,8 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from config.media_urls import absolute_media_url
+
+from apps.notifications.services import NotificationService
 
 from .models import GoKlinikUser, TutorialProgress, TutorialVideo
 from .serializers import (
@@ -47,6 +50,8 @@ DETAIL_RESPONSE_SERIALIZER = inline_serializer(
     fields={"detail": serializers.CharField()},
 )
 
+logger = logging.getLogger(__name__)
+
 
 class RegisterAPIView(APIView):
     permission_classes = [permissions.AllowAny]
@@ -62,6 +67,7 @@ class RegisterAPIView(APIView):
         serializer = RegisterPatientSerializer(data=request.data, context={"request": request})
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
+        self._notify_new_patient_registered(patient=user)
         refresh = RefreshToken.for_user(user)
 
         return Response(
@@ -75,6 +81,25 @@ class RegisterAPIView(APIView):
             },
             status=status.HTTP_201_CREATED,
         )
+
+    def _notify_new_patient_registered(self, *, patient: GoKlinikUser) -> None:
+        if not patient.tenant_id:
+            return
+        title = "Novo paciente cadastrado"
+        body = f"{patient.full_name} acabou de criar conta no aplicativo."
+        try:
+            NotificationService.notify_clinic_masters_in_app(
+                tenant_id=patient.tenant_id,
+                title=title,
+                body=body,
+                related_object_id=patient.id,
+            )
+        except Exception:  # noqa: BLE001
+            logger.exception(
+                "Unable to notify clinic masters about new patient registration patient=%s tenant=%s",
+                patient.id,
+                patient.tenant_id,
+            )
 
 
 class LoginAPIView(APIView):

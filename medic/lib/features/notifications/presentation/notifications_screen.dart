@@ -25,8 +25,11 @@ class NotificationsScreen extends ConsumerWidget {
         title: const Text('Notificações'),
         actions: [
           TextButton(
-            onPressed: () => ref.read(notificationsControllerProvider.notifier).markAllAsRead(),
-            child: const Text('Marcar tudo', style: TextStyle(color: GKColors.primary)),
+            onPressed: () => ref
+                .read(notificationsControllerProvider.notifier)
+                .markAllAsRead(),
+            child: const Text('Marcar tudo',
+                style: TextStyle(color: GKColors.primary)),
           ),
         ],
       ),
@@ -63,25 +66,8 @@ class NotificationsScreen extends ConsumerWidget {
           if (older.isEmpty)
             const GKCard(child: Text('Sem notificações anteriores.'))
           else
-            ...older.map((item) => _NotificationCard(item: item, compact: true)),
-          const SizedBox(height: 12),
-          const GKCard(
-            color: Color(0xFFE8F4F8),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Sua Jornada de Cuidado', style: TextStyle(fontWeight: FontWeight.w700)),
-                SizedBox(height: 8),
-                LinearProgressIndicator(
-                  value: 0.72,
-                  color: GKColors.primary,
-                  backgroundColor: Color(0xFFCADDE5),
-                ),
-                SizedBox(height: 6),
-                Text('72% do plano pós-operatório concluído.'),
-              ],
-            ),
-          ),
+            ...older
+                .map((item) => _NotificationCard(item: item, compact: true)),
         ],
       ),
     );
@@ -126,7 +112,8 @@ class _NotificationCard extends ConsumerWidget {
               ),
               const SizedBox(width: 8),
               Expanded(
-                child: Text(item.title, style: const TextStyle(fontWeight: FontWeight.w700)),
+                child: Text(item.title,
+                    style: const TextStyle(fontWeight: FontWeight.w700)),
               ),
               Text(
                 DateFormat('HH:mm').format(item.createdAt.toLocal()),
@@ -144,7 +131,9 @@ class _NotificationCard extends ConsumerWidget {
                   child: GKButton(
                     label: 'Confirmar presença',
                     onPressed: () async {
-                      await ref.read(notificationsControllerProvider.notifier).markAsRead(item.id);
+                      await ref
+                          .read(notificationsControllerProvider.notifier)
+                          .markAsRead(item.id);
                     },
                   ),
                 ),
@@ -154,7 +143,9 @@ class _NotificationCard extends ConsumerWidget {
                     label: 'Remarcar',
                     variant: GKButtonVariant.secondary,
                     onPressed: () async {
-                      await ref.read(notificationsControllerProvider.notifier).markAsRead(item.id);
+                      await ref
+                          .read(notificationsControllerProvider.notifier)
+                          .markAsRead(item.id);
                     },
                   ),
                 ),
@@ -166,7 +157,9 @@ class _NotificationCard extends ConsumerWidget {
               label: 'Ver checklist',
               variant: GKButtonVariant.secondary,
               onPressed: () async {
-                await ref.read(notificationsControllerProvider.notifier).markAsRead(item.id);
+                await ref
+                    .read(notificationsControllerProvider.notifier)
+                    .markAsRead(item.id);
               },
             ),
           ],

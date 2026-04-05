@@ -16,6 +16,7 @@ import SaaSLaunchPage from "@/pages/SaaSLaunch";
 import PatientsPage from "@/pages/Patients";
 import SchedulePage from "@/pages/Schedule";
 import ReportsPage from "@/pages/Reports";
+import InboxPage from "@/pages/Inbox";
 import ReferralsPage from "@/pages/Referrals";
 import TeamPage from "@/pages/Team";
 import AutomationsPage from "@/pages/Automations";
@@ -66,6 +67,11 @@ export function AppRoutes() {
     "secretary",
     "nurse",
   ];
+  const clinicRolesWithoutSurgeon: UserRole[] = [
+    "clinic_master",
+    "secretary",
+    "nurse",
+  ];
   const tutorialRoles: UserRole[] = ["super_admin", "clinic_master"];
 
   return (
@@ -106,7 +112,7 @@ export function AppRoutes() {
         <Route
           path="/app"
           element={
-            <RoleRoute allow={clinicRoles} permission="app">
+            <RoleRoute allow={clinicRolesWithoutSurgeon} permission="app">
               <AppDownloadsPage />
             </RoleRoute>
           }
@@ -186,10 +192,18 @@ export function AppRoutes() {
         <Route
           path="/reports"
           element={
-            <RoleRoute allow={clinicRoles} permission="reports">
+            <RoleRoute allow={clinicRolesWithoutSurgeon} permission="reports">
               <RouteErrorBoundary title="Não foi possível abrir os relatórios.">
                 <ReportsPage />
               </RouteErrorBoundary>
+            </RoleRoute>
+          }
+        />
+        <Route
+          path="/inbox"
+          element={
+            <RoleRoute allow={["surgeon"]}>
+              <InboxPage />
             </RoleRoute>
           }
         />

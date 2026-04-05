@@ -9,8 +9,15 @@ from rest_framework import status
 from rest_framework.test import APITestCase
 
 from apps.appointments.models import Appointment
+from apps.notifications.models import Notification
 from apps.patients.models import DoctorPatientAssignment, Patient
-from apps.post_op.models import PostOperatoryCheckin, PostOpChecklist, PostOpJourney, UrgentTicket
+from apps.post_op.models import (
+    PostOperatoryCheckin,
+    PostOpChecklist,
+    PostOpJourney,
+    UrgentMedicalRequest,
+    UrgentTicket,
+)
 from apps.tenants.models import Tenant, TenantSpecialty
 from apps.users.models import GoKlinikUser
 
@@ -533,3 +540,54 @@ class PostOpViewsTestCase(APITestCase):
         self.assertIn("urgent_tickets", response.data)
         self.assertEqual(len(response.data["urgent_tickets"]), 1)
         self.assertTrue(response.data["has_open_urgent_ticket"])
+
+    def test_patient_urgent_request_notifies_doctor_and_clinic_master(self):
+        DoctorPatientAssignment.objects.create(
+            patient=self.patient,
+            doctor=self.surgeon,
+            assigned_by=self.clinic_master,
+        )
+
+        self.client.force_authenticate(self.patient)
+        response = self.client.post(
+            reverse("postop-urgent-requests"),
+            {"question": "Doutor, estou com dor muito forte desde ontem."},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        urgent_request_id = response.data["id"]
+        notifications = Notification.objects.filter(
+            related_object_id=urgent_request_id,
+            notification_type=Notification.NotificationTypeChoices.NEW_MESSAGE,
+        )
+        recipient_ids = set(notifications.values_list("recipient_id", flat=True))
+
+        self.assertIn(self.surgeon.id, recipient_ids)
+        self.assertIn(self.clinic_master.id, recipient_ids)
+        self.assertNotIn(self.patient.id, recipient_ids)
+
+    def test_professional_reply_notifies_patient(self):
+        urgent_request = UrgentMedicalRequest.objects.create(
+            tenant=self.tenant,
+            patient=self.patient,
+            assigned_professional=self.surgeon,
+            question="Estou sentindo incômodo no local da cirurgia.",
+            status=UrgentMedicalRequest.StatusChoices.OPEN,
+        )
+
+        self.client.force_authenticate(self.surgeon)
+        response = self.client.put(
+            reverse("postop-urgent-requests-reply", kwargs={"request_id": urgent_request.id}),
+            {"answer": "Mantenha repouso e envie uma foto para avaliação."},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        notification = Notification.objects.filter(
+            recipient=self.patient,
+            related_object_id=urgent_request.id,
+            notification_type=Notification.NotificationTypeChoices.NEW_MESSAGE,
+        ).first()
+
+        self.assertIsNotNone(notification)

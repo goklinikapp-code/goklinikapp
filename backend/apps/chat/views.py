@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import logging
 import re
 import uuid
 from decimal import Decimal
@@ -38,6 +39,8 @@ from .serializers import (
     PatientAIMessageCreateSerializer,
     PatientAIMessageSerializer,
 )
+
+logger = logging.getLogger(__name__)
 
 STAFF_ROLES = {
     GoKlinikUser.RoleChoices.CLINIC_MASTER,
@@ -429,6 +432,105 @@ def _friendly_ai_error_message(detail: str, language: str) -> str:
     return copy["err_default"]
 
 
+def _chat_message_preview(message: Message) -> str:
+    if message.message_type == Message.MessageTypeChoices.IMAGE:
+        return "Enviou uma imagem."
+    raw = " ".join((message.content or "").strip().split())
+    if not raw:
+        return "Nova mensagem."
+    if len(raw) > 140:
+        return f"{raw[:137]}..."
+    return raw
+
+
+def _resolve_chat_message_recipients(message: Message) -> list[GoKlinikUser]:
+    sender = message.sender
+    room = message.room
+    recipients: dict[str, GoKlinikUser] = {}
+
+    if sender.role == GoKlinikUser.RoleChoices.PATIENT:
+        staff_member = room.staff_member
+        if staff_member and staff_member.is_active and staff_member.id != sender.id:
+            recipients[str(staff_member.id)] = staff_member
+
+        clinic_masters = GoKlinikUser.objects.filter(
+            tenant_id=room.tenant_id,
+            role=GoKlinikUser.RoleChoices.CLINIC_MASTER,
+            is_active=True,
+        ).exclude(id=sender.id)
+        for clinic_master in clinic_masters:
+            recipients[str(clinic_master.id)] = clinic_master
+    elif sender.role in STAFF_ROLES:
+        patient = room.patient
+        if patient and patient.is_active and patient.id != sender.id:
+            recipients[str(patient.id)] = patient
+
+    return list(recipients.values())
+
+
+def _notify_chat_message(message: Message) -> None:
+    from apps.notifications.services import NotificationService
+
+    recipients = _resolve_chat_message_recipients(message)
+    if not recipients:
+        return
+
+    sender_name = message.sender.full_name
+    preview = _chat_message_preview(message)
+    room_id = str(message.room_id)
+    message_id = str(message.id)
+
+    for recipient in recipients:
+        if recipient.role == GoKlinikUser.RoleChoices.PATIENT:
+            title = "Nova mensagem da clínica"
+        else:
+            title = f"Nova mensagem de {sender_name}"
+
+        body = f"{sender_name}: {preview}"
+        payload = {
+            "event": "chat_new_message",
+            "room_id": room_id,
+            "message_id": message_id,
+            "sender_id": str(message.sender_id),
+            "sender_role": message.sender.role,
+        }
+
+        try:
+            NotificationService.send_push_to_user(
+                user=recipient,
+                title=title,
+                body=body,
+                data_extra=payload,
+                event_code="chat_new_message",
+                segment="chat",
+                idempotency_key=f"chat_message:{message_id}:{recipient.id}",
+                notification_type="new_message",
+                related_object_id=message.room_id,
+                create_in_app_notification=False,
+            )
+        except Exception:  # noqa: BLE001
+            logger.exception(
+                "Unable to send chat push notification message=%s recipient=%s",
+                message_id,
+                recipient.id,
+            )
+
+        try:
+            NotificationService.create_in_app_notification(
+                recipient=recipient,
+                title=title,
+                body=body,
+                notification_type="new_message",
+                related_object_id=message.room_id,
+            )
+        except Exception:  # noqa: BLE001
+            logger.exception(
+                "Unable to persist chat in-app notification message=%s recipient=%s",
+                message_id,
+                recipient.id,
+            )
+
+
 class ChatRoomViewSet(viewsets.GenericViewSet):
     permission_classes = [IsAuthenticated]
     pagination_class = None
@@ -543,6 +645,7 @@ class ChatRoomViewSet(viewsets.GenericViewSet):
         )
         room.last_message_at = message.created_at
         room.save(update_fields=["last_message_at"])
+        _notify_chat_message(message)
 
         return Response(
             MessageSerializer(message, context={"request": request}).data,

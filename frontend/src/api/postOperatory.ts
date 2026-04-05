@@ -2,6 +2,7 @@ import { apiClient } from '@/lib/axios'
 import type {
   PostOperatoryAdminDetail,
   PostOperatoryAdminItem,
+  UrgentMedicalRequestRecord,
   UrgentTicketRecord,
 } from '@/types'
 
@@ -30,5 +31,21 @@ export async function updateUrgentTicketStatus(
   const { data } = await apiClient.patch<UrgentTicketRecord>(`/urgent-tickets/${ticketId}/`, {
     status,
   })
+  return data
+}
+
+export async function listUrgentMedicalRequests() {
+  const { data } = await apiClient.get<UrgentMedicalRequestRecord[]>('/post-operatory/urgent-requests/')
+  return data
+}
+
+export async function replyUrgentMedicalRequest(
+  requestId: string,
+  answer: string,
+) {
+  const { data } = await apiClient.put<UrgentMedicalRequestRecord>(
+    `/post-operatory/urgent-requests/${requestId}/reply/`,
+    { answer },
+  )
   return data
 }

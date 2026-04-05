@@ -10,6 +10,7 @@ import '../../../core/widgets/gk_badge.dart';
 import '../../../core/widgets/gk_button.dart';
 import '../../../core/widgets/gk_card.dart';
 import '../../../core/widgets/gk_loading_shimmer.dart';
+import '../../../core/widgets/notification_bell_action.dart';
 import '../domain/chat_models.dart';
 import 'chat_controller.dart';
 
@@ -79,6 +80,7 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
       appBar: AppBar(
         title: const Text('Caixa de Mensagens'),
         actions: [
+          const NotificationBellAction(),
           IconButton(
             onPressed: () =>
                 ref.read(chatInboxProvider.notifier).load(forceLoading: true),

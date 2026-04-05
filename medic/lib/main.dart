@@ -5,10 +5,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:intl/intl.dart';
 
+import 'core/network/push_notification_service.dart';
 import 'core/router/app_router.dart';
 import 'core/theme/app_theme.dart';
 import 'features/auth/presentation/auth_controller.dart';
 import 'features/branding/presentation/tenant_branding_controller.dart';
+import 'features/notifications/presentation/notifications_controller.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -50,24 +52,40 @@ class GoKlinikMedicApp extends ConsumerStatefulWidget {
   ConsumerState<GoKlinikMedicApp> createState() => _GoKlinikMedicAppState();
 }
 
-class _GoKlinikMedicAppState extends ConsumerState<GoKlinikMedicApp> {
+class _GoKlinikMedicAppState extends ConsumerState<GoKlinikMedicApp>
+    with WidgetsBindingObserver {
   ProviderSubscription<AuthViewState>? _authSubscription;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await ref.read(pushNotificationServiceProvider).initialize();
+    });
     _authSubscription = ref.listenManual<AuthViewState>(
       authControllerProvider,
       (previous, next) async {
         await ref.read(tenantBrandingProvider.notifier).syncWithAuthState(next);
+        if (next.isAuthenticated && previous?.isAuthenticated != true) {
+          await ref.read(pushNotificationServiceProvider).registerTokenIfAuthenticated();
+        }
       },
     );
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _authSubscription?.close();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) return;
+    ref.read(pushNotificationServiceProvider).registerTokenIfAuthenticated();
+    ref.read(notificationsControllerProvider.notifier).load();
   }
 
   @override

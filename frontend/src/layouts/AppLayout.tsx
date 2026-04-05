@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
-import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import { useEffect, useRef, useState } from "react";
+import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   BarChart2,
   Bell,
@@ -23,11 +24,20 @@ import {
   Zap,
   LogOut,
   ChevronDown,
+  Menu,
+  Mailbox,
+  X,
 } from "lucide-react";
 
 import { Avatar } from "@/components/ui/Avatar";
 import { Select } from "@/components/ui/Select";
 import { Button } from "@/components/ui/Button";
+import {
+  getNotifications,
+  getUnreadNotificationsCount,
+  markAllNotificationsAsRead,
+  markNotificationAsRead,
+} from "@/api/notifications";
 import {
   SUPPORTED_CURRENCIES,
   SUPPORTED_LANGUAGES,
@@ -55,6 +65,7 @@ const clinicNavItems = [
   { icon: ClipboardCheck, label: "Pré-operatório", to: "/pre-operatory", permission: "patients" },
   { icon: HeartPulse, label: "Pós-operatório", to: "/post-operatory", permission: "patients" },
   { icon: Calendar, labelKey: "nav_schedule", to: "/schedule", permission: "schedule" },
+  { icon: Mailbox, label: "Caixa de mensagens", to: "/inbox", permission: "patients" },
   { icon: BarChart2, labelKey: "nav_reports", to: "/reports", permission: "reports" },
   { icon: Share2, labelKey: "nav_referrals", to: "/referrals", permission: "referrals" },
   { icon: UserCheck, labelKey: "nav_team", to: "/team", permission: "team" },
@@ -87,8 +98,13 @@ const roleLabelMap: Record<string, TranslationKey> = {
 
 export function AppLayout() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+  const notificationsRef = useRef<HTMLDivElement | null>(null);
   const { theme, toggleTheme } = useTheme();
   const navigate = useNavigate();
+  const location = useLocation();
+  const queryClient = useQueryClient();
   const { user, logout, tenant } = useAuthStore();
   const { tenantConfig, loadTenantBranding, setTenantConfig } = useTenantStore();
   const { period, setPeriod } = useUIStore();
@@ -102,6 +118,62 @@ export function AppLayout() {
   );
 
   const t = (key: TranslationKey) => translate(language, key);
+
+  const {
+    data: unreadCount = 0,
+  } = useQuery({
+    queryKey: ["header-notifications-unread", user?.id],
+    queryFn: getUnreadNotificationsCount,
+    enabled: Boolean(user),
+    refetchInterval: 30000,
+  });
+
+  const {
+    data: notificationsPage,
+    isFetching: isLoadingNotifications,
+  } = useQuery({
+    queryKey: ["header-notifications-list", user?.id],
+    queryFn: () => getNotifications({ page: 1, pageSize: 8 }),
+    enabled: Boolean(user),
+    refetchInterval: 30000,
+  });
+
+  const notifications = notificationsPage?.results || [];
+
+  const markAsReadMutation = useMutation({
+    mutationFn: markNotificationAsRead,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["header-notifications-list"] });
+      queryClient.invalidateQueries({ queryKey: ["header-notifications-unread"] });
+    },
+  });
+
+  const markAllAsReadMutation = useMutation({
+    mutationFn: markAllNotificationsAsRead,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["header-notifications-list"] });
+      queryClient.invalidateQueries({ queryKey: ["header-notifications-unread"] });
+    },
+  });
+
+  useEffect(() => {
+    if (!isNotificationsOpen) return;
+
+    const onClickOutside = (event: MouseEvent) => {
+      if (!notificationsRef.current) return;
+      if (notificationsRef.current.contains(event.target as Node)) return;
+      setIsNotificationsOpen(false);
+    };
+
+    document.addEventListener("mousedown", onClickOutside);
+    return () => document.removeEventListener("mousedown", onClickOutside);
+  }, [isNotificationsOpen]);
+
+  useEffect(() => {
+    setIsMobileSidebarOpen(false);
+    setIsNotificationsOpen(false);
+    setIsMenuOpen(false);
+  }, [location.pathname]);
 
   useEffect(() => {
     if (user?.role === "super_admin") {
@@ -153,6 +225,15 @@ export function AppLayout() {
           ) {
             return false;
           }
+          if (item.to === "/inbox" && user.role !== "surgeon") {
+            return false;
+          }
+          if (
+            user.role === "surgeon" &&
+            (item.to === "/app" || item.to === "/reports")
+          ) {
+            return false;
+          }
           return hasAccessPermission(
             user,
             item.permission as AccessPermissionKey,
@@ -164,9 +245,35 @@ export function AppLayout() {
     navigate("/login");
   };
 
+  const formatNotificationDate = (value: string) => {
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return "-";
+    return parsed.toLocaleString(language === "pt" ? "pt-BR" : "en-US", {
+      day: "2-digit",
+      month: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  };
+
   return (
     <div className="min-h-screen bg-mist">
-      <aside className="fixed inset-y-0 left-0 z-30 w-sidebar border-r border-slate-200 bg-white p-4">
+      {isMobileSidebarOpen ? (
+        <button
+          type="button"
+          aria-label="close-sidebar-overlay"
+          className="fixed inset-0 z-40 bg-slate-900/40 lg:hidden"
+          onClick={() => setIsMobileSidebarOpen(false)}
+        />
+      ) : null}
+
+      <aside
+        className={cn(
+          "fixed inset-y-0 left-0 z-50 w-sidebar border-r border-slate-200 bg-white p-4 transition-transform duration-200",
+          "lg:translate-x-0",
+          isMobileSidebarOpen ? "translate-x-0" : "-translate-x-full",
+        )}
+      >
         <div className="mb-6 border-b border-slate-100 pb-4">
           <img
             src={sidebarLogoSrc}
@@ -229,134 +336,203 @@ export function AppLayout() {
         </div>
       </aside>
 
-      <main className="ml-sidebar min-h-screen">
-        <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/90 px-6 py-3 backdrop-blur">
-          <div className="flex items-center gap-3">
-            <div className="relative flex-1">
+      <main className="min-h-screen lg:ml-sidebar">
+        <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/90 px-3 py-3 backdrop-blur sm:px-4 lg:z-[60] lg:px-6">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+            <div className="order-1 flex items-center gap-2 lg:hidden">
+              <button
+                type="button"
+                className="rounded-lg border border-slate-200 bg-white p-2 text-slate-600 hover:bg-slate-50"
+                onClick={() => setIsMobileSidebarOpen((prev) => !prev)}
+                aria-label="toggle-sidebar"
+              >
+                {isMobileSidebarOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
+              </button>
+            </div>
+
+            <div className="relative order-2 w-full min-w-0 sm:order-1 sm:flex-1">
               <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
               <input
                 className="h-9 w-full rounded-lg border border-slate-200 bg-slate-50 pl-9 pr-3 text-sm outline-none focus:border-primary"
-                placeholder={
-                  user?.role === "super_admin"
-                    ? t("search_saas")
-                    : t("search_clinic")
-                }
+                placeholder={user?.role === "super_admin" ? t("search_saas") : t("search_clinic")}
               />
             </div>
 
-            <button
-              type="button"
-              onClick={toggleTheme}
-              className="rounded-lg border border-slate-200 bg-white p-2 text-slate-600 hover:bg-slate-50"
-              aria-label="toggle-theme"
-            >
-              {theme === "light" ? (
-                <Moon className="h-4 w-4" />
-              ) : (
-                <Sun className="h-4 w-4" />
-              )}
-            </button>
-
-            <button
-              type="button"
-              className="relative rounded-lg border border-slate-200 bg-white p-2 text-slate-600 hover:bg-slate-50"
-            >
-              <Bell className="h-4 w-4" />
-              <span className="absolute -right-1 -top-1 rounded-full bg-danger px-1.5 text-[10px] font-semibold text-white">
-                3
-              </span>
-            </button>
-
-            <Select
-              value={period}
-              onChange={(event) =>
-                setPeriod(event.target.value as typeof period)
-              }
-              className="h-9 min-w-44 bg-white"
-            >
-              <option value="today">{t("period_today")}</option>
-              <option value="week">{t("period_week")}</option>
-              <option value="month">{t("period_month")}</option>
-              <option value="last_30_days">{t("period_last_30_days")}</option>
-            </Select>
-
-            <div className="relative">
+            <div className="order-1 ml-auto flex items-center gap-2 sm:order-2">
               <button
                 type="button"
-                onClick={() => setIsMenuOpen((prev) => !prev)}
-                className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-2 py-1.5"
+                onClick={toggleTheme}
+                className="rounded-lg border border-slate-200 bg-white p-2 text-slate-600 hover:bg-slate-50"
+                aria-label="toggle-theme"
               >
-                <Avatar
-                  name={user?.full_name || "Admin"}
-                  src={user?.avatar_url}
-                  className="h-7 w-7"
-                />
-                <ChevronDown className="h-4 w-4 text-slate-500" />
+                {theme === "light" ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
               </button>
 
-              {isMenuOpen ? (
-                <div className="absolute right-0 mt-2 w-64 rounded-lg border border-slate-200 bg-white p-3 shadow-lg">
-                  <p className="text-sm font-semibold text-night">
-                    {user?.full_name || "GoKlinik Admin"}
-                  </p>
-                  <p className="caption">{userRoleLabel}</p>
+              <div className="relative" ref={notificationsRef}>
+                <button
+                  type="button"
+                  onClick={() => setIsNotificationsOpen((prev) => !prev)}
+                  className="relative rounded-lg border border-slate-200 bg-white p-2 text-slate-600 hover:bg-slate-50"
+                  aria-label="notifications"
+                >
+                  <Bell className="h-4 w-4" />
+                  {unreadCount > 0 ? (
+                    <span className="absolute -right-1 -top-1 rounded-full bg-danger px-1.5 text-[10px] font-semibold text-white">
+                      {unreadCount > 99 ? "99+" : unreadCount}
+                    </span>
+                  ) : null}
+                </button>
 
-                  <div className="mt-3 border-t border-slate-100 pt-3">
-                    <p className="caption mb-2">{t("language")}</p>
-                    <Select
-                      className="h-9 w-full"
-                      value={language}
-                      onChange={(event) =>
-                        setLanguage(event.target.value as typeof language)
-                      }
-                    >
-                      {SUPPORTED_LANGUAGES.map((value) => (
-                        <option key={value} value={value}>
-                          {languageLabels[value]}
-                        </option>
-                      ))}
-                    </Select>
+                {isNotificationsOpen ? (
+                  <div className="absolute right-0 z-[70] mt-2 w-[92vw] max-w-[360px] rounded-lg border border-slate-200 bg-white p-3 shadow-lg">
+                    <div className="mb-2 flex items-center justify-between">
+                      <p className="text-sm font-semibold text-night">Notificações</p>
+                      <button
+                        type="button"
+                        className="text-xs font-medium text-primary hover:underline disabled:opacity-50"
+                        onClick={() => markAllAsReadMutation.mutate()}
+                        disabled={markAllAsReadMutation.isPending || unreadCount <= 0}
+                      >
+                        Marcar todas
+                      </button>
+                    </div>
+
+                    <div className="max-h-96 space-y-2 overflow-y-auto pr-1">
+                      {isLoadingNotifications ? (
+                        <p className="caption py-6 text-center">Carregando notificações...</p>
+                      ) : notifications.length === 0 ? (
+                        <p className="caption py-6 text-center">Nenhuma notificação encontrada.</p>
+                      ) : (
+                        notifications.map((item) => (
+                          <button
+                            key={item.id}
+                            type="button"
+                            className={cn(
+                              "w-full rounded-lg border p-3 text-left transition",
+                              item.is_read
+                                ? "border-slate-200 bg-white hover:bg-slate-50"
+                                : "border-primary/30 bg-primary/5 hover:bg-primary/10",
+                            )}
+                            onClick={() => {
+                              if (item.is_read || markAsReadMutation.isPending) return;
+                              markAsReadMutation.mutate(item.id);
+                            }}
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <p className="text-sm font-semibold text-night">{item.title}</p>
+                              <span className="caption whitespace-nowrap">
+                                {formatNotificationDate(item.created_at)}
+                              </span>
+                            </div>
+                            <p className="mt-1 text-xs text-slate-600">{item.body}</p>
+                          </button>
+                        ))
+                      )}
+                    </div>
                   </div>
+                ) : null}
+              </div>
 
-                  <div className="mt-3">
-                    <p className="caption mb-2">{t("currency")}</p>
-                    <Select
-                      className="h-9 w-full"
-                      value={currency}
-                      onChange={(event) =>
-                        setCurrency(event.target.value as typeof currency)
-                      }
-                    >
-                      {SUPPORTED_CURRENCIES.map((value) => (
-                        <option key={value} value={value}>
-                          {currencyLabels[value]}
-                        </option>
-                      ))}
-                    </Select>
+              <div className="hidden sm:block">
+                <Select
+                  value={period}
+                  onChange={(event) => setPeriod(event.target.value as typeof period)}
+                  className="h-9 min-w-44 bg-white"
+                >
+                  <option value="today">{t("period_today")}</option>
+                  <option value="week">{t("period_week")}</option>
+                  <option value="month">{t("period_month")}</option>
+                  <option value="last_30_days">{t("period_last_30_days")}</option>
+                </Select>
+              </div>
+
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setIsMenuOpen((prev) => !prev)}
+                  className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-2 py-1.5"
+                >
+                  <Avatar
+                    name={user?.full_name || "Admin"}
+                    src={user?.avatar_url}
+                    className="h-7 w-7"
+                  />
+                  <ChevronDown className="h-4 w-4 text-slate-500" />
+                </button>
+
+                {isMenuOpen ? (
+                  <div className="absolute right-0 z-[70] mt-2 w-64 rounded-lg border border-slate-200 bg-white p-3 shadow-lg">
+                    <p className="text-sm font-semibold text-night">
+                      {user?.full_name || "GoKlinik Admin"}
+                    </p>
+                    <p className="caption">{userRoleLabel}</p>
+
+                    <div className="mt-3 border-t border-slate-100 pt-3">
+                      <p className="caption mb-2">{t("language")}</p>
+                      <Select
+                        className="h-9 w-full"
+                        value={language}
+                        onChange={(event) => setLanguage(event.target.value as typeof language)}
+                      >
+                        {SUPPORTED_LANGUAGES.map((value) => (
+                          <option key={value} value={value}>
+                            {languageLabels[value]}
+                          </option>
+                        ))}
+                      </Select>
+                    </div>
+
+                    <div className="mt-3">
+                      <p className="caption mb-2">{t("currency")}</p>
+                      <Select
+                        className="h-9 w-full"
+                        value={currency}
+                        onChange={(event) => setCurrency(event.target.value as typeof currency)}
+                      >
+                        {SUPPORTED_CURRENCIES.map((value) => (
+                          <option key={value} value={value}>
+                            {currencyLabels[value]}
+                          </option>
+                        ))}
+                      </Select>
+                      <Button
+                        className="mt-2 w-full"
+                        variant="secondary"
+                        onClick={useAutomaticCurrency}
+                      >
+                        {t("currency_auto")}
+                      </Button>
+                    </div>
+
                     <Button
-                      className="mt-2 w-full"
+                      className="mt-3 w-full"
                       variant="secondary"
-                      onClick={useAutomaticCurrency}
+                      onClick={handleLogout}
                     >
-                      {t("currency_auto")}
+                      <LogOut className="h-4 w-4" />
+                      {t("logout")}
                     </Button>
                   </div>
+                ) : null}
+              </div>
+            </div>
 
-                  <Button
-                    className="mt-3 w-full"
-                    variant="secondary"
-                    onClick={handleLogout}
-                  >
-                    <LogOut className="h-4 w-4" />
-                    {t("logout")}
-                  </Button>
-                </div>
-              ) : null}
+            <div className="order-3 w-full sm:hidden">
+              <Select
+                value={period}
+                onChange={(event) => setPeriod(event.target.value as typeof period)}
+                className="h-9 w-full bg-white"
+              >
+                <option value="today">{t("period_today")}</option>
+                <option value="week">{t("period_week")}</option>
+                <option value="month">{t("period_month")}</option>
+                <option value="last_30_days">{t("period_last_30_days")}</option>
+              </Select>
             </div>
           </div>
         </header>
 
-        <div className="p-6">
+        <div className="p-3 sm:p-4 lg:p-6">
           <Outlet />
         </div>
       </main>

@@ -10,6 +10,7 @@ import '../../../core/widgets/gk_avatar.dart';
 import '../../../core/widgets/gk_badge.dart';
 import '../../../core/widgets/gk_card.dart';
 import '../../../core/widgets/gk_loading_shimmer.dart';
+import '../../../core/widgets/notification_bell_action.dart';
 import '../domain/appointment_models.dart';
 import 'appointments_controller.dart';
 
@@ -44,6 +45,7 @@ class _AppointmentsScreenState extends ConsumerState<AppointmentsScreen> {
       appBar: AppBar(
         title: const Text('Agenda'),
         actions: [
+          const NotificationBellAction(),
           IconButton(
             onPressed: () => setState(() => _calendarView = !_calendarView),
             icon: Icon(_calendarView ? Icons.view_list : Icons.calendar_month),

@@ -17,8 +17,32 @@ class PushNotificationService {
       final messaging = FirebaseMessaging.instance;
       await messaging.requestPermission(alert: true, badge: true, sound: true);
 
-      FirebaseMessaging.onMessage.listen((_) {
-        _ref.read(notificationsControllerProvider.notifier).load();
+      Future<void> reloadNotifications() async {
+        await _ref.read(notificationsControllerProvider.notifier).load();
+      }
+
+      FirebaseMessaging.onMessage.listen((_) async {
+        await reloadNotifications();
+      });
+      FirebaseMessaging.onMessageOpenedApp.listen((_) async {
+        await reloadNotifications();
+      });
+
+      final initialMessage = await messaging.getInitialMessage();
+      if (initialMessage != null) {
+        await reloadNotifications();
+      }
+
+      messaging.onTokenRefresh.listen((token) async {
+        if (token.isEmpty) return;
+        final platform = Platform.isIOS ? 'ios' : 'android';
+        try {
+          await _ref
+              .read(notificationsRepositoryProvider)
+              .registerToken(token: token, platform: platform);
+        } catch (_) {
+          // Ignore token refresh errors to avoid blocking app usage.
+        }
       });
 
       await registerTokenIfAuthenticated();
@@ -36,13 +60,16 @@ class PushNotificationService {
       if (token == null || token.isEmpty) return;
 
       final platform = Platform.isIOS ? 'ios' : 'android';
-      await _ref.read(notificationsRepositoryProvider).registerToken(token: token, platform: platform);
+      await _ref
+          .read(notificationsRepositoryProvider)
+          .registerToken(token: token, platform: platform);
     } catch (_) {
       // Ignore registration failures when Firebase is not fully configured.
     }
   }
 }
 
-final pushNotificationServiceProvider = Provider<PushNotificationService>((ref) {
+final pushNotificationServiceProvider =
+    Provider<PushNotificationService>((ref) {
   return PushNotificationService(ref);
 });

@@ -7,6 +7,7 @@ import '../../features/auth/presentation/auth_controller.dart';
 import '../../features/auth/presentation/login_screen.dart';
 import '../../features/auth/presentation/splash_screen.dart';
 import '../../features/chat/presentation/chat_list_screen.dart';
+import '../../features/notifications/presentation/notifications_screen.dart';
 import '../../features/patients/presentation/patient_detail_screen.dart';
 import '../../features/patients/presentation/patients_screen.dart';
 import '../../features/profile/presentation/profile_screen.dart';
@@ -55,6 +56,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/profile',
             builder: (context, state) => const ProfileScreen(),
+          ),
+          GoRoute(
+            path: '/notifications',
+            builder: (context, state) => const NotificationsScreen(),
           ),
         ],
       ),

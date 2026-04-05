@@ -5,6 +5,7 @@ from rest_framework import status
 from rest_framework.test import APITestCase
 
 from apps.chat.models import ChatRoom
+from apps.notifications.models import Notification
 from apps.patients.models import Patient
 from apps.tenants.models import Tenant
 from apps.users.models import GoKlinikUser
@@ -18,6 +19,12 @@ class ChatViewsTestCase(APITestCase):
             password="pass12345",
             tenant=self.tenant,
             role=GoKlinikUser.RoleChoices.SECRETARY,
+        )
+        self.clinic_master = GoKlinikUser.objects.create_user(
+            email="master@chat.com",
+            password="pass12345",
+            tenant=self.tenant,
+            role=GoKlinikUser.RoleChoices.CLINIC_MASTER,
         )
         self.patient = Patient.objects.create_user(
             email="patient@chat.com",
@@ -68,3 +75,50 @@ class ChatViewsTestCase(APITestCase):
             format="json",
         )
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_patient_message_notifies_staff_and_clinic_master(self):
+        room = ChatRoom.objects.create(
+            tenant=self.tenant,
+            room_type=ChatRoom.RoomTypeChoices.DOCTOR_PATIENT,
+            patient=self.patient,
+            staff_member=self.staff,
+        )
+        self.client.force_authenticate(self.patient)
+        response = self.client.post(
+            reverse("chat-rooms-messages", kwargs={"pk": room.id}),
+            {"content": "Preciso de ajuda no pós-op", "message_type": "text"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+        recipients = set(
+            Notification.objects.filter(notification_type=Notification.NotificationTypeChoices.NEW_MESSAGE).values_list(
+                "recipient_id",
+                flat=True,
+            )
+        )
+        self.assertIn(self.staff.id, recipients)
+        self.assertIn(self.clinic_master.id, recipients)
+        self.assertNotIn(self.patient.id, recipients)
+
+    def test_staff_message_notifies_patient(self):
+        room = ChatRoom.objects.create(
+            tenant=self.tenant,
+            room_type=ChatRoom.RoomTypeChoices.DOCTOR_PATIENT,
+            patient=self.patient,
+            staff_member=self.staff,
+        )
+        self.client.force_authenticate(self.staff)
+        response = self.client.post(
+            reverse("chat-rooms-messages", kwargs={"pk": room.id}),
+            {"content": "Recebi sua mensagem, vou avaliar.", "message_type": "text"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+        self.assertTrue(
+            Notification.objects.filter(
+                recipient=self.patient,
+                notification_type=Notification.NotificationTypeChoices.NEW_MESSAGE,
+            ).exists()
+        )

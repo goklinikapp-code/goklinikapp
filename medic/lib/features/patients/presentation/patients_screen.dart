@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/theme/app_theme.dart';
+import '../../../core/widgets/notification_bell_action.dart';
 import '../../../core/widgets/gk_avatar.dart';
 import '../../../core/widgets/gk_badge.dart';
 import '../../../core/widgets/gk_card.dart';
@@ -236,6 +237,7 @@ class _PatientsScreenState extends ConsumerState<PatientsScreen> {
               )
             : const Text('Pacientes'),
         actions: [
+          const NotificationBellAction(),
           IconButton(
             onPressed: () {
               setState(() {

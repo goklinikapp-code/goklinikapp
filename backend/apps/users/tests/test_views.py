@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+from unittest.mock import patch
+
 from django.core import mail
 from django.test import override_settings
 from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APITestCase
 
+from apps.notifications.models import Notification
 from apps.tenants.models import Tenant
 from apps.users.models import GoKlinikUser
 
@@ -153,3 +156,36 @@ class InviteUserEmailLanguageTestCase(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(len(mail.outbox), 1)
         self.assertIn("Convite para entrar na Invite Tenant", mail.outbox[0].subject)
+
+
+class RegisterPatientNotificationsTestCase(APITestCase):
+    def setUp(self):
+        self.tenant = Tenant.objects.create(name="Clinic Tenant", slug="clinic-tenant")
+        self.master = GoKlinikUser.objects.create_user(
+            email="owner@clinic.com",
+            password="pass12345",
+            tenant=self.tenant,
+            role=GoKlinikUser.RoleChoices.CLINIC_MASTER,
+        )
+
+    @patch("apps.users.serializers.supabase_sign_up", return_value=True)
+    def test_register_patient_creates_notification_for_clinic_master(self, _supabase_signup_mock):
+        response = self.client.post(
+            reverse("auth-register"),
+            {
+                "full_name": "Paciente Novo",
+                "clinic_id": str(self.tenant.id),
+                "cpf": "12345678900",
+                "email": "paciente.novo@clinic.com",
+                "phone": "11999990000",
+                "password": "12345678",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        notification = Notification.objects.filter(
+            recipient=self.master,
+            title="Novo paciente cadastrado",
+        ).first()
+        self.assertIsNotNone(notification)

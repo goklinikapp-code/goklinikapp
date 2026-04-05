@@ -8,6 +8,12 @@ from .models import Appointment, BlockedPeriod, ProfessionalAvailability
 
 
 class AppointmentService:
+    _BLOCKING_STATUSES = (
+        Appointment.StatusChoices.PENDING,
+        Appointment.StatusChoices.CONFIRMED,
+        Appointment.StatusChoices.IN_PROGRESS,
+    )
+
     _DEFAULT_AVAILABILITY_WINDOWS = {
         0: [(time(9, 0), time(18, 0))],  # Monday
         1: [(time(9, 0), time(18, 0))],  # Tuesday
@@ -31,8 +37,7 @@ class AppointmentService:
         queryset = Appointment.objects.filter(
             professional_id=professional_id,
             appointment_date=appointment_date,
-        ).exclude(
-            status=Appointment.StatusChoices.CANCELLED,
+            status__in=AppointmentService._BLOCKING_STATUSES,
         )
         if exclude_appointment_id:
             queryset = queryset.exclude(id=exclude_appointment_id)
@@ -84,7 +89,8 @@ class AppointmentService:
         appointments = Appointment.objects.filter(
             professional_id=professional_id,
             appointment_date=date,
-        ).exclude(status=Appointment.StatusChoices.CANCELLED)
+            status__in=AppointmentService._BLOCKING_STATUSES,
+        )
         if exclude_appointment_id:
             appointments = appointments.exclude(id=exclude_appointment_id)
 

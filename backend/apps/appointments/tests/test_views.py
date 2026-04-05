@@ -9,6 +9,7 @@ from rest_framework import status
 from rest_framework.test import APITestCase
 
 from apps.appointments.models import Appointment, ProfessionalAvailability
+from apps.notifications.models import Notification
 from apps.patients.models import DoctorPatientAssignment, Patient
 from apps.post_op.models import PostOpJourney
 from apps.tenants.models import Tenant, TenantSpecialty
@@ -83,6 +84,39 @@ class AppointmentViewsTestCase(APITestCase):
         self.assertIsNotNone(assignment)
         self.assertEqual(assignment.doctor_id, self.surgeon.id)
 
+        notification = Notification.objects.filter(
+            recipient=self.master,
+            related_object_id=appointment.id,
+        ).first()
+        self.assertIsNotNone(notification)
+        self.assertEqual(notification.title, "Novo agendamento criado")
+
+    @patch("apps.appointments.views.dispatch_appointment_created_workflows_task.delay")
+    def test_create_appointment_dispatches_confirmation_push(self, confirmation_delay_mock):
+        self.client.force_authenticate(self.master)
+        url = reverse("appointments-list")
+        date = timezone.localdate() + timedelta(days=2)
+
+        response = self.client.post(
+            url,
+            {
+                "patient": str(self.patient.id),
+                "professional": str(self.surgeon.id),
+                "specialty": str(self.specialty.id),
+                "appointment_date": str(date),
+                "appointment_time": "11:00:00",
+                "duration_minutes": 60,
+                "status": "pending",
+                "appointment_type": "first_visit",
+                "clinic_location": "Unidade Centro - Av. Principal, 123",
+                "notes": "novo agendamento",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        confirmation_delay_mock.assert_called_once_with(response.data["id"])
+
     def test_create_appointment_returns_409_when_slot_conflicts(self):
         Appointment.objects.create(
             tenant=self.tenant,
@@ -118,6 +152,72 @@ class AppointmentViewsTestCase(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
         self.assertIn("detail", response.data)
 
+    def test_create_appointment_ignores_completed_slot_for_conflict(self):
+        target_date = timezone.localdate() + timedelta(days=1)
+        Appointment.objects.create(
+            tenant=self.tenant,
+            patient=self.patient,
+            professional=self.surgeon,
+            specialty=self.specialty,
+            appointment_date=target_date,
+            appointment_time=timezone.localtime().time().replace(hour=10, minute=0, second=0, microsecond=0),
+            duration_minutes=60,
+            status=Appointment.StatusChoices.COMPLETED,
+            appointment_type=Appointment.AppointmentTypeChoices.FIRST_VISIT,
+            created_by=self.master,
+        )
+
+        self.client.force_authenticate(self.master)
+        response = self.client.post(
+            reverse("appointments-list"),
+            {
+                "patient": str(self.patient.id),
+                "professional": str(self.surgeon.id),
+                "specialty": str(self.specialty.id),
+                "appointment_date": str(target_date),
+                "appointment_time": "10:00:00",
+                "duration_minutes": 60,
+                "status": "pending",
+                "appointment_type": "first_visit",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+    def test_create_appointment_ignores_rescheduled_slot_for_conflict(self):
+        target_date = timezone.localdate() + timedelta(days=1)
+        Appointment.objects.create(
+            tenant=self.tenant,
+            patient=self.patient,
+            professional=self.surgeon,
+            specialty=self.specialty,
+            appointment_date=target_date,
+            appointment_time=timezone.localtime().time().replace(hour=11, minute=0, second=0, microsecond=0),
+            duration_minutes=60,
+            status=Appointment.StatusChoices.RESCHEDULED,
+            appointment_type=Appointment.AppointmentTypeChoices.FIRST_VISIT,
+            created_by=self.master,
+        )
+
+        self.client.force_authenticate(self.master)
+        response = self.client.post(
+            reverse("appointments-list"),
+            {
+                "patient": str(self.patient.id),
+                "professional": str(self.surgeon.id),
+                "specialty": str(self.specialty.id),
+                "appointment_date": str(target_date),
+                "appointment_time": "11:00:00",
+                "duration_minutes": 60,
+                "status": "pending",
+                "appointment_type": "first_visit",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
     def test_patient_cannot_update_status(self):
         appointment = Appointment.objects.create(
             tenant=self.tenant,
@@ -137,9 +237,11 @@ class AppointmentViewsTestCase(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
     @patch("apps.appointments.views.create_postop_schedule")
-    @patch("apps.appointments.views.schedule_appointment_reminder.delay")
+    @patch("apps.appointments.views.schedule_appointment_reminder_workflows_task.delay")
+    @patch("apps.appointments.views.dispatch_appointment_created_workflows_task.delay")
     def test_confirmed_surgery_only_dispatches_reminder(
         self,
+        confirmation_delay_mock,
         reminder_delay,
         create_postop_schedule_mock,
     ):
@@ -160,11 +262,12 @@ class AppointmentViewsTestCase(APITestCase):
         response = self.client.put(url, {"status": "confirmed"}, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
+        confirmation_delay_mock.assert_called_once_with(str(appointment.id))
         reminder_delay.assert_called_once_with(str(appointment.id))
         create_postop_schedule_mock.assert_not_called()
 
     @patch("apps.appointments.views.create_postop_schedule")
-    @patch("apps.appointments.views.schedule_appointment_reminder.delay")
+    @patch("apps.appointments.views.schedule_appointment_reminder_workflows_task.delay")
     def test_completed_surgery_dispatches_postop_creation(
         self,
         reminder_delay,
@@ -191,7 +294,7 @@ class AppointmentViewsTestCase(APITestCase):
         reminder_delay.assert_not_called()
 
     @patch("apps.appointments.views.create_postop_schedule")
-    @patch("apps.appointments.views.schedule_appointment_reminder.delay")
+    @patch("apps.appointments.views.schedule_appointment_reminder_workflows_task.delay")
     def test_pending_surgery_can_be_marked_completed_from_quick_action(
         self,
         reminder_delay,
@@ -641,6 +744,54 @@ class AppointmentViewsTestCase(APITestCase):
         self.assertEqual(str(appointment.appointment_time), "15:00:00")
         self.assertEqual(appointment.clinic_location, "Sala 2")
         self.assertEqual(appointment.notes, "depois")
+
+        notification = Notification.objects.filter(
+            recipient=self.master,
+            related_object_id=appointment.id,
+            title="Agendamento remarcado",
+        ).first()
+        self.assertIsNotNone(notification)
+
+    def test_master_reschedule_creates_admin_notification(self):
+        appointment = Appointment.objects.create(
+            tenant=self.tenant,
+            patient=self.patient,
+            professional=self.surgeon,
+            specialty=self.specialty,
+            appointment_date=timezone.localdate() + timedelta(days=2),
+            appointment_time=timezone.localtime().time().replace(hour=9, minute=0, second=0, microsecond=0),
+            duration_minutes=60,
+            status=Appointment.StatusChoices.PENDING,
+            appointment_type=Appointment.AppointmentTypeChoices.FIRST_VISIT,
+            clinic_location="Sala 1",
+            created_by=self.master,
+        )
+
+        self.client.force_authenticate(self.master)
+        response = self.client.patch(
+            reverse("appointments-detail", kwargs={"pk": appointment.id}),
+            {
+                "patient": str(self.patient.id),
+                "professional": str(self.surgeon.id),
+                "specialty": str(self.specialty.id),
+                "appointment_date": str(timezone.localdate() + timedelta(days=4)),
+                "appointment_time": "14:00:00",
+                "duration_minutes": 60,
+                "status": "pending",
+                "appointment_type": "first_visit",
+                "clinic_location": "Sala 2",
+                "notes": "reschedule master",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        notification = Notification.objects.filter(
+            recipient=self.master,
+            related_object_id=appointment.id,
+            title="Agendamento remarcado",
+        ).first()
+        self.assertIsNotNone(notification)
 
     def test_available_slots_includes_current_slot_when_excluding_appointment_id(self):
         appointment = Appointment.objects.create(

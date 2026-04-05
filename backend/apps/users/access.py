@@ -24,10 +24,8 @@ DEFAULT_ROLE_PERMISSIONS: dict[str, list[str]] = {
     GoKlinikUser.RoleChoices.CLINIC_MASTER: ALL_ACCESS_PERMISSIONS,
     GoKlinikUser.RoleChoices.SURGEON: [
         "dashboard",
-        "app",
         "patients",
         "schedule",
-        "reports",
     ],
     GoKlinikUser.RoleChoices.SECRETARY: [
         "dashboard",
@@ -68,4 +66,3 @@ def resolve_access_permissions_for_role(role: str, requested_values: Iterable[st
     if normalized:
         return normalized
     return list(DEFAULT_ROLE_PERMISSIONS.get(role, []))
-

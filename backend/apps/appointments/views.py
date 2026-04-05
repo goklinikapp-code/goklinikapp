@@ -15,6 +15,12 @@ from rest_framework.response import Response
 
 from config.media_urls import absolute_media_url
 
+from apps.notifications.tasks import (
+    dispatch_appointment_created_workflows_task,
+    schedule_appointment_reminder_workflows_task,
+    schedule_postop_followup_workflows_task,
+)
+from apps.notifications.services import NotificationService
 from apps.patients.models import DoctorPatientAssignment
 from apps.users.models import GoKlinikUser
 
@@ -25,9 +31,18 @@ from .serializers import (
     AppointmentStatusUpdateSerializer,
 )
 from .services import AppointmentService
-from .tasks import create_postop_schedule, schedule_appointment_reminder
+from .tasks import create_postop_schedule
 
 logger = logging.getLogger(__name__)
+
+APPOINTMENT_STATUS_LABELS_PT_BR = {
+    Appointment.StatusChoices.PENDING: "pendente",
+    Appointment.StatusChoices.CONFIRMED: "confirmado",
+    Appointment.StatusChoices.IN_PROGRESS: "em andamento",
+    Appointment.StatusChoices.COMPLETED: "concluído",
+    Appointment.StatusChoices.CANCELLED: "cancelado",
+    Appointment.StatusChoices.RESCHEDULED: "reagendado",
+}
 
 
 class AppointmentConflictException(APIException):
@@ -135,6 +150,9 @@ class AppointmentViewSet(viewsets.ModelViewSet):
                 },
             )
 
+        self._dispatch_creation_side_effects(appointment=appointment)
+        self._notify_admin_appointment_created(appointment=appointment)
+
     def perform_update(self, serializer):
         user = self.request.user
         if user.role == GoKlinikUser.RoleChoices.PATIENT:
@@ -149,6 +167,9 @@ class AppointmentViewSet(viewsets.ModelViewSet):
 
         appointment = self.get_object()
         old_status = appointment.status
+        old_date = appointment.appointment_date
+        old_time = appointment.appointment_time
+        old_professional_id = appointment.professional_id
         professional = serializer.validated_data.get(
             "professional", appointment.professional
         )
@@ -195,6 +216,21 @@ class AppointmentViewSet(viewsets.ModelViewSet):
             appointment=updated,
             old_status=old_status,
         )
+        if (
+            old_date != updated.appointment_date
+            or old_time != updated.appointment_time
+            or old_professional_id != updated.professional_id
+        ):
+            self._notify_admin_appointment_rescheduled(
+                appointment=updated,
+                old_date=old_date,
+                old_time=old_time,
+            )
+        if old_status != updated.status:
+            self._notify_admin_appointment_status_changed(
+                appointment=updated,
+                old_status=old_status,
+            )
 
     @action(detail=False, methods=["get"], url_path="available-slots")
     def available_slots(self, request):
@@ -268,6 +304,11 @@ class AppointmentViewSet(viewsets.ModelViewSet):
             appointment=appointment,
             old_status=old_status,
         )
+        if old_status != appointment.status:
+            self._notify_admin_appointment_status_changed(
+                appointment=appointment,
+                old_status=old_status,
+            )
 
         return Response(
             AppointmentSerializer(appointment, context={"request": request}).data
@@ -297,7 +338,16 @@ class AppointmentViewSet(viewsets.ModelViewSet):
             and appointment.status == Appointment.StatusChoices.CONFIRMED
         ):
             try:
-                schedule_appointment_reminder.delay(str(appointment.id))
+                dispatch_appointment_created_workflows_task.delay(str(appointment.id))
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Unable to dispatch appointment confirmation for %s: %s", appointment.id, exc)
+
+        if (
+            old_status != Appointment.StatusChoices.CONFIRMED
+            and appointment.status == Appointment.StatusChoices.CONFIRMED
+        ):
+            try:
+                schedule_appointment_reminder_workflows_task.delay(str(appointment.id))
             except Exception as exc:  # noqa: BLE001
                 logger.warning("Unable to dispatch reminder task for %s: %s", appointment.id, exc)
 
@@ -310,8 +360,109 @@ class AppointmentViewSet(viewsets.ModelViewSet):
                 # Keep this synchronous to guarantee immediate consistency across
                 # admin, doctor and patient experiences right after completion.
                 create_postop_schedule(str(appointment.id))
+                schedule_postop_followup_workflows_task.delay(str(appointment.id))
             except Exception as exc:  # noqa: BLE001
                 logger.warning("Unable to create post-op schedule for %s: %s", appointment.id, exc)
+
+    def _dispatch_creation_side_effects(
+        self,
+        *,
+        appointment: Appointment,
+    ) -> None:
+        try:
+            dispatch_appointment_created_workflows_task.delay(str(appointment.id))
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Unable to dispatch appointment confirmation for %s: %s", appointment.id, exc)
+
+        if appointment.status == Appointment.StatusChoices.CONFIRMED:
+            try:
+                schedule_appointment_reminder_workflows_task.delay(str(appointment.id))
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Unable to dispatch reminder task for %s: %s", appointment.id, exc)
+
+        if (
+            appointment.appointment_type == Appointment.AppointmentTypeChoices.SURGERY
+            and appointment.status == Appointment.StatusChoices.COMPLETED
+        ):
+            try:
+                create_postop_schedule(str(appointment.id))
+                schedule_postop_followup_workflows_task.delay(str(appointment.id))
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Unable to create post-op schedule for %s: %s", appointment.id, exc)
+
+    def _appointment_when(self, *, date, when_time) -> str:
+        return f"{date.strftime('%d/%m/%Y')} às {when_time.strftime('%H:%M')}"
+
+    def _appointment_procedure_label(self, appointment: Appointment) -> str:
+        if appointment.specialty:
+            return appointment.specialty.specialty_name
+        return appointment.get_appointment_type_display()
+
+    def _status_label(self, status_code: str) -> str:
+        return APPOINTMENT_STATUS_LABELS_PT_BR.get(status_code, status_code)
+
+    def _notify_admin_appointment_created(self, *, appointment: Appointment) -> None:
+        procedure = self._appointment_procedure_label(appointment)
+        when_label = self._appointment_when(
+            date=appointment.appointment_date,
+            when_time=appointment.appointment_time,
+        )
+        actor_name = self.request.user.full_name
+        title = "Novo agendamento criado"
+        body = (
+            f"{appointment.patient.full_name} • {procedure} em {when_label}. "
+            f"Criado por {actor_name}."
+        )
+        NotificationService.notify_clinic_masters_in_app(
+            tenant_id=appointment.tenant_id,
+            title=title,
+            body=body,
+            related_object_id=appointment.id,
+        )
+
+    def _notify_admin_appointment_rescheduled(
+        self,
+        *,
+        appointment: Appointment,
+        old_date,
+        old_time,
+    ) -> None:
+        old_when = self._appointment_when(date=old_date, when_time=old_time)
+        new_when = self._appointment_when(
+            date=appointment.appointment_date,
+            when_time=appointment.appointment_time,
+        )
+        actor_name = self.request.user.full_name
+        title = "Agendamento remarcado"
+        body = (
+            f"{appointment.patient.full_name}: de {old_when} para {new_when}. "
+            f"Alterado por {actor_name}."
+        )
+        NotificationService.notify_clinic_masters_in_app(
+            tenant_id=appointment.tenant_id,
+            title=title,
+            body=body,
+            related_object_id=appointment.id,
+        )
+
+    def _notify_admin_appointment_status_changed(
+        self,
+        *,
+        appointment: Appointment,
+        old_status: str,
+    ) -> None:
+        actor_name = self.request.user.full_name
+        title = "Status de agendamento atualizado"
+        body = (
+            f"{appointment.patient.full_name}: {self._status_label(old_status)} → "
+            f"{self._status_label(appointment.status)}. Atualizado por {actor_name}."
+        )
+        NotificationService.notify_clinic_masters_in_app(
+            tenant_id=appointment.tenant_id,
+            title=title,
+            body=body,
+            related_object_id=appointment.id,
+        )
 
     @action(detail=False, methods=["get"], url_path="available-professionals")
     def available_professionals(self, request):
