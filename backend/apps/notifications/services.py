@@ -3,7 +3,6 @@ from __future__ import annotations
 import logging
 import re
 from datetime import datetime, timedelta
-from pathlib import Path
 import threading
 from typing import Any
 
@@ -166,27 +165,34 @@ class NotificationService:
     _firebase_lock = threading.Lock()
 
     @classmethod
-    def _resolve_firebase_credentials_path(cls) -> Path | None:
-        configured_path = (getattr(settings, "FIREBASE_CREDENTIALS_PATH", "") or "").strip()
-        if configured_path:
-            candidate = Path(configured_path).expanduser()
-            if candidate.exists():
-                return candidate
+    def _firebase_credentials_from_env(cls) -> dict[str, str] | None:
+        project_id = (getattr(settings, "FIREBASE_PROJECT_ID", "") or "").strip()
+        client_email = (getattr(settings, "FIREBASE_CLIENT_EMAIL", "") or "").strip()
+        private_key = (getattr(settings, "FIREBASE_PRIVATE_KEY", "") or "")
+        private_key = private_key.replace("\\n", "\n").strip()
 
-        google_credentials = (getattr(settings, "GOOGLE_APPLICATION_CREDENTIALS", "") or "").strip()
-        if google_credentials:
-            candidate = Path(google_credentials).expanduser()
-            if candidate.exists():
-                return candidate
+        missing: list[str] = []
+        if not project_id:
+            missing.append("FIREBASE_PROJECT_ID")
+        if not client_email:
+            missing.append("FIREBASE_CLIENT_EMAIL")
+        if not private_key:
+            missing.append("FIREBASE_PRIVATE_KEY")
 
-        base_dir = Path(getattr(settings, "BASE_DIR", Path.cwd()))
-        firebase_dir = base_dir / "firebase"
-        if firebase_dir.exists():
-            for pattern in ("*adminsdk*.json", "*.json"):
-                matches = sorted(firebase_dir.glob(pattern))
-                if matches:
-                    return matches[0]
-        return None
+        if missing:
+            logger.error(
+                "Firebase env credentials are missing: %s",
+                ", ".join(missing),
+            )
+            return None
+
+        return {
+            "type": "service_account",
+            "project_id": project_id,
+            "client_email": client_email,
+            "private_key": private_key,
+            "token_uri": "https://oauth2.googleapis.com/token",
+        }
 
     @classmethod
     def _get_firebase_messaging(cls):
@@ -214,15 +220,12 @@ class NotificationService:
             cls._firebase_messaging_client = messaging
             return cls._firebase_messaging_client
 
-        credential_path = cls._resolve_firebase_credentials_path()
-        if not credential_path:
-            logger.error(
-                "Firebase credentials path not configured and no fallback file found in ./firebase.",
-            )
+        credential_payload = cls._firebase_credentials_from_env()
+        if not credential_payload:
             return None
 
         try:
-            cred = credentials.Certificate(credential_path)
+            cred = credentials.Certificate(credential_payload)
             firebase_admin.initialize_app(cred)
             cls._firebase_messaging_client = messaging
             return cls._firebase_messaging_client

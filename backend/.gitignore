@@ -19,3 +19,7 @@ media_uploads/
 backups/
 test_db.sqlite3
 celerybeat-schedule
+
+# Firebase credentials must never be committed
+firebase/
+firebase/*.json
