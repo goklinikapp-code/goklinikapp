@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import logging
 import re
-from datetime import datetime, timedelta
+import unicodedata
+from datetime import date, datetime, time, timedelta
 import threading
 from typing import Any
 
@@ -61,6 +62,19 @@ INVALID_TOKEN_ERROR_MARKERS = (
     "invalidargument",
 )
 CAMPAIGN_APPOINTMENT_VARIABLES = {"date", "time", "procedure"}
+CAMPAIGN_VARIABLE_FALLBACKS = {
+    "date": "data a confirmar",
+    "time": "horário a confirmar",
+    "procedure": "procedimento a confirmar",
+}
+APPOINTMENT_TYPE_FRIENDLY_LABELS = {
+    Appointment.AppointmentTypeChoices.FIRST_VISIT: "Primeira consulta",
+    Appointment.AppointmentTypeChoices.RETURN: "Retorno",
+    Appointment.AppointmentTypeChoices.SURGERY: "Cirurgia",
+    Appointment.AppointmentTypeChoices.POST_OP_7D: "Pós-operatório (7 dias)",
+    Appointment.AppointmentTypeChoices.POST_OP_30D: "Pós-operatório (30 dias)",
+    Appointment.AppointmentTypeChoices.POST_OP_90D: "Pós-operatório (90 dias)",
+}
 
 
 def render_notification_template(template_text: str, context: dict[str, Any] | None = None) -> str:
@@ -235,16 +249,152 @@ class NotificationService:
             return None
 
     @staticmethod
-    def _appointment_context(appointment: Appointment) -> dict[str, Any]:
-        procedure = (
-            appointment.specialty.specialty_name
-            if appointment.specialty
-            else appointment.get_appointment_type_display()
+    def _friendly_appointment_type_label(appointment_type: str) -> str:
+        normalized = (appointment_type or "").strip().lower()
+        if normalized in APPOINTMENT_TYPE_FRIENDLY_LABELS:
+            return APPOINTMENT_TYPE_FRIENDLY_LABELS[normalized]
+
+        if not normalized:
+            return "Procedimento"
+        return normalized.replace("_", " ").replace("-", " ").strip().capitalize()
+
+    @staticmethod
+    def _normalize_human_key(value: str) -> str:
+        normalized = unicodedata.normalize("NFKD", value or "")
+        ascii_value = normalized.encode("ascii", "ignore").decode("ascii")
+        return re.sub(r"[^a-z0-9]+", " ", ascii_value.lower()).strip()
+
+    @classmethod
+    def _friendly_procedure_label(
+        cls,
+        *,
+        procedure: str = "",
+        appointment_type: str = "",
+    ) -> str:
+        raw_value = (procedure or "").strip()
+        normalized = cls._normalize_human_key(raw_value)
+        alias_labels = {
+            "post op 7d": "Pós-operatório (7 dias)",
+            "post op 30d": "Pós-operatório (30 dias)",
+            "post op 90d": "Pós-operatório (90 dias)",
+            "postop 7d": "Pós-operatório (7 dias)",
+            "postop 30d": "Pós-operatório (30 dias)",
+            "postop 90d": "Pós-operatório (90 dias)",
+            "post op 7 dias": "Pós-operatório (7 dias)",
+            "post op 30 dias": "Pós-operatório (30 dias)",
+            "post op 90 dias": "Pós-operatório (90 dias)",
+            "first visit": "Primeira consulta",
+            "return": "Retorno",
+            "surgery": "Cirurgia",
+        }
+        if normalized in alias_labels:
+            return alias_labels[normalized]
+
+        compact = normalized.replace(" ", "")
+        if compact.startswith("postop") or compact.startswith("posop"):
+            days_match = re.search(r"(\d{1,3})\s*d", normalized)
+            if days_match:
+                days = int(days_match.group(1))
+                day_label = "dia" if days == 1 else "dias"
+                return f"Pós-operatório ({days} {day_label})"
+            return "Pós-operatório"
+
+        if raw_value:
+            return raw_value
+        return cls._friendly_appointment_type_label(appointment_type)
+
+    @staticmethod
+    def _friendly_name(value: Any) -> str:
+        name = str(value or "").strip()
+        return name or "Paciente"
+
+    @staticmethod
+    def _friendly_date(value: Any) -> str:
+        if isinstance(value, datetime):
+            return value.strftime("%d/%m/%Y")
+        if isinstance(value, date):
+            return value.strftime("%d/%m/%Y")
+
+        raw = str(value or "").strip()
+        if not raw:
+            return ""
+        normalized = raw.replace("Z", "+00:00")
+        try:
+            parsed = datetime.fromisoformat(normalized)
+            return parsed.strftime("%d/%m/%Y")
+        except ValueError:
+            pass
+        for pattern in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y"):
+            try:
+                parsed = datetime.strptime(raw, pattern)
+                return parsed.strftime("%d/%m/%Y")
+            except ValueError:
+                continue
+        return raw
+
+    @staticmethod
+    def _friendly_time(value: Any) -> str:
+        if isinstance(value, datetime):
+            return value.strftime("%H:%M")
+        if isinstance(value, time):
+            return value.strftime("%H:%M")
+
+        raw = str(value or "").strip()
+        if not raw:
+            return ""
+        normalized = raw.replace("Z", "+00:00")
+        try:
+            parsed = datetime.fromisoformat(normalized)
+            return parsed.strftime("%H:%M")
+        except ValueError:
+            pass
+        for pattern in ("%H:%M:%S", "%H:%M"):
+            try:
+                parsed = datetime.strptime(raw, pattern)
+                return parsed.strftime("%H:%M")
+            except ValueError:
+                continue
+        return raw
+
+    @classmethod
+    def _normalize_template_context(
+        cls,
+        context: dict[str, Any],
+        template_variables: set[str] | None = None,
+    ) -> dict[str, Any]:
+        variables = template_variables or set(context.keys())
+        normalized = dict(context)
+        for variable in variables:
+            if variable == "name":
+                normalized[variable] = cls._friendly_name(normalized.get(variable))
+            elif variable == "date":
+                normalized[variable] = cls._friendly_date(normalized.get(variable))
+            elif variable == "time":
+                normalized[variable] = cls._friendly_time(normalized.get(variable))
+            elif variable == "procedure":
+                normalized[variable] = cls._friendly_procedure_label(
+                    procedure=str(normalized.get(variable) or ""),
+                )
+            elif variable == "day":
+                try:
+                    normalized[variable] = str(int(normalized.get(variable)))
+                except (TypeError, ValueError):
+                    normalized[variable] = str(normalized.get(variable) or "").strip()
+        return normalized
+
+    @classmethod
+    def _appointment_context(cls, appointment: Appointment) -> dict[str, Any]:
+        procedure = ""
+        if appointment.specialty:
+            procedure = (appointment.specialty.specialty_name or "").strip()
+        procedure = cls._friendly_procedure_label(
+            procedure=procedure,
+            appointment_type=appointment.appointment_type,
         )
         return {
-            "name": appointment.patient.full_name,
-            "date": appointment.appointment_date.strftime("%d/%m/%Y"),
-            "time": appointment.appointment_time.strftime("%H:%M"),
+            "name": cls._friendly_name(appointment.patient.full_name),
+            "date": cls._friendly_date(appointment.appointment_date),
+            "time": cls._friendly_time(appointment.appointment_time),
             "procedure": procedure,
         }
 
@@ -568,6 +718,13 @@ class NotificationService:
                         value = appointment_context.get(variable)
                         if cls._has_context_value(value):
                             payload_context[variable] = value
+            for variable in required_variables:
+                if (
+                    variable in CAMPAIGN_VARIABLE_FALLBACKS
+                    and not cls._has_context_value(payload_context.get(variable))
+                ):
+                    payload_context[variable] = CAMPAIGN_VARIABLE_FALLBACKS[variable]
+            payload_context = cls._normalize_template_context(payload_context, required_variables)
             title = render_notification_template(title_template, payload_context)
             body = render_notification_template(body_template, payload_context)
 
