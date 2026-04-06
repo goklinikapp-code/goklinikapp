@@ -71,6 +71,7 @@ class PreOperatorySerializer(AbsoluteMediaUrlsSerializerMixin, serializers.Model
             "assigned_doctor",
             "assigned_doctor_name",
             "status",
+            "approved_at",
             "files",
             "photos",
             "documents",
@@ -82,6 +83,7 @@ class PreOperatorySerializer(AbsoluteMediaUrlsSerializerMixin, serializers.Model
             "patient",
             "tenant",
             "status",
+            "approved_at",
             "files",
             "photos",
             "documents",
@@ -152,6 +154,41 @@ class PreOperatoryWriteSerializer(serializers.ModelSerializer):
 
     def validate_diseases(self, value: str) -> str:
         return (value or "").strip()
+
+    def validate_height(self, value):
+        if value is None:
+            return value
+        if value <= 0:
+            raise serializers.ValidationError("Height must be greater than zero.")
+        return value
+
+    def validate_weight(self, value):
+        if value is None:
+            return value
+        if value <= 0:
+            raise serializers.ValidationError("Weight must be greater than zero.")
+        return value
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        instance = getattr(self, "instance", None)
+        errors = {}
+
+        if instance is None:
+            if attrs.get("height") is None:
+                errors["height"] = "Height is required."
+            if attrs.get("weight") is None:
+                errors["weight"] = "Weight is required."
+        else:
+            if "height" in attrs and attrs.get("height") is None:
+                errors["height"] = "Height is required."
+            if "weight" in attrs and attrs.get("weight") is None:
+                errors["weight"] = "Weight is required."
+
+        if errors:
+            raise serializers.ValidationError(errors)
+
+        return attrs
 
 
 class PreOperatoryAdminUpdateSerializer(serializers.Serializer):

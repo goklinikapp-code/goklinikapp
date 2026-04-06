@@ -39,7 +39,29 @@ class _PreOperatoryScreenState extends ConsumerState<PreOperatoryScreen> {
   final List<String> _documentPaths = [];
 
   @override
+  void initState() {
+    super.initState();
+    _allergiesController.addListener(_onFormChanged);
+    _medicationsController.addListener(_onFormChanged);
+    _previousSurgeriesController.addListener(_onFormChanged);
+    _diseasesController.addListener(_onFormChanged);
+    _heightController.addListener(_onFormChanged);
+    _weightController.addListener(_onFormChanged);
+  }
+
+  void _onFormChanged() {
+    if (!mounted) return;
+    setState(() {});
+  }
+
+  @override
   void dispose() {
+    _allergiesController.removeListener(_onFormChanged);
+    _medicationsController.removeListener(_onFormChanged);
+    _previousSurgeriesController.removeListener(_onFormChanged);
+    _diseasesController.removeListener(_onFormChanged);
+    _heightController.removeListener(_onFormChanged);
+    _weightController.removeListener(_onFormChanged);
     _allergiesController.dispose();
     _medicationsController.dispose();
     _previousSurgeriesController.dispose();
@@ -66,6 +88,8 @@ class _PreOperatoryScreenState extends ConsumerState<PreOperatoryScreen> {
 
   String _statusLabel(String status) {
     switch (status) {
+      case 'not_sent':
+        return 'Não enviado';
       case 'in_review':
         return 'Em análise';
       case 'approved':
@@ -80,6 +104,12 @@ class _PreOperatoryScreenState extends ConsumerState<PreOperatoryScreen> {
 
   _StatusVisual _statusVisual(String status) {
     switch (status) {
+      case 'not_sent':
+        return const _StatusVisual(
+          label: 'Não enviado',
+          background: Color(0xFFEFF6FF),
+          foreground: Color(0xFF1D4ED8),
+        );
       case 'in_review':
         return const _StatusVisual(
           label: 'Em análise',
@@ -106,6 +136,10 @@ class _PreOperatoryScreenState extends ConsumerState<PreOperatoryScreen> {
           foreground: Color(0xFF334155),
         );
     }
+  }
+
+  bool _isRecordEditableByPatient(String status) {
+    return status == 'pending' || status == 'rejected';
   }
 
   Future<void> _pickPhotos() async {
@@ -173,7 +207,7 @@ class _PreOperatoryScreenState extends ConsumerState<PreOperatoryScreen> {
 
     final shouldDelete = await showDialog<bool>(
           context: context,
-          builder: (_) => Dialog(
+          builder: (dialogContext) => Dialog(
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(20),
             ),
@@ -217,13 +251,15 @@ class _PreOperatoryScreenState extends ConsumerState<PreOperatoryScreen> {
                         child: GKButton(
                           label: 'Cancelar',
                           variant: GKButtonVariant.secondary,
-                          onPressed: () => Navigator.of(context).pop(false),
+                          onPressed: () =>
+                              Navigator.of(dialogContext).pop(false),
                         ),
                       ),
                       const SizedBox(width: 8),
                       Expanded(
                         child: ElevatedButton(
-                          onPressed: () => Navigator.of(context).pop(true),
+                          onPressed: () =>
+                              Navigator.of(dialogContext).pop(true),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: const Color(0xFFD92D20),
                             foregroundColor: Colors.white,
@@ -512,9 +548,14 @@ class _PreOperatoryScreenState extends ConsumerState<PreOperatoryScreen> {
             });
           }
 
-          final status = _statusVisual(record?.status ?? 'pending');
+          final status = _statusVisual(record?.status ?? 'not_sent');
           final hasRecord = record != null;
-          final canEdit = !hasRecord || _isEditMode;
+          final canEditExistingRecord =
+              hasRecord && _isRecordEditableByPatient(record.status);
+          final canEdit = !hasRecord || (canEditExistingRecord && _isEditMode);
+          final hasValidHeight = (_parseLocalizedNumber(_heightController.text) ?? 0) > 0;
+          final hasValidWeight = (_parseLocalizedNumber(_weightController.text) ?? 0) > 0;
+          final canSubmit = canEdit && !_isSubmitting && hasValidHeight && hasValidWeight;
 
           return ListView(
             padding: const EdgeInsets.all(16),
@@ -643,9 +684,11 @@ class _PreOperatoryScreenState extends ConsumerState<PreOperatoryScreen> {
                     ),
                     if (!canEdit) ...[
                       const SizedBox(height: 4),
-                      const Text(
-                        'Dados enviados. Toque em "Editar informações" se quiser atualizar.',
-                        style: TextStyle(color: GKColors.neutral),
+                      Text(
+                        canEditExistingRecord
+                            ? 'Dados enviados. Toque em "Editar informações" se quiser atualizar.'
+                            : 'Pré-operatório em análise da clínica. Edição pelo paciente está bloqueada neste momento.',
+                        style: const TextStyle(color: GKColors.neutral),
                       ),
                     ],
                     if (canEdit) ...[
@@ -698,9 +741,16 @@ class _PreOperatoryScreenState extends ConsumerState<PreOperatoryScreen> {
                         label: _isSubmitting
                             ? 'Enviando...'
                             : 'Enviar pré-operatório',
-                        onPressed: _isSubmitting ? null : _submit,
+                        onPressed: canSubmit ? _submit : null,
                       ),
-                    if (hasRecord && !canEdit)
+                    if (!hasRecord && (!hasValidHeight || !hasValidWeight)) ...[
+                      const SizedBox(height: 8),
+                      const Text(
+                        'Altura e peso são obrigatórios para enviar o pré-operatório.',
+                        style: TextStyle(color: GKColors.neutral),
+                      ),
+                    ],
+                    if (hasRecord && !canEdit && canEditExistingRecord)
                       GKButton(
                         label: 'Editar informações',
                         variant: GKButtonVariant.secondary,
@@ -730,11 +780,20 @@ class _PreOperatoryScreenState extends ConsumerState<PreOperatoryScreen> {
                           Expanded(
                             child: GKButton(
                               label: _isSubmitting ? 'Salvando...' : 'Salvar',
-                              onPressed: _isSubmitting ? null : _submit,
+                              onPressed: canSubmit ? _submit : null,
                             ),
                           ),
                         ],
                       ),
+                    if (hasRecord &&
+                        canEdit &&
+                        (!hasValidHeight || !hasValidWeight)) ...[
+                      const SizedBox(height: 8),
+                      const Text(
+                        'Altura e peso são obrigatórios para salvar alterações.',
+                        style: TextStyle(color: GKColors.neutral),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -742,7 +801,7 @@ class _PreOperatoryScreenState extends ConsumerState<PreOperatoryScreen> {
                 const SizedBox(height: 10),
                 _buildPhotoList(
                   record.photos,
-                  canDelete: true,
+                  canDelete: canEditExistingRecord && canEdit,
                 ),
                 const SizedBox(height: 10),
                 _buildDocumentList(record.documents),

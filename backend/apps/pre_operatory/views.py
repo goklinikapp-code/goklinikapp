@@ -16,9 +16,11 @@ from rest_framework.views import APIView
 from config.media_urls import absolute_media_url
 
 from apps.patients.models import DoctorPatientAssignment, Patient
+from apps.post_op.models import PostOpJourney
+from apps.post_op.services import auto_complete_expired_journeys
 from apps.users.models import GoKlinikUser
 
-from .models import PreOperatory, PreOperatoryFile
+from .models import PreOperatory, PreOperatoryAuditLog, PreOperatoryFile
 from .serializers import (
     PreOperatoryAdminUpdateSerializer,
     PreOperatorySerializer,
@@ -49,21 +51,94 @@ def _save_uploaded_file(*, request, upload, folder: str) -> str:
 
 
 def _active_pre_operatory_for_patient(user: GoKlinikUser) -> PreOperatory | None:
-    return (
-        _pre_operatory_queryset().filter(
+    pending_or_in_review = (
+        _pre_operatory_queryset()
+        .filter(
             patient_id=user.id,
             status__in=[
                 PreOperatory.StatusChoices.PENDING,
                 PreOperatory.StatusChoices.IN_REVIEW,
-                PreOperatory.StatusChoices.APPROVED,
             ],
         )
+        .order_by("-created_at")
         .first()
     )
+    if pending_or_in_review:
+        return pending_or_in_review
+
+    latest_approved = (
+        _pre_operatory_queryset()
+        .filter(
+            patient_id=user.id,
+            status=PreOperatory.StatusChoices.APPROVED,
+        )
+        .order_by("-approved_at", "-created_at")
+        .first()
+    )
+    if latest_approved and not _has_completed_postop_after_approved_pre_operatory(
+        latest_approved
+    ):
+        return latest_approved
+
+    return None
 
 
 def _pre_operatory_queryset():
     return PreOperatory.objects.select_related("patient", "assigned_doctor").prefetch_related("files")
+
+
+def _latest_pre_operatory_for_patient(user: GoKlinikUser) -> PreOperatory | None:
+    queryset = _pre_operatory_queryset().filter(patient_id=user.id)
+    active = (
+        queryset.filter(
+            status__in=[
+                PreOperatory.StatusChoices.PENDING,
+                PreOperatory.StatusChoices.IN_REVIEW,
+                PreOperatory.StatusChoices.APPROVED,
+            ]
+        )
+        .order_by("-created_at")
+        .first()
+    )
+    if active:
+        return active
+    return queryset.order_by("-created_at").first()
+
+
+def _can_patient_edit_pre_operatory(pre_operatory: PreOperatory) -> bool:
+    return pre_operatory.status in {
+        PreOperatory.StatusChoices.PENDING,
+        PreOperatory.StatusChoices.REJECTED,
+    }
+
+
+def _has_completed_postop_after_approved_pre_operatory(pre_operatory: PreOperatory) -> bool:
+    approved_reference = pre_operatory.approved_at or pre_operatory.updated_at or pre_operatory.created_at
+    if approved_reference is None:
+        return False
+
+    auto_complete_expired_journeys(patient_id=str(pre_operatory.patient_id))
+    return PostOpJourney.objects.filter(
+        patient_id=pre_operatory.patient_id,
+        patient__tenant_id=pre_operatory.tenant_id,
+        status=PostOpJourney.StatusChoices.COMPLETED,
+        surgery_date__gte=approved_reference.date(),
+    ).exists()
+
+
+def _log_pre_operatory_event(
+    *,
+    pre_operatory: PreOperatory,
+    actor: GoKlinikUser | None,
+    action: str,
+    details: dict | None = None,
+) -> None:
+    PreOperatoryAuditLog.objects.create(
+        pre_operatory=pre_operatory,
+        actor=actor,
+        action=action,
+        details=details or {},
+    )
 
 
 def _is_clinic_admin(user: GoKlinikUser) -> bool:
@@ -188,6 +263,17 @@ class PreOperatoryCreateAPIView(APIView):
 
         active_record = _active_pre_operatory_for_patient(user)
         if active_record:
+            if active_record.status == PreOperatory.StatusChoices.APPROVED:
+                return Response(
+                    {
+                        "detail": (
+                            "A new pre-operatory can only be created after the post-op "
+                            "journey linked to the latest approved pre-operatory is "
+                            "completed."
+                        )
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
             return Response(
                 {"detail": "Pre-operatory already exists for this patient."},
                 status=status.HTTP_400_BAD_REQUEST,
@@ -238,6 +324,16 @@ class PreOperatoryCreateAPIView(APIView):
                     type=PreOperatoryFile.FileTypeChoices.DOCUMENT,
                 )
 
+            _log_pre_operatory_event(
+                pre_operatory=pre_operatory,
+                actor=user,
+                action=PreOperatoryAuditLog.ActionChoices.CREATED,
+                details={
+                    "photos_uploaded": len(photos),
+                    "documents_uploaded": len(documents),
+                },
+            )
+
         pre_operatory = _pre_operatory_queryset().get(id=pre_operatory.id)
         return Response(
             PreOperatorySerializer(
@@ -256,11 +352,7 @@ class PreOperatoryMeAPIView(APIView):
         if user.role != GoKlinikUser.RoleChoices.PATIENT:
             return Response(status=status.HTTP_403_FORBIDDEN)
 
-        pre_operatory = (
-            _pre_operatory_queryset().filter(patient_id=user.id)
-            .order_by("-updated_at")
-            .first()
-        )
+        pre_operatory = _latest_pre_operatory_for_patient(user)
         if not pre_operatory:
             return Response(
                 {"detail": "Pre-operatory not found."},
@@ -308,6 +400,16 @@ class PreOperatoryDetailAPIView(APIView):
                 {"detail": "Pre-operatory not found."},
                 status=status.HTTP_404_NOT_FOUND,
             )
+        if not _can_patient_edit_pre_operatory(pre_operatory):
+            return Response(
+                {
+                    "detail": (
+                        "Pre-operatory can no longer be edited by the patient after "
+                        "it enters clinic review."
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         serializer = PreOperatoryWriteSerializer(
             pre_operatory,
@@ -318,8 +420,10 @@ class PreOperatoryDetailAPIView(APIView):
         data = serializer.validated_data
         photos = list(request.FILES.getlist("photos"))
         documents = list(request.FILES.getlist("documents"))
+        previous_status = pre_operatory.status
 
         with transaction.atomic():
+            changed_fields = []
             for field_name in (
                 "allergies",
                 "medications",
@@ -331,7 +435,15 @@ class PreOperatoryDetailAPIView(APIView):
                 "weight",
             ):
                 if field_name in data:
+                    if getattr(pre_operatory, field_name) != data[field_name]:
+                        changed_fields.append(field_name)
                     setattr(pre_operatory, field_name, data[field_name])
+
+            if pre_operatory.status == PreOperatory.StatusChoices.REJECTED:
+                pre_operatory.status = PreOperatory.StatusChoices.PENDING
+                pre_operatory.approved_at = None
+                changed_fields.append("status")
+
             pre_operatory.save()
 
             for upload in photos:
@@ -357,6 +469,19 @@ class PreOperatoryDetailAPIView(APIView):
                     file_url=file_url,
                     type=PreOperatoryFile.FileTypeChoices.DOCUMENT,
                 )
+
+            _log_pre_operatory_event(
+                pre_operatory=pre_operatory,
+                actor=user,
+                action=PreOperatoryAuditLog.ActionChoices.PATIENT_UPDATED,
+                details={
+                    "changed_fields": sorted(set(changed_fields)),
+                    "photos_uploaded": len(photos),
+                    "documents_uploaded": len(documents),
+                    "previous_status": previous_status,
+                    "current_status": pre_operatory.status,
+                },
+            )
 
         pre_operatory = _pre_operatory_queryset().get(id=pre_operatory.id)
         return Response(
@@ -395,6 +520,9 @@ class PreOperatoryDetailAPIView(APIView):
         )
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
+        previous_status = pre_operatory.status
+        previous_assigned_doctor_id = pre_operatory.assigned_doctor_id
+        previous_notes = pre_operatory.notes
 
         assigned_doctor = None
         has_assigned_doctor_update = "assigned_doctor" in data
@@ -416,12 +544,29 @@ class PreOperatoryDetailAPIView(APIView):
                 )
 
         with transaction.atomic():
+            changed_fields = []
             if "status" in data:
-                pre_operatory.status = data["status"]
+                new_status = data["status"]
+                if pre_operatory.status != new_status:
+                    changed_fields.append("status")
+                pre_operatory.status = new_status
+                if new_status == PreOperatory.StatusChoices.APPROVED:
+                    pre_operatory.approved_at = timezone.now()
+                    changed_fields.append("approved_at")
+                elif pre_operatory.approved_at is not None:
+                    pre_operatory.approved_at = None
+                    changed_fields.append("approved_at")
             if "notes" in data:
-                pre_operatory.notes = (data.get("notes") or "").strip()
+                normalized_notes = (data.get("notes") or "").strip()
+                if pre_operatory.notes != normalized_notes:
+                    changed_fields.append("notes")
+                pre_operatory.notes = normalized_notes
             if has_assigned_doctor_update:
                 pre_operatory.assigned_doctor = assigned_doctor
+                if str(previous_assigned_doctor_id or "") != str(
+                    pre_operatory.assigned_doctor_id or ""
+                ):
+                    changed_fields.append("assigned_doctor")
 
             pre_operatory.save()
 
@@ -436,6 +581,28 @@ class PreOperatoryDetailAPIView(APIView):
                             "assigned_by": user,
                         },
                     )
+
+            _log_pre_operatory_event(
+                pre_operatory=pre_operatory,
+                actor=user,
+                action=PreOperatoryAuditLog.ActionChoices.CLINIC_UPDATED,
+                details={
+                    "changed_fields": sorted(set(changed_fields)),
+                    "previous_status": previous_status,
+                    "current_status": pre_operatory.status,
+                    "previous_assigned_doctor_id": (
+                        str(previous_assigned_doctor_id)
+                        if previous_assigned_doctor_id
+                        else None
+                    ),
+                    "current_assigned_doctor_id": (
+                        str(pre_operatory.assigned_doctor_id)
+                        if pre_operatory.assigned_doctor_id
+                        else None
+                    ),
+                    "notes_changed": previous_notes != pre_operatory.notes,
+                },
+            )
 
         pre_operatory = _pre_operatory_queryset().get(id=pre_operatory.id)
         return Response(
@@ -464,11 +631,7 @@ class PreOperatoryPatientAPIView(APIView):
         if not _can_staff_view_patient_pre_operatory(request.user, patient):
             return Response(status=status.HTTP_403_FORBIDDEN)
 
-        pre_operatory = (
-            _pre_operatory_queryset().filter(patient_id=patient.id)
-            .order_by("-updated_at")
-            .first()
-        )
+        pre_operatory = _latest_pre_operatory_for_patient(patient)
         if not pre_operatory:
             return Response(
                 {"detail": "Pre-operatory not found."},
@@ -501,7 +664,31 @@ class PreOperatoryFileDetailAPIView(APIView):
 
         if not _can_manage_pre_operatory_file(request.user, file_row.pre_operatory):
             return Response(status=status.HTTP_403_FORBIDDEN)
+        if (
+            request.user.role == GoKlinikUser.RoleChoices.PATIENT
+            and not _can_patient_edit_pre_operatory(file_row.pre_operatory)
+        ):
+            return Response(
+                {
+                    "detail": (
+                        "Photos and documents can only be removed while the "
+                        "pre-operatory is pending patient edits."
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         _delete_storage_file_from_url(file_row.file_url)
+        deleted_file_id = str(file_row.id)
+        deleted_file_type = file_row.type
         file_row.delete()
+        _log_pre_operatory_event(
+            pre_operatory=file_row.pre_operatory,
+            actor=request.user,
+            action=PreOperatoryAuditLog.ActionChoices.FILE_DELETED,
+            details={
+                "file_id": deleted_file_id,
+                "file_type": deleted_file_type,
+            },
+        )
         return Response(status=status.HTTP_204_NO_CONTENT)

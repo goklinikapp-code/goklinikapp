@@ -40,6 +40,7 @@ const variables = ['{{name}}', '{{date}}', '{{procedure}}']
 
 const blastSchema = z.object({
   segment: z.enum(['all_patients', 'future_appointments', 'inactive_patients']),
+  title: z.string().trim().min(3, 'Informe um título com pelo menos 3 caracteres').max(80, 'Máximo de 80 caracteres'),
   body: z.string().min(10, 'Mensagem muito curta'),
 })
 
@@ -168,7 +169,7 @@ export default function AutomationsPage() {
   const [scheduleForm, setScheduleForm] = useState<ScheduleFormState>({
     run_at: formatLocalDatetimeInput(new Date(Date.now() + 60 * 60 * 1000)),
     segment: 'all_patients',
-    title: 'Campanha Push',
+    title: 'Mensagem da clínica',
     body: '',
   })
 
@@ -182,9 +183,15 @@ export default function AutomationsPage() {
     resolver: zodResolver(blastSchema),
     defaultValues: {
       segment: 'all_patients',
+      title: 'Mensagem da clínica',
       body: 'Olá {{name}}, confirmamos sua consulta em {{date}} para {{procedure}}.',
     },
   })
+
+  const titleValue = useWatch({
+    control,
+    name: 'title',
+  }) || ''
 
   const bodyValue = useWatch({
     control,
@@ -368,6 +375,7 @@ export default function AutomationsPage() {
       sendMutation.mutate({
         targetMode: 'patient',
         patientId: selectedRecipient.id,
+        title: values.title,
         body: values.body,
         channel: 'push',
       })
@@ -377,6 +385,7 @@ export default function AutomationsPage() {
     sendMutation.mutate({
       targetMode: 'segment',
       segment: values.segment,
+      title: values.title,
       body: values.body,
       channel: 'push',
     })
@@ -489,7 +498,7 @@ export default function AutomationsPage() {
       run_at: formatLocalDatetimeInput(new Date(Date.now() + 60 * 60 * 1000)),
       segment: segmentValue || 'all_patients',
       body: bodyValue,
-      title: 'Campanha Push',
+      title: 'Mensagem da clínica',
     }))
     setScheduleModalOpen(true)
   }
@@ -613,6 +622,12 @@ export default function AutomationsPage() {
             ) : null}
 
             <div>
+              <label className="mb-1 block text-xs font-medium text-slate-600">Título da Notificação</label>
+              <Input {...register('title')} />
+              {errors.title ? <p className="caption mt-1 text-danger">{errors.title.message}</p> : null}
+            </div>
+
+            <div>
               <p className="mb-2 text-xs font-medium text-slate-600">Variáveis</p>
               <div className="flex flex-wrap gap-2">
                 {variables.map((item) => (
@@ -656,6 +671,7 @@ export default function AutomationsPage() {
             <div className="rounded-[18px] bg-slate-100 p-3">
               <div className="rounded-xl border border-slate-200 bg-white p-3">
                 <p className="text-xs font-semibold text-night">GoKlinik</p>
+                <p className="mt-1 text-sm font-semibold text-night">{titleValue}</p>
                 <p className="mt-1 text-sm text-slate-600">{bodyValue}</p>
               </div>
             </div>

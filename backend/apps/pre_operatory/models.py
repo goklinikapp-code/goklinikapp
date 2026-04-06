@@ -49,6 +49,7 @@ class PreOperatory(models.Model):
         choices=StatusChoices.choices,
         default=StatusChoices.PENDING,
     )
+    approved_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -62,7 +63,6 @@ class PreOperatory(models.Model):
                     status__in=[
                         "pending",
                         "in_review",
-                        "approved",
                     ]
                 ),
                 name="pre_operatory_unique_active_by_patient",
@@ -75,6 +75,42 @@ class PreOperatory(models.Model):
 
     def __str__(self) -> str:
         return f"{self.patient_id}:{self.status}"
+
+
+class PreOperatoryAuditLog(models.Model):
+    class ActionChoices(models.TextChoices):
+        CREATED = "created", "Created"
+        PATIENT_UPDATED = "patient_updated", "Patient updated"
+        CLINIC_UPDATED = "clinic_updated", "Clinic updated"
+        FILE_DELETED = "file_deleted", "File deleted"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    pre_operatory = models.ForeignKey(
+        PreOperatory,
+        on_delete=models.CASCADE,
+        related_name="audit_logs",
+    )
+    actor = models.ForeignKey(
+        "users.GoKlinikUser",
+        on_delete=models.SET_NULL,
+        related_name="pre_operatory_audit_logs",
+        null=True,
+        blank=True,
+    )
+    action = models.CharField(max_length=32, choices=ActionChoices.choices)
+    details = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "pre_operatory_audit_logs"
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["pre_operatory", "created_at"]),
+            models.Index(fields=["action", "created_at"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.pre_operatory_id}:{self.action}"
 
 
 class PreOperatoryFile(models.Model):

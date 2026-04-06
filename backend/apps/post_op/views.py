@@ -41,6 +41,7 @@ from .serializers import (
     PostOperatoryCheckinCreateSerializer,
     PostOperatoryCheckinSerializer,
     PostOperatoryChecklistUpdateSerializer,
+    PostOperatoryJourneyStatusUpdateSerializer,
     PostOperatoryPhotoCreateSerializer,
     PostOpChecklistSerializer,
     UrgentMedicalRequestCreateSerializer,
@@ -50,6 +51,7 @@ from .serializers import (
     UrgentTicketSerializer,
     UrgentTicketStatusUpdateSerializer,
 )
+from .services import auto_complete_expired_journeys
 
 STAFF_ROLES = {
     GoKlinikUser.RoleChoices.CLINIC_MASTER,
@@ -81,6 +83,23 @@ def _can_view_postop_panel(user: GoKlinikUser) -> bool:
         GoKlinikUser.RoleChoices.CLINIC_MASTER,
         GoKlinikUser.RoleChoices.SURGEON,
     }
+
+
+def _can_staff_manage_journey(*, user: GoKlinikUser, journey: PostOpJourney) -> bool:
+    if user.role == GoKlinikUser.RoleChoices.CLINIC_MASTER:
+        return str(journey.patient.tenant_id or "") == str(user.tenant_id or "")
+
+    if user.role == GoKlinikUser.RoleChoices.SURGEON:
+        if str(journey.patient.tenant_id or "") != str(user.tenant_id or ""):
+            return False
+        if journey.appointment and str(journey.appointment.professional_id or "") == str(user.id):
+            return True
+        return DoctorPatientAssignment.objects.filter(
+            patient_id=journey.patient_id,
+            doctor_id=user.id,
+        ).exists()
+
+    return False
 
 
 def _days_without_checkin(
@@ -176,6 +195,7 @@ def _refresh_journey_current_day(journey: PostOpJourney, *, persist: bool = Fals
 
 
 def _active_journey_for_patient(patient_id: str) -> PostOpJourney | None:
+    auto_complete_expired_journeys(patient_id=patient_id)
     journey = (
         PostOpJourney.objects.select_related(
             "appointment",
@@ -203,6 +223,7 @@ def _resolve_patient_journey_for_write(
     user: GoKlinikUser,
     journey_id: str | None = None,
 ) -> PostOpJourney | None:
+    auto_complete_expired_journeys(patient_id=str(user.id))
     if journey_id:
         journey = (
             PostOpJourney.objects.select_related("patient")
@@ -836,6 +857,8 @@ class PostOperatoryAdminListAPIView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        auto_complete_expired_journeys(tenant_id=str(user.tenant_id))
+
         status_filter = (request.query_params.get("status") or "").strip()
         valid_statuses = set(PostOpJourney.StatusChoices.values)
         if status_filter and status_filter not in valid_statuses:
@@ -934,6 +957,8 @@ class PostOperatoryAdminDetailAPIView(APIView):
                 {"detail": "Clinic tenant not found."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+
+        auto_complete_expired_journeys(tenant_id=str(user.tenant_id))
 
         queryset = (
             PostOpJourney.objects.select_related("patient")
@@ -1041,6 +1066,69 @@ class PostOperatoryAdminDetailAPIView(APIView):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 
+class PostOperatoryJourneyStatusUpdateAPIView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def patch(self, request, journey_id):
+        user = request.user
+        if not _can_view_postop_panel(user):
+            return Response(status=status.HTTP_403_FORBIDDEN)
+        if not user.tenant_id:
+            return Response(
+                {"detail": "Clinic tenant not found."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        serializer = PostOperatoryJourneyStatusUpdateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        new_status = serializer.validated_data["status"]
+
+        journey = (
+            PostOpJourney.objects.select_related("patient", "appointment")
+            .filter(
+                id=journey_id,
+                patient__tenant_id=user.tenant_id,
+            )
+            .first()
+        )
+        if not journey:
+            return Response({"detail": "Journey not found."}, status=status.HTTP_404_NOT_FOUND)
+        if not _can_staff_manage_journey(user=user, journey=journey):
+            return Response(status=status.HTTP_403_FORBIDDEN)
+
+        if journey.status == new_status:
+            return Response(
+                {
+                    "journey_id": journey.id,
+                    "status": journey.status,
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        if journey.status != PostOpJourney.StatusChoices.ACTIVE:
+            return Response(
+                {"detail": "Only active journeys can be closed manually."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        update_payload: dict[str, object] = {
+            "status": new_status,
+            "updated_at": timezone.now(),
+            "current_day": journey.total_days,
+        }
+
+        PostOpJourney.objects.filter(id=journey.id).update(**update_payload)
+        journey.refresh_from_db(fields=["status"])
+
+        return Response(
+            {
+                "journey_id": journey.id,
+                "status": journey.status,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
 class AdminJourneysAPIView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -1048,6 +1136,8 @@ class AdminJourneysAPIView(APIView):
         user = request.user
         if user.role not in STAFF_ROLES:
             return Response(status=status.HTTP_403_FORBIDDEN)
+
+        auto_complete_expired_journeys(tenant_id=str(user.tenant_id))
 
         journeys = (
             PostOpJourney.objects.select_related("patient", "appointment", "specialty")

@@ -1107,7 +1107,7 @@ class NotificationAutomationService:
                 title_template = scheduled.template.title_template
                 body_template = scheduled.template.body_template
             else:
-                title_template = scheduled.title or "Campanha Push"
+                title_template = scheduled.title or "Mensagem da clínica"
                 body_template = scheduled.body or ""
 
             summary = NotificationService.send_push_campaign(

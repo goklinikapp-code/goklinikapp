@@ -5,6 +5,7 @@ import { useMemo, useState } from 'react'
 import {
   getPostOperatoryByPatient,
   listTenantPostOperatory,
+  updatePostOperatoryJourneyStatus,
   updateUrgentTicketStatus,
 } from '@/api/postOperatory'
 import { PostOperatoryModal } from '@/components/patients/PostOperatoryModal'
@@ -81,6 +82,21 @@ export default function PostOperatoryPage() {
   const urgentTicketStatusMutation = useMutation({
     mutationFn: (payload: { ticketId: string; status: 'viewed' | 'resolved' }) =>
       updateUrgentTicketStatus(payload.ticketId, payload.status),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ['post-operatory-admin-list'],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ['post-operatory-admin-detail', selectedPatientId],
+        }),
+      ])
+    },
+  })
+
+  const journeyStatusMutation = useMutation({
+    mutationFn: (payload: { journeyId: string; status: 'completed' }) =>
+      updatePostOperatoryJourneyStatus(payload.journeyId, payload.status),
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({
@@ -305,6 +321,14 @@ export default function PostOperatoryPage() {
         updatingUrgentTicketId={
           urgentTicketStatusMutation.isPending
             ? urgentTicketStatusMutation.variables?.ticketId || null
+            : null
+        }
+        onUpdateJourneyStatus={(journeyId, status) =>
+          journeyStatusMutation.mutateAsync({ journeyId, status })
+        }
+        updatingJourneyStatus={
+          journeyStatusMutation.isPending
+            ? journeyStatusMutation.variables?.status || null
             : null
         }
       />

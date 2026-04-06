@@ -94,7 +94,7 @@ interface SendMassMessagePayload {
 
 export async function sendMassMessage(payload: SendMassMessagePayload): Promise<BroadcastPushResponse> {
   const requestPayload = {
-    title: (payload.title || '').trim() || 'Campanha Push',
+    title: (payload.title || '').trim() || 'Mensagem da clínica',
     body: payload.body,
     channel: 'push',
     target_mode: payload.targetMode,

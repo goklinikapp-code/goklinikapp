@@ -34,6 +34,17 @@ export async function updateUrgentTicketStatus(
   return data
 }
 
+export async function updatePostOperatoryJourneyStatus(
+  journeyId: string,
+  status: 'completed',
+) {
+  const { data } = await apiClient.patch<{ journey_id: string; status: string }>(
+    `/post-operatory/admin/journeys/${journeyId}/status/`,
+    { status },
+  )
+  return data
+}
+
 export async function listUrgentMedicalRequests() {
   const { data } = await apiClient.get<UrgentMedicalRequestRecord[]>('/post-operatory/urgent-requests/')
   return data

@@ -11,6 +11,7 @@ from .models import (
     EvolutionPhoto,
     PostOperatoryCheckin,
     PostOpChecklist,
+    PostOpJourney,
     UrgentMedicalRequest,
     UrgentTicket,
 )
@@ -225,6 +226,12 @@ class PostOperatoryAdminDetailSerializer(serializers.Serializer):
     observations = PostOperatoryObservationSerializer(many=True)
     has_open_urgent_ticket = serializers.BooleanField(required=False)
     urgent_tickets = serializers.ListField(child=serializers.DictField(), required=False)
+
+
+class PostOperatoryJourneyStatusUpdateSerializer(serializers.Serializer):
+    status = serializers.ChoiceField(
+        choices=(PostOpJourney.StatusChoices.COMPLETED,)
+    )
 
 
 class CareCenterFAQSerializer(serializers.Serializer):

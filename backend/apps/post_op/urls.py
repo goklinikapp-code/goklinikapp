@@ -11,6 +11,7 @@ from .views import (
     PostOperatoryAdminListAPIView,
     PostOperatoryCheckinCreateAPIView,
     PostOperatoryChecklistUpdateAPIView,
+    PostOperatoryJourneyStatusUpdateAPIView,
     PostOperatoryPhotoCreateAPIView,
     UrgentMedicalRequestListCreateAPIView,
     UrgentMedicalRequestReplyAPIView,
@@ -36,6 +37,11 @@ urlpatterns = [
     path("photo/", PostOperatoryPhotoCreateAPIView.as_view(), name="postoperatory-photo-create"),
     path("photos/<uuid:journey_id>/", EvolutionPhotoListAPIView.as_view(), name="postop-photo-list"),
     path("admin/journeys/", AdminJourneysAPIView.as_view(), name="postop-admin-journeys"),
+    path(
+        "admin/journeys/<uuid:journey_id>/status/",
+        PostOperatoryJourneyStatusUpdateAPIView.as_view(),
+        name="postop-admin-journey-status-update",
+    ),
     path("care-center/<uuid:journey_id>/", CareCenterAPIView.as_view(), name="postop-care-center"),
     path("urgent-tickets/", UrgentTicketListCreateAPIView.as_view(), name="urgent-ticket-list-create"),
     path(

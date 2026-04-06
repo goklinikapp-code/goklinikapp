@@ -29,6 +29,11 @@ interface PostOperatoryModalProps {
     status: 'viewed' | 'resolved',
   ) => Promise<unknown> | unknown
   updatingUrgentTicketId?: string | null
+  onUpdateJourneyStatus?: (
+    journeyId: string,
+    status: 'completed',
+  ) => Promise<unknown> | unknown
+  updatingJourneyStatus?: 'completed' | null
 }
 
 function formatDateTime(value?: string | null) {
@@ -58,6 +63,8 @@ export function PostOperatoryModal({
   emptyMessage = 'Nenhuma jornada pós-operatória encontrada para este paciente.',
   onUpdateUrgentStatus,
   updatingUrgentTicketId = null,
+  onUpdateJourneyStatus,
+  updatingJourneyStatus = null,
 }: PostOperatoryModalProps) {
   if (!record) {
     return (
@@ -78,6 +85,7 @@ export function PostOperatoryModal({
   const reason = postOperatoryClinicalReason(record)
   const suggestedAction = postOperatorySuggestedAction(record)
   const urgentTickets = record.urgent_tickets || []
+  const canCloseJourney = record.status === 'active' && Boolean(onUpdateJourneyStatus)
 
   const summaryHighlightClass =
     record.clinical_status === 'risk'
@@ -102,6 +110,25 @@ export function PostOperatoryModal({
               <Badge className={summary.clinicalClass}>{summary.clinicalStatus}</Badge>
             </div>
           </div>
+          {canCloseJourney ? (
+            <div className="mt-3 flex flex-wrap gap-2 border-t border-slate-200 pt-3">
+              <Button
+                type="button"
+                size="sm"
+                variant="primary"
+                disabled={updatingJourneyStatus !== null}
+                onClick={async () => {
+                  try {
+                    await onUpdateJourneyStatus?.(record.journey_id, 'completed')
+                  } catch {
+                    // Error feedback is handled by page-level query refresh/state.
+                  }
+                }}
+              >
+                {updatingJourneyStatus === 'completed' ? 'Concluindo...' : 'Concluir pós-op'}
+              </Button>
+            </div>
+          ) : null}
         </div>
 
         <div className="grid gap-3 md:grid-cols-2">

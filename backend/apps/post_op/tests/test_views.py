@@ -333,6 +333,49 @@ class PostOpViewsTestCase(APITestCase):
         response = self.client.get(url)
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
+    def test_clinic_master_can_close_active_postop_journey_manually(self):
+        self.client.force_authenticate(self.clinic_master)
+        response = self.client.patch(
+            reverse("postop-admin-journey-status-update", kwargs={"journey_id": self.journey.id}),
+            {"status": PostOpJourney.StatusChoices.COMPLETED},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.journey.refresh_from_db()
+        self.assertEqual(self.journey.status, PostOpJourney.StatusChoices.COMPLETED)
+        self.assertEqual(self.journey.current_day, self.journey.total_days)
+
+    def test_unassigned_surgeon_cannot_close_postop_journey(self):
+        other_surgeon = GoKlinikUser.objects.create_user(
+            email="surgeon-unauthorized@postop.com",
+            password="pass12345",
+            tenant=self.tenant,
+            role=GoKlinikUser.RoleChoices.SURGEON,
+        )
+        self.client.force_authenticate(other_surgeon)
+        response = self.client.patch(
+            reverse("postop-admin-journey-status-update", kwargs={"journey_id": self.journey.id}),
+            {"status": PostOpJourney.StatusChoices.COMPLETED},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.journey.refresh_from_db()
+        self.assertEqual(self.journey.status, PostOpJourney.StatusChoices.ACTIVE)
+
+    def test_admin_list_auto_closes_expired_active_journey(self):
+        self.journey.end_date = timezone.localdate() - timedelta(days=1)
+        self.journey.save(update_fields=["end_date", "updated_at"])
+
+        self.client.force_authenticate(self.clinic_master)
+        response = self.client.get(reverse("postoperatory-admin-list"))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data[0]["status"], PostOpJourney.StatusChoices.COMPLETED)
+        self.journey.refresh_from_db()
+        self.assertEqual(self.journey.status, PostOpJourney.StatusChoices.COMPLETED)
+
     def test_surgeon_list_returns_only_assigned_patients(self):
         other_surgeon = GoKlinikUser.objects.create_user(
             email="surgeon2@postop.com",
