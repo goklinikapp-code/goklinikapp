@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+from datetime import time, timedelta
 from unittest.mock import patch
 
 from django.test import TestCase
+from django.utils import timezone
 
+from apps.appointments.models import Appointment
 from apps.notifications.models import Notification, NotificationLog, NotificationToken
 from apps.notifications.services import NotificationService, enviar_notificacao_push, render_notification_template
 from apps.patients.models import Patient
@@ -193,3 +196,38 @@ class NotificationServicesTestCase(TestCase):
         self.assertEqual(summary["total_recipients"], 2)
         self.assertEqual(summary["sent"], 1)
         self.assertEqual(summary["error"], 1)
+
+    @patch(
+        "apps.notifications.services.enviar_notificacao_push",
+        return_value={"sent_count": 1, "failed_count": 0, "invalid_tokens": [], "errors": {}},
+    )
+    def test_send_push_campaign_infers_date_and_procedure_for_manual_template(self, _push_mock):
+        NotificationToken.objects.create(
+            user=self.patient,
+            device_token="token-manual-campaign",
+            platform=NotificationToken.PlatformChoices.ANDROID,
+            is_active=True,
+        )
+        appointment_date = timezone.localdate() + timedelta(days=3)
+        Appointment.objects.create(
+            tenant=self.tenant,
+            patient=self.patient,
+            appointment_date=appointment_date,
+            appointment_time=time(14, 30),
+            status=Appointment.StatusChoices.CONFIRMED,
+            appointment_type=Appointment.AppointmentTypeChoices.SURGERY,
+        )
+
+        summary = NotificationService.send_push_campaign(
+            recipients=[self.patient],
+            title_template="Mensagem da clínica",
+            body_template="Olá {{name}}, confirmamos sua consulta em {{date}} para {{procedure}}.",
+            segment="all_patients",
+            event_code="manual_push_campaign",
+            create_in_app_notification=False,
+        )
+
+        self.assertEqual(summary["sent"], 1)
+        log = NotificationLog.objects.filter(user=self.patient, event_code="manual_push_campaign").latest("created_at")
+        self.assertIn(appointment_date.strftime("%d/%m/%Y"), log.body)
+        self.assertIn("Surgery", log.body)

@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="ic_launcher_background">#F0F4F6</color>
-    <color name="notification_icon_color">#D93030</color>
+    <color name="notification_icon_color">#0B6B79</color>
 </resources>

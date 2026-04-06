@@ -60,6 +60,7 @@ INVALID_TOKEN_ERROR_MARKERS = (
     "requested entity was not found",
     "invalidargument",
 )
+CAMPAIGN_APPOINTMENT_VARIABLES = {"date", "time", "procedure"}
 
 
 def render_notification_template(template_text: str, context: dict[str, Any] | None = None) -> str:
@@ -245,6 +246,61 @@ class NotificationService:
             "date": appointment.appointment_date.strftime("%d/%m/%Y"),
             "time": appointment.appointment_time.strftime("%H:%M"),
             "procedure": procedure,
+        }
+
+    @staticmethod
+    def _template_variables(*templates: str) -> set[str]:
+        variables: set[str] = set()
+        for template in templates:
+            if not template:
+                continue
+            variables.update(match.group(1) for match in TEMPLATE_VARIABLE_PATTERN.finditer(template))
+        return variables
+
+    @staticmethod
+    def _has_context_value(value: Any) -> bool:
+        if value is None:
+            return False
+        if isinstance(value, str):
+            return bool(value.strip())
+        return True
+
+    @classmethod
+    def _recipient_appointment_context(cls, recipient: GoKlinikUser) -> dict[str, str]:
+        today = timezone.localdate()
+        non_eligible_upcoming_statuses = [
+            Appointment.StatusChoices.CANCELLED,
+            Appointment.StatusChoices.RESCHEDULED,
+            Appointment.StatusChoices.COMPLETED,
+        ]
+        non_eligible_history_statuses = [
+            Appointment.StatusChoices.CANCELLED,
+            Appointment.StatusChoices.RESCHEDULED,
+        ]
+
+        appointment = (
+            Appointment.objects.select_related("patient", "specialty")
+            .filter(patient=recipient, appointment_date__gte=today)
+            .exclude(status__in=non_eligible_upcoming_statuses)
+            .order_by("appointment_date", "appointment_time")
+            .first()
+        )
+        if not appointment:
+            appointment = (
+                Appointment.objects.select_related("patient", "specialty")
+                .filter(patient=recipient)
+                .exclude(status__in=non_eligible_history_statuses)
+                .order_by("-appointment_date", "-appointment_time")
+                .first()
+            )
+        if not appointment:
+            return {}
+
+        appointment_context = cls._appointment_context(appointment)
+        return {
+            "date": appointment_context.get("date", ""),
+            "time": appointment_context.get("time", ""),
+            "procedure": appointment_context.get("procedure", ""),
         }
 
     @staticmethod
@@ -492,12 +548,26 @@ class NotificationService:
             "rate_limited": 0,
         }
         base_context = context or {}
+        required_variables = cls._template_variables(title_template, body_template)
+        needs_appointment_context = bool(required_variables.intersection(CAMPAIGN_APPOINTMENT_VARIABLES))
 
         for recipient in recipients:
             payload_context = {
-                **base_context,
                 "name": recipient.full_name,
+                **base_context,
             }
+            if needs_appointment_context:
+                missing_appointment_variables = [
+                    variable
+                    for variable in CAMPAIGN_APPOINTMENT_VARIABLES
+                    if variable in required_variables and not cls._has_context_value(payload_context.get(variable))
+                ]
+                if missing_appointment_variables:
+                    appointment_context = cls._recipient_appointment_context(recipient)
+                    for variable in missing_appointment_variables:
+                        value = appointment_context.get(variable)
+                        if cls._has_context_value(value):
+                            payload_context[variable] = value
             title = render_notification_template(title_template, payload_context)
             body = render_notification_template(body_template, payload_context)
 
