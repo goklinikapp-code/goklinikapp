@@ -119,11 +119,18 @@ def _delete_file_via_http(*, normalized_path: str) -> None:
     except requests.RequestException as exc:
         raise SupabaseStorageError("Failed to delete file from Supabase Storage.") from exc
 
-    if response.status_code not in {200, 204}:
-        detail = response.text.strip()[:300]
-        raise SupabaseStorageError(
-            f"Failed to delete file from Supabase Storage. Status {response.status_code}: {detail}"
-        )
+    if response.status_code in {200, 204}:
+        return
+
+    detail = response.text.strip()
+    # Supabase can return `400 not_found` for delete operations that are
+    # already applied or race with CDN/object replication.
+    if response.status_code in {400, 404} and "not_found" in detail.lower():
+        return
+
+    raise SupabaseStorageError(
+        f"Failed to delete file from Supabase Storage. Status {response.status_code}: {detail[:300]}"
+    )
 
 
 def _extract_storage_path_from_url(url: str) -> str | None:

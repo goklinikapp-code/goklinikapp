@@ -1,10 +1,12 @@
+import logging
+
 from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.users.models import GoKlinikUser
 from services.storage_paths import build_storage_path
-from services.supabase_storage import SupabaseStorageError, upload_file
+from services.supabase_storage import SupabaseStorageError, delete_file, upload_file
 
 from .models import Tenant, TenantSpecialty
 from .serializers import (
@@ -15,12 +17,25 @@ from .serializers import (
     TenantSpecialtyWriteSerializer,
 )
 
+logger = logging.getLogger(__name__)
+
 
 def resolve_tenant_for_branding(user: GoKlinikUser, tenant_id: str | None) -> Tenant | None:
     if user.role == GoKlinikUser.RoleChoices.SUPER_ADMIN:
         tenant = Tenant.objects.filter(id=tenant_id).first() if tenant_id else None
         return tenant or Tenant.objects.filter(is_active=True).order_by("created_at").first()
     return Tenant.objects.filter(id=user.tenant_id).first()
+
+
+def _cleanup_replaced_asset(previous_url: str | None, current_url: str | None) -> None:
+    previous = (previous_url or "").strip()
+    current = (current_url or "").strip()
+    if not previous or previous == current:
+        return
+    try:
+        delete_file(previous)
+    except SupabaseStorageError:
+        logger.exception("Unable to delete replaced branding asset: %s", previous)
 
 
 class TenantBrandingPublicAPIView(generics.RetrieveAPIView):
@@ -66,12 +81,17 @@ class TenantBrandingUpdateAPIView(APIView):
         if not tenant:
             return Response({"detail": "Tenant not found."}, status=status.HTTP_404_NOT_FOUND)
 
+        previous_logo_url = tenant.logo_url
+        previous_favicon_url = tenant.favicon_url
         serializer = TenantBrandingUpdateSerializer(tenant, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
-        serializer.save()
+        updated_tenant = serializer.save()
+
+        _cleanup_replaced_asset(previous_logo_url, updated_tenant.logo_url)
+        _cleanup_replaced_asset(previous_favicon_url, updated_tenant.favicon_url)
 
         return Response(
-            TenantBrandingSerializer(tenant, context={"request": request}).data,
+            TenantBrandingSerializer(updated_tenant, context={"request": request}).data,
             status=status.HTTP_200_OK,
         )
 
@@ -99,6 +119,7 @@ class TenantBrandingLogoUploadAPIView(APIView):
         if not content_type.startswith("image/"):
             return Response({"detail": "Invalid file type."}, status=status.HTTP_400_BAD_REQUEST)
 
+        previous_logo_url = tenant.logo_url
         storage_path = build_storage_path(
             tenant.id,
             "clinic",
@@ -113,6 +134,7 @@ class TenantBrandingLogoUploadAPIView(APIView):
 
         tenant.logo_url = logo_url
         tenant.save(update_fields=["logo_url", "updated_at"])
+        _cleanup_replaced_asset(previous_logo_url, logo_url)
 
         return Response(
             TenantBrandingSerializer(tenant, context={"request": request}).data,
