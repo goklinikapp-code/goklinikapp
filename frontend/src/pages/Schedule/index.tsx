@@ -17,6 +17,7 @@ import { AlertTriangle, CalendarDays, CheckCircle2, Clock4, MapPin, Plus, Refres
 import { useEffect, useMemo, useState } from 'react'
 import { useForm, useWatch } from 'react-hook-form'
 import toast from 'react-hot-toast'
+import { useSearchParams } from 'react-router-dom'
 import { z } from 'zod'
 
 import {
@@ -190,6 +191,7 @@ export default function SchedulePage() {
     format(new Date(), 'yyyy-MM-dd'),
   )
   const [completingAppointmentId, setCompletingAppointmentId] = useState<string | null>(null)
+  const [searchParams] = useSearchParams()
 
   const queryClient = useQueryClient()
 
@@ -255,6 +257,28 @@ export default function SchedulePage() {
     refetchInterval: 15000,
   })
 
+  const scheduleSearch = (searchParams.get('q') || '').trim().toLowerCase()
+
+  const filteredAppointments = useMemo(() => {
+    if (!scheduleSearch) return appointments
+
+    return appointments.filter((item) => {
+      const indexable = [
+        item.patient_name,
+        item.professional_name,
+        item.specialty_name || '',
+        item.clinic_location || '',
+        item.appointment_type,
+        item.status,
+        item.appointment_date,
+        item.appointment_time,
+      ]
+        .join(' ')
+        .toLowerCase()
+      return indexable.includes(scheduleSearch)
+    })
+  }, [appointments, scheduleSearch])
+
   const { data: patients = [] } = useQuery({
     queryKey: ['patients-list'],
     queryFn: getPatients,
@@ -272,7 +296,7 @@ export default function SchedulePage() {
 
   const appointmentsByDate = useMemo(() => {
     const groups = new Map<string, AppointmentItem[]>()
-    appointments.forEach((item) => {
+    filteredAppointments.forEach((item) => {
       const dateKey = toDateOnly(item.appointment_date)
       const current = groups.get(dateKey) || []
       current.push(item)
@@ -286,7 +310,7 @@ export default function SchedulePage() {
       )
     })
     return groups
-  }, [appointments])
+  }, [filteredAppointments])
 
   const groupedAppointments = useMemo(
     () =>

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import time, timedelta
+from unittest.mock import patch
 
 from django.urls import reverse
 from django.utils import timezone
@@ -251,3 +252,66 @@ class ChatViewsTestCase(APITestCase):
         self.assertIn(str(today + timedelta(days=1)), context)
         self.assertNotIn(str(today - timedelta(days=1)), context)
         self.assertNotIn(str(today + timedelta(days=2)), context)
+
+    @patch("apps.chat.views.request_chat_completion")
+    def test_ai_chat_appointment_question_uses_deterministic_reply(self, request_chat_completion_mock):
+        today = timezone.localdate()
+        Appointment.objects.create(
+            tenant=self.tenant,
+            patient=self.patient,
+            professional=self.surgeon,
+            appointment_date=today - timedelta(days=2),
+            appointment_time=time(9, 0),
+            appointment_type=Appointment.AppointmentTypeChoices.POST_OP_7D,
+            status=Appointment.StatusChoices.PENDING,
+            created_by=self.clinic_master,
+        )
+        Appointment.objects.create(
+            tenant=self.tenant,
+            patient=self.patient,
+            professional=self.surgeon,
+            appointment_date=today + timedelta(days=1),
+            appointment_time=time(10, 0),
+            appointment_type=Appointment.AppointmentTypeChoices.FIRST_VISIT,
+            status=Appointment.StatusChoices.PENDING,
+            created_by=self.clinic_master,
+            clinic_location="Lisboa",
+        )
+
+        self.client.force_authenticate(self.patient)
+        response = self.client.post(
+            reverse("chat-ai-messages"),
+            {"content": "Tem algum agendamento pra mim?"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        reply = response.data["assistant_message"]["content"]
+        future_date_label = (today + timedelta(days=1)).strftime("%d/%m/%Y")
+        past_date_label = (today - timedelta(days=2)).strftime("%d/%m/%Y")
+        self.assertIn("Próximos agendamentos:", reply)
+        self.assertIn(future_date_label, reply)
+        self.assertIn("10:00", reply)
+        self.assertNotIn(past_date_label, reply)
+        request_chat_completion_mock.assert_not_called()
+
+    @patch("apps.chat.views.request_chat_completion")
+    def test_greeting_does_not_keep_wrong_appointment_claim_from_llm(self, request_chat_completion_mock):
+        request_chat_completion_mock.return_value = (
+            "Olá! Você tem dois agendamentos pendentes em abril."
+        )
+
+        self.client.force_authenticate(self.patient)
+        response = self.client.post(
+            reverse("chat-ai-messages"),
+            {"content": "oi"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        reply = response.data["assistant_message"]["content"]
+        self.assertTrue(
+            "Estou aqui para te ajudar" in reply
+            or "I am here to help" in reply
+        )
+        self.assertNotIn("dois agendamentos", reply.lower())

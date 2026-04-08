@@ -274,6 +274,26 @@ export function AppLayout() {
     });
   };
 
+  const headerSearchValue = new URLSearchParams(location.search).get("q") || "";
+
+  const handleHeaderSearchChange = (nextValue: string) => {
+    const params = new URLSearchParams(location.search);
+    const normalized = nextValue.trim();
+    if (normalized) {
+      params.set("q", nextValue);
+    } else {
+      params.delete("q");
+    }
+    const nextSearch = params.toString();
+    navigate(
+      {
+        pathname: location.pathname,
+        search: nextSearch ? `?${nextSearch}` : "",
+      },
+      { replace: true },
+    );
+  };
+
   return (
     <div className="min-h-screen bg-mist">
       {isMobileSidebarOpen ? (
@@ -373,6 +393,8 @@ export function AppLayout() {
               <input
                 className="h-9 w-full rounded-lg border border-slate-200 bg-slate-50 pl-9 pr-3 text-sm outline-none focus:border-primary"
                 placeholder={user?.role === "super_admin" ? t("search_saas") : t("search_clinic")}
+                value={headerSearchValue}
+                onChange={(event) => handleHeaderSearchChange(event.target.value)}
               />
             </div>
 

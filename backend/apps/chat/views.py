@@ -146,6 +146,7 @@ LANGUAGE_COPY = {
         "appointment_status": "Status",
         "professional": "Professional",
         "location": "Location",
+        "generic_assist": "I am here to help. Tell me what you need, and if you want I can check your upcoming appointments now.",
         "err_credits": "Clinic support is temporarily unavailable. Please contact the clinic.",
         "err_key": "Clinic support is not configured correctly at the moment.",
         "err_default": "Clinic support is temporarily unavailable. Please try again shortly.",
@@ -181,6 +182,7 @@ LANGUAGE_COPY = {
         "appointment_status": "Status",
         "professional": "Profissional",
         "location": "Local",
+        "generic_assist": "Estou aqui para te ajudar. Me diga o que você precisa e, se quiser, consulto seus próximos agendamentos agora.",
         "err_credits": "No momento o atendimento da clínica está indisponível. Avise a clínica para regularizar o serviço.",
         "err_key": "No momento o atendimento da clínica ainda não foi configurado corretamente.",
         "err_default": "No momento o atendimento da clínica está indisponível. Tente novamente em instantes.",
@@ -364,6 +366,35 @@ AI_ACTIVE_APPOINTMENT_STATUSES = (
     Appointment.StatusChoices.IN_PROGRESS,
 )
 
+APPOINTMENT_QUERY_KEYWORDS = {
+    "pt": ("agendamento", "agendamentos", "consulta", "consultas"),
+    "en": ("appointment", "appointments", "schedule"),
+    "tr": ("randevu", "randevular"),
+    "de": ("termin", "termine"),
+    "es": ("cita", "citas"),
+    "ru": ("priem", "priemy"),
+}
+
+APPOINTMENT_CONFIRMATION_KEYWORDS = (
+    "tem certeza",
+    "certeza",
+    "are you sure",
+    "sure",
+    "confirm",
+    "confirma",
+    "emin misin",
+    "sicher",
+)
+
+GREETING_KEYWORDS = {
+    "pt": ("oi", "olá", "ola", "bom dia", "boa tarde", "boa noite"),
+    "en": ("hi", "hello", "hey", "good morning", "good afternoon", "good evening"),
+    "tr": ("merhaba", "selam"),
+    "de": ("hallo", "guten tag"),
+    "es": ("hola", "buenos dias", "buenas tardes", "buenas noches"),
+    "ru": ("privet", "zdravstvuyte"),
+}
+
 
 class MessagePagination(PageNumberPagination):
     page_size = 50
@@ -441,15 +472,8 @@ def _detect_interaction_language(*, text: str, accept_language: str | None) -> s
 
 def _build_patient_context(patient: Patient, language: str) -> str:
     copy = _resolve_language_copy(language)
-    appointments = (
-        Appointment.objects.filter(
-            patient_id=patient.id,
-            tenant_id=patient.tenant_id,
-            status__in=AI_ACTIVE_APPOINTMENT_STATUSES,
-            appointment_date__gte=timezone.localdate(),
-        )
-        .select_related("professional", "specialty")
-        .order_by("appointment_date", "appointment_time")[:6]
+    appointments = list(
+        _get_upcoming_active_appointments(patient=patient)
     )
     appointment_lines: list[str] = []
     for item in appointments:
@@ -520,6 +544,99 @@ def _build_system_prompt(patient: Patient, language: str) -> str:
         f"{appointment_truth_rules}\n\n"
         f"{_build_patient_context(patient, language)}"
     )
+
+
+def _get_upcoming_active_appointments(*, patient: Patient):
+    return (
+        Appointment.objects.filter(
+            patient_id=patient.id,
+            tenant_id=patient.tenant_id,
+            status__in=AI_ACTIVE_APPOINTMENT_STATUSES,
+            appointment_date__gte=timezone.localdate(),
+        )
+        .select_related("professional", "specialty")
+        .order_by("appointment_date", "appointment_time")[:6]
+    )
+
+
+def _contains_keyword(text: str, keywords: tuple[str, ...]) -> bool:
+    lowered = (text or "").strip().lower()
+    if not lowered:
+        return False
+    return any(keyword in lowered for keyword in keywords)
+
+
+def _is_appointment_query(*, text: str, language: str) -> bool:
+    language_keywords = APPOINTMENT_QUERY_KEYWORDS.get(language, ())
+    if _contains_keyword(text, language_keywords):
+        return True
+    generic_keywords = tuple(
+        keyword
+        for items in APPOINTMENT_QUERY_KEYWORDS.values()
+        for keyword in items
+    )
+    return _contains_keyword(text, generic_keywords)
+
+
+def _response_mentions_appointments(*, text: str, language: str) -> bool:
+    return _is_appointment_query(text=text, language=language)
+
+
+def _is_greeting_message(*, text: str, language: str) -> bool:
+    language_keywords = GREETING_KEYWORDS.get(language, ())
+    if _contains_keyword(text, language_keywords):
+        return True
+    generic_keywords = tuple(keyword for items in GREETING_KEYWORDS.values() for keyword in items)
+    return _contains_keyword(text, generic_keywords)
+
+
+def _generic_assist_message(language: str) -> str:
+    copy = _resolve_language_copy(language)
+    fallback = (
+        "Estou aqui para te ajudar. Me diga o que você precisa e, se quiser, "
+        "consulto seus próximos agendamentos agora."
+    )
+    return copy.get("generic_assist", fallback)
+
+
+def _should_use_appointments_truth_response(
+    *,
+    current_text: str,
+    language: str,
+    recent_messages: list[PatientAIMessage],
+) -> bool:
+    if _is_appointment_query(text=current_text, language=language):
+        return True
+
+    if not _contains_keyword(current_text, APPOINTMENT_CONFIRMATION_KEYWORDS):
+        return False
+
+    for item in reversed(recent_messages[-6:]):
+        if _is_appointment_query(text=item.content, language=language):
+            return True
+    return False
+
+
+def _build_appointments_truth_response(*, patient: Patient, language: str) -> str:
+    copy = _resolve_language_copy(language)
+    appointments = list(_get_upcoming_active_appointments(patient=patient))
+    if not appointments:
+        return copy["no_upcoming"]
+
+    lines = [f"{copy['next_appointments']}:"]
+    for item in appointments:
+        date_label = item.appointment_date.strftime("%d/%m/%Y")
+        time_label = item.appointment_time.strftime("%H:%M")
+        lines.append(
+            (
+                f"- {date_label} {time_label} | "
+                f"{copy['appointment_type']}: {item.get_appointment_type_display()} | "
+                f"{copy['appointment_status']}: {item.get_status_display()} | "
+                f"{copy['professional']}: {item.professional.full_name if item.professional else copy['not_defined']} | "
+                f"{copy['location']}: {item.clinic_location or copy['not_informed']}"
+            )
+        )
+    return "\n".join(lines)
 
 
 def _sanitize_ai_content(raw: str) -> str:
@@ -960,6 +1077,35 @@ class PatientAIChatAPIView(APIView):
             accept_language=request.headers.get("Accept-Language"),
         )
 
+        if _should_use_appointments_truth_response(
+            current_text=user_content,
+            language=interaction_language,
+            recent_messages=recent_messages,
+        ):
+            deterministic_reply = _build_appointments_truth_response(
+                patient=patient,
+                language=interaction_language,
+            )
+            assistant_message = PatientAIMessage.objects.create(
+                tenant_id=patient.tenant_id,
+                patient_id=patient.id,
+                role=PatientAIMessage.RoleChoices.ASSISTANT,
+                source=PatientAIMessage.SourceChoices.AI,
+                content=deterministic_reply,
+            )
+            serialized_history = PatientAIMessageSerializer(
+                PatientAIMessage.objects.filter(patient_id=patient.id).order_by("created_at"),
+                many=True,
+            ).data
+            return Response(
+                {
+                    "user_message": PatientAIMessageSerializer(user_message).data,
+                    "assistant_message": PatientAIMessageSerializer(assistant_message).data,
+                    "messages": serialized_history,
+                },
+                status=status.HTTP_201_CREATED,
+            )
+
         llm_messages: list[dict] = [
             {"role": "system", "content": _build_system_prompt(patient, interaction_language)}
         ]
@@ -969,12 +1115,27 @@ class PatientAIChatAPIView(APIView):
         try:
             ai_config = resolve_ai_runtime_config()
             ai_answer = request_chat_completion(messages=llm_messages, config=ai_config)
+            sanitized_answer = _sanitize_ai_content(ai_answer)
+            if (
+                not _is_appointment_query(text=user_content, language=interaction_language)
+                and _response_mentions_appointments(
+                    text=sanitized_answer,
+                    language=interaction_language,
+                )
+            ):
+                if _is_greeting_message(text=user_content, language=interaction_language):
+                    sanitized_answer = _generic_assist_message(interaction_language)
+                else:
+                    sanitized_answer = _build_appointments_truth_response(
+                        patient=patient,
+                        language=interaction_language,
+                    )
             assistant_message = PatientAIMessage.objects.create(
                 tenant_id=patient.tenant_id,
                 patient_id=patient.id,
                 role=PatientAIMessage.RoleChoices.ASSISTANT,
                 source=PatientAIMessage.SourceChoices.AI,
-                content=_sanitize_ai_content(ai_answer),
+                content=sanitized_answer,
             )
         except AIServiceError as exc:
             provider_error = str(exc)

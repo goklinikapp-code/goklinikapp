@@ -98,8 +98,8 @@ def _validate_patient_appointment_flow(
             raise serializers.ValidationError(
                 {
                     "appointment_type": (
-                        "Patient already has an active appointment of this type. "
-                        "Complete or cancel it before creating another one."
+                        "Este paciente já possui um agendamento ativo deste tipo. "
+                        "Conclua, cancele ou remarque o atual antes de criar outro."
                     )
                 }
             )
@@ -114,10 +114,10 @@ def _validate_patient_appointment_flow(
                 raise serializers.ValidationError(
                     {
                         "patient": (
-                            "Patient already has an active primary-flow appointment "
+                            "Este paciente já possui um agendamento ativo no fluxo principal "
                             f"({active_primary.get_appointment_type_display()}). "
-                            "Complete or cancel it before scheduling another "
-                            "First Visit, Return or Surgery appointment."
+                            "Conclua, cancele ou remarque o atual antes de criar outro "
+                            "de Primeira Consulta, Retorno ou Cirurgia."
                         )
                     }
                 )
@@ -132,7 +132,7 @@ def _validate_patient_appointment_flow(
             raise serializers.ValidationError(
                 {
                     "appointment_type": (
-                        "Return can only be scheduled after a completed First Visit."
+                        "Não é possível agendar Retorno antes de concluir a Primeira Consulta."
                     )
                 }
             )
@@ -147,7 +147,7 @@ def _validate_patient_appointment_flow(
             raise serializers.ValidationError(
                 {
                     "appointment_type": (
-                        "Surgery can only be scheduled after a completed First Visit."
+                        "Não é possível agendar Cirurgia antes de concluir a Primeira Consulta."
                     )
                 }
             )
@@ -166,8 +166,8 @@ def _validate_patient_appointment_flow(
             raise serializers.ValidationError(
                 {
                     "appointment_type": (
-                        "Surgery requires a completed Return when a Return was already opened "
-                        "for this patient."
+                        "Existe um Retorno em aberto para este paciente. "
+                        "Conclua o Retorno antes de agendar a Cirurgia."
                     )
                 }
             )
@@ -182,7 +182,7 @@ def _validate_patient_appointment_flow(
             raise serializers.ValidationError(
                 {
                     "appointment_type": (
-                        "Post-op appointments can only be scheduled after a completed Surgery."
+                        "Não é possível agendar pós-operatório antes de uma Cirurgia concluída."
                     )
                 }
             )
@@ -203,7 +203,7 @@ def _validate_surgery_completion_timing(
     if appointment_date > timezone.localdate():
         raise serializers.ValidationError(
             {
-                "status": "Surgery cannot be marked as completed before its scheduled date."
+                "status": "A cirurgia não pode ser concluída antes da data agendada."
             }
         )
 
@@ -264,7 +264,7 @@ class AppointmentSerializer(AbsoluteMediaUrlsSerializerMixin, serializers.ModelS
 
     def validate_professional(self, value):
         if value.role != GoKlinikUser.RoleChoices.SURGEON:
-            raise serializers.ValidationError("Selected professional must be a surgeon.")
+            raise serializers.ValidationError("O profissional selecionado precisa ser um cirurgião.")
         return value
 
     def validate(self, attrs):
@@ -288,24 +288,24 @@ class AppointmentSerializer(AbsoluteMediaUrlsSerializerMixin, serializers.ModelS
         exclude_appointment_id = getattr(instance, "id", None)
 
         if not professional:
-            raise serializers.ValidationError({"professional": "Professional is required."})
+            raise serializers.ValidationError({"professional": "Selecione um profissional para continuar."})
         if not patient:
-            raise serializers.ValidationError({"patient": "Patient is required."})
+            raise serializers.ValidationError({"patient": "Selecione um paciente para continuar."})
 
         if user.role != GoKlinikUser.RoleChoices.SUPER_ADMIN:
             if not tenant:
-                raise serializers.ValidationError("User has no tenant configured.")
+                raise serializers.ValidationError("Usuário sem clínica (tenant) configurada.")
             attrs["tenant"] = tenant
 
             if patient and patient.tenant_id != tenant.id:
-                raise serializers.ValidationError({"patient": "Patient must belong to your tenant."})
+                raise serializers.ValidationError({"patient": "O paciente precisa pertencer à sua clínica."})
             if professional and professional.tenant_id != tenant.id:
                 raise serializers.ValidationError(
-                    {"professional": "Professional must belong to your tenant."}
+                    {"professional": "O profissional precisa pertencer à sua clínica."}
                 )
             if specialty and specialty.tenant_id != tenant.id:
                 raise serializers.ValidationError(
-                    {"specialty": "Specialty must belong to your tenant."}
+                    {"specialty": "A especialidade precisa pertencer à sua clínica."}
                 )
         else:
             if patient:
@@ -316,12 +316,12 @@ class AppointmentSerializer(AbsoluteMediaUrlsSerializerMixin, serializers.ModelS
         if user.role == GoKlinikUser.RoleChoices.PATIENT:
             if not patient or str(patient.id) != str(user.id):
                 raise serializers.ValidationError(
-                    {"patient": "Patient users can only create their own appointments."}
+                    {"patient": "Pacientes só podem criar agendamentos para o próprio perfil."}
                 )
         if user.role == GoKlinikUser.RoleChoices.SURGEON:
             if not professional or str(professional.id) != str(user.id):
                 raise serializers.ValidationError(
-                    {"professional": "Surgeons can only schedule appointments for themselves."}
+                    {"professional": "Cirurgiões só podem agendar consultas para si mesmos."}
                 )
 
         tenant_for_location = attrs.get("tenant")
@@ -337,7 +337,7 @@ class AppointmentSerializer(AbsoluteMediaUrlsSerializerMixin, serializers.ModelS
             attrs["clinic_location"] = clinic_location
             if tenant_addresses and clinic_location not in tenant_addresses:
                 raise serializers.ValidationError(
-                    {"clinic_location": "Choose a valid clinic address from your tenant."}
+                    {"clinic_location": "Selecione um endereço válido da sua clínica."}
                 )
         elif tenant_addresses:
             attrs["clinic_location"] = tenant_addresses[0]
@@ -345,7 +345,7 @@ class AppointmentSerializer(AbsoluteMediaUrlsSerializerMixin, serializers.ModelS
         if attrs.get("appointment_date") and attrs.get("appointment_time"):
             starts_at = datetime.combine(attrs["appointment_date"], attrs["appointment_time"])
             if starts_at < timezone.localtime().replace(tzinfo=None):
-                raise serializers.ValidationError("Appointment cannot be created in the past.")
+                raise serializers.ValidationError("Não é possível criar agendamento em data/hora passada.")
 
         _validate_surgery_completion_timing(
             appointment_type=attrs.get(
@@ -414,7 +414,7 @@ class AppointmentStatusUpdateSerializer(serializers.Serializer):
         allowed = ALLOWED_STATUS_TRANSITIONS.get(appointment.status, set())
         if new_status not in allowed and new_status != appointment.status:
             raise serializers.ValidationError(
-                f"Invalid transition from {appointment.status} to {new_status}."
+                f"Transição de status inválida: {appointment.status} -> {new_status}."
             )
         return attrs
 
