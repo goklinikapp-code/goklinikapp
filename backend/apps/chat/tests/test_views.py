@@ -1,10 +1,15 @@
 from __future__ import annotations
 
+from datetime import time, timedelta
+
 from django.urls import reverse
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
 
+from apps.appointments.models import Appointment
 from apps.chat.models import ChatRoom, PatientAIMessage, TenantAIChatSettings
+from apps.chat.views import _build_patient_context
 from apps.notifications.models import Notification
 from apps.patients.models import Patient
 from apps.tenants.models import Tenant
@@ -25,6 +30,12 @@ class ChatViewsTestCase(APITestCase):
             password="pass12345",
             tenant=self.tenant,
             role=GoKlinikUser.RoleChoices.CLINIC_MASTER,
+        )
+        self.surgeon = GoKlinikUser.objects.create_user(
+            email="surgeon@chat.com",
+            password="pass12345",
+            tenant=self.tenant,
+            role=GoKlinikUser.RoleChoices.SURGEON,
         )
         self.patient = Patient.objects.create_user(
             email="patient@chat.com",
@@ -202,3 +213,41 @@ class ChatViewsTestCase(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(response.data.get("mode"), "human")
         self.assertIsNone(response.data.get("assistant_message"))
+
+    def test_patient_context_only_includes_future_active_appointments(self):
+        today = timezone.localdate()
+        Appointment.objects.create(
+            tenant=self.tenant,
+            patient=self.patient,
+            professional=self.surgeon,
+            appointment_date=today - timedelta(days=1),
+            appointment_time=time(10, 0),
+            appointment_type=Appointment.AppointmentTypeChoices.POST_OP_7D,
+            status=Appointment.StatusChoices.PENDING,
+            created_by=self.clinic_master,
+        )
+        Appointment.objects.create(
+            tenant=self.tenant,
+            patient=self.patient,
+            professional=self.surgeon,
+            appointment_date=today + timedelta(days=1),
+            appointment_time=time(11, 0),
+            appointment_type=Appointment.AppointmentTypeChoices.FIRST_VISIT,
+            status=Appointment.StatusChoices.PENDING,
+            created_by=self.clinic_master,
+        )
+        Appointment.objects.create(
+            tenant=self.tenant,
+            patient=self.patient,
+            professional=self.surgeon,
+            appointment_date=today + timedelta(days=2),
+            appointment_time=time(12, 0),
+            appointment_type=Appointment.AppointmentTypeChoices.RETURN,
+            status=Appointment.StatusChoices.CANCELLED,
+            created_by=self.clinic_master,
+        )
+
+        context = _build_patient_context(self.patient, "pt")
+        self.assertIn(str(today + timedelta(days=1)), context)
+        self.assertNotIn(str(today - timedelta(days=1)), context)
+        self.assertNotIn(str(today + timedelta(days=2)), context)

@@ -118,9 +118,17 @@ class AppointmentViewsTestCase(APITestCase):
         confirmation_delay_mock.assert_called_once_with(response.data["id"])
 
     def test_create_appointment_returns_409_when_slot_conflicts(self):
+        other_patient = Patient.objects.create_user(
+            email="patient2@app.com",
+            password="pass12345",
+            tenant=self.tenant,
+            role=GoKlinikUser.RoleChoices.PATIENT,
+            first_name="Pat",
+            last_name="Two",
+        )
         Appointment.objects.create(
             tenant=self.tenant,
-            patient=self.patient,
+            patient=other_patient,
             professional=self.surgeon,
             specialty=self.specialty,
             appointment_date=timezone.localdate() + timedelta(days=1),
@@ -217,6 +225,170 @@ class AppointmentViewsTestCase(APITestCase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+    def test_create_return_requires_completed_first_visit(self):
+        self.client.force_authenticate(self.master)
+        response = self.client.post(
+            reverse("appointments-list"),
+            {
+                "patient": str(self.patient.id),
+                "professional": str(self.surgeon.id),
+                "specialty": str(self.specialty.id),
+                "appointment_date": str(timezone.localdate() + timedelta(days=2)),
+                "appointment_time": "10:00:00",
+                "appointment_type": "return",
+                "status": "pending",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("appointment_type", response.data)
+
+    def test_create_return_after_completed_first_visit(self):
+        Appointment.objects.create(
+            tenant=self.tenant,
+            patient=self.patient,
+            professional=self.surgeon,
+            specialty=self.specialty,
+            appointment_date=timezone.localdate() - timedelta(days=1),
+            appointment_time=time(9, 0),
+            duration_minutes=60,
+            status=Appointment.StatusChoices.COMPLETED,
+            appointment_type=Appointment.AppointmentTypeChoices.FIRST_VISIT,
+            created_by=self.master,
+        )
+
+        self.client.force_authenticate(self.master)
+        response = self.client.post(
+            reverse("appointments-list"),
+            {
+                "patient": str(self.patient.id),
+                "professional": str(self.surgeon.id),
+                "specialty": str(self.specialty.id),
+                "appointment_date": str(timezone.localdate() + timedelta(days=2)),
+                "appointment_time": "10:00:00",
+                "appointment_type": "return",
+                "status": "pending",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+    def test_create_surgery_requires_completed_first_visit(self):
+        self.client.force_authenticate(self.master)
+        response = self.client.post(
+            reverse("appointments-list"),
+            {
+                "patient": str(self.patient.id),
+                "professional": str(self.surgeon.id),
+                "specialty": str(self.specialty.id),
+                "appointment_date": str(timezone.localdate() + timedelta(days=2)),
+                "appointment_time": "11:00:00",
+                "appointment_type": "surgery",
+                "status": "pending",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("appointment_type", response.data)
+
+    def test_create_second_active_primary_flow_appointment_is_blocked(self):
+        Appointment.objects.create(
+            tenant=self.tenant,
+            patient=self.patient,
+            professional=self.surgeon,
+            specialty=self.specialty,
+            appointment_date=timezone.localdate() + timedelta(days=1),
+            appointment_time=time(10, 0),
+            duration_minutes=60,
+            status=Appointment.StatusChoices.PENDING,
+            appointment_type=Appointment.AppointmentTypeChoices.FIRST_VISIT,
+            created_by=self.master,
+        )
+
+        self.client.force_authenticate(self.master)
+        response = self.client.post(
+            reverse("appointments-list"),
+            {
+                "patient": str(self.patient.id),
+                "professional": str(self.surgeon.id),
+                "specialty": str(self.specialty.id),
+                "appointment_date": str(timezone.localdate() + timedelta(days=2)),
+                "appointment_time": "11:00:00",
+                "appointment_type": "return",
+                "status": "pending",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("patient", response.data)
+
+    def test_create_duplicate_active_post_op_type_is_blocked(self):
+        Appointment.objects.create(
+            tenant=self.tenant,
+            patient=self.patient,
+            professional=self.surgeon,
+            specialty=self.specialty,
+            appointment_date=timezone.localdate() - timedelta(days=10),
+            appointment_time=time(9, 0),
+            duration_minutes=60,
+            status=Appointment.StatusChoices.COMPLETED,
+            appointment_type=Appointment.AppointmentTypeChoices.SURGERY,
+            created_by=self.master,
+        )
+        Appointment.objects.create(
+            tenant=self.tenant,
+            patient=self.patient,
+            professional=self.surgeon,
+            specialty=self.specialty,
+            appointment_date=timezone.localdate() + timedelta(days=7),
+            appointment_time=time(10, 0),
+            duration_minutes=60,
+            status=Appointment.StatusChoices.PENDING,
+            appointment_type=Appointment.AppointmentTypeChoices.POST_OP_7D,
+            created_by=self.master,
+        )
+
+        self.client.force_authenticate(self.master)
+        response = self.client.post(
+            reverse("appointments-list"),
+            {
+                "patient": str(self.patient.id),
+                "professional": str(self.surgeon.id),
+                "specialty": str(self.specialty.id),
+                "appointment_date": str(timezone.localdate() + timedelta(days=8)),
+                "appointment_time": "10:00:00",
+                "appointment_type": "post_op_7d",
+                "status": "pending",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("appointment_type", response.data)
+
+    def test_create_post_op_requires_completed_surgery(self):
+        self.client.force_authenticate(self.master)
+        response = self.client.post(
+            reverse("appointments-list"),
+            {
+                "patient": str(self.patient.id),
+                "professional": str(self.surgeon.id),
+                "specialty": str(self.specialty.id),
+                "appointment_date": str(timezone.localdate() + timedelta(days=10)),
+                "appointment_time": "11:00:00",
+                "appointment_type": "post_op_30d",
+                "status": "pending",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("appointment_type", response.data)
 
     def test_patient_cannot_update_status(self):
         appointment = Appointment.objects.create(

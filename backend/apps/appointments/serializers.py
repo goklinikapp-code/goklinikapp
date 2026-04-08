@@ -35,6 +35,158 @@ ALLOWED_STATUS_TRANSITIONS = {
     },
 }
 
+ACTIVE_APPOINTMENT_STATUSES = {
+    Appointment.StatusChoices.PENDING,
+    Appointment.StatusChoices.CONFIRMED,
+    Appointment.StatusChoices.IN_PROGRESS,
+}
+
+RETURN_FLOW_RELEVANT_STATUSES = {
+    Appointment.StatusChoices.PENDING,
+    Appointment.StatusChoices.CONFIRMED,
+    Appointment.StatusChoices.IN_PROGRESS,
+    Appointment.StatusChoices.COMPLETED,
+}
+
+PRIMARY_FLOW_APPOINTMENT_TYPES = {
+    Appointment.AppointmentTypeChoices.FIRST_VISIT,
+    Appointment.AppointmentTypeChoices.RETURN,
+    Appointment.AppointmentTypeChoices.SURGERY,
+}
+
+POST_OP_APPOINTMENT_TYPES = {
+    Appointment.AppointmentTypeChoices.POST_OP_7D,
+    Appointment.AppointmentTypeChoices.POST_OP_30D,
+    Appointment.AppointmentTypeChoices.POST_OP_90D,
+}
+
+
+def _build_active_patient_queryset(*, patient_id, exclude_appointment_id=None):
+    queryset = Appointment.objects.filter(
+        patient_id=patient_id,
+        status__in=ACTIVE_APPOINTMENT_STATUSES,
+    )
+    if exclude_appointment_id:
+        queryset = queryset.exclude(id=exclude_appointment_id)
+    return queryset
+
+
+def _validate_patient_appointment_flow(
+    *,
+    patient,
+    appointment_type: str,
+    status_value: str,
+    exclude_appointment_id=None,
+) -> None:
+    if not patient:
+        return
+
+    if status_value in {
+        Appointment.StatusChoices.CANCELLED,
+        Appointment.StatusChoices.RESCHEDULED,
+    }:
+        return
+
+    patient_id = patient.id
+    active_qs = _build_active_patient_queryset(
+        patient_id=patient_id,
+        exclude_appointment_id=exclude_appointment_id,
+    )
+
+    if status_value in ACTIVE_APPOINTMENT_STATUSES:
+        if active_qs.filter(appointment_type=appointment_type).exists():
+            raise serializers.ValidationError(
+                {
+                    "appointment_type": (
+                        "Patient already has an active appointment of this type. "
+                        "Complete or cancel it before creating another one."
+                    )
+                }
+            )
+
+        if appointment_type in PRIMARY_FLOW_APPOINTMENT_TYPES:
+            active_primary = (
+                active_qs.filter(appointment_type__in=PRIMARY_FLOW_APPOINTMENT_TYPES)
+                .order_by("appointment_date", "appointment_time")
+                .first()
+            )
+            if active_primary:
+                raise serializers.ValidationError(
+                    {
+                        "patient": (
+                            "Patient already has an active primary-flow appointment "
+                            f"({active_primary.get_appointment_type_display()}). "
+                            "Complete or cancel it before scheduling another "
+                            "First Visit, Return or Surgery appointment."
+                        )
+                    }
+                )
+
+    if appointment_type == Appointment.AppointmentTypeChoices.RETURN:
+        has_completed_first_visit = Appointment.objects.filter(
+            patient_id=patient_id,
+            appointment_type=Appointment.AppointmentTypeChoices.FIRST_VISIT,
+            status=Appointment.StatusChoices.COMPLETED,
+        ).exists()
+        if not has_completed_first_visit:
+            raise serializers.ValidationError(
+                {
+                    "appointment_type": (
+                        "Return can only be scheduled after a completed First Visit."
+                    )
+                }
+            )
+
+    if appointment_type == Appointment.AppointmentTypeChoices.SURGERY:
+        has_completed_first_visit = Appointment.objects.filter(
+            patient_id=patient_id,
+            appointment_type=Appointment.AppointmentTypeChoices.FIRST_VISIT,
+            status=Appointment.StatusChoices.COMPLETED,
+        ).exists()
+        if not has_completed_first_visit:
+            raise serializers.ValidationError(
+                {
+                    "appointment_type": (
+                        "Surgery can only be scheduled after a completed First Visit."
+                    )
+                }
+            )
+
+        has_any_return = Appointment.objects.filter(
+            patient_id=patient_id,
+            appointment_type=Appointment.AppointmentTypeChoices.RETURN,
+            status__in=RETURN_FLOW_RELEVANT_STATUSES,
+        ).exists()
+        has_completed_return = Appointment.objects.filter(
+            patient_id=patient_id,
+            appointment_type=Appointment.AppointmentTypeChoices.RETURN,
+            status=Appointment.StatusChoices.COMPLETED,
+        ).exists()
+        if has_any_return and not has_completed_return:
+            raise serializers.ValidationError(
+                {
+                    "appointment_type": (
+                        "Surgery requires a completed Return when a Return was already opened "
+                        "for this patient."
+                    )
+                }
+            )
+
+    if appointment_type in POST_OP_APPOINTMENT_TYPES:
+        has_completed_surgery = Appointment.objects.filter(
+            patient_id=patient_id,
+            appointment_type=Appointment.AppointmentTypeChoices.SURGERY,
+            status=Appointment.StatusChoices.COMPLETED,
+        ).exists()
+        if not has_completed_surgery:
+            raise serializers.ValidationError(
+                {
+                    "appointment_type": (
+                        "Post-op appointments can only be scheduled after a completed Surgery."
+                    )
+                }
+            )
+
 
 def _validate_surgery_completion_timing(
     *,
@@ -121,10 +273,19 @@ class AppointmentSerializer(AbsoluteMediaUrlsSerializerMixin, serializers.ModelS
         tenant = user.tenant
         instance = getattr(self, "instance", None)
 
-        patient = attrs.get("patient")
-        professional = attrs.get("professional")
-        specialty = attrs.get("specialty")
-        clinic_location = (attrs.get("clinic_location") or "").strip()
+        patient = attrs.get("patient", getattr(instance, "patient", None))
+        professional = attrs.get("professional", getattr(instance, "professional", None))
+        specialty = attrs.get("specialty", getattr(instance, "specialty", None))
+        clinic_location = (attrs.get("clinic_location", getattr(instance, "clinic_location", "")) or "").strip()
+        target_status = attrs.get(
+            "status",
+            getattr(instance, "status", Appointment.StatusChoices.PENDING),
+        )
+        target_type = attrs.get(
+            "appointment_type",
+            getattr(instance, "appointment_type", Appointment.AppointmentTypeChoices.FIRST_VISIT),
+        )
+        exclude_appointment_id = getattr(instance, "id", None)
 
         if not professional:
             raise serializers.ValidationError({"professional": "Professional is required."})
@@ -197,6 +358,28 @@ class AppointmentSerializer(AbsoluteMediaUrlsSerializerMixin, serializers.ModelS
                 getattr(instance, "appointment_date", None),
             ),
         )
+
+        should_validate_flow = instance is None
+        if instance is not None:
+            status_will_be_active = target_status in ACTIVE_APPOINTMENT_STATUSES
+            type_changed = (
+                "appointment_type" in attrs
+                and target_type != instance.appointment_type
+            )
+            status_changed_to_active = (
+                "status" in attrs
+                and status_will_be_active
+                and instance.status not in ACTIVE_APPOINTMENT_STATUSES
+            )
+            should_validate_flow = type_changed or status_changed_to_active
+
+        if should_validate_flow:
+            _validate_patient_appointment_flow(
+                patient=patient,
+                appointment_type=target_type,
+                status_value=target_status,
+                exclude_appointment_id=exclude_appointment_id,
+            )
 
         return attrs
 

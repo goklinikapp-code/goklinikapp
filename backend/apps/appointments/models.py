@@ -87,6 +87,23 @@ class Appointment(models.Model):
             models.Index(fields=["professional", "appointment_date"]),
             models.Index(fields=["patient", "appointment_date"]),
         ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["tenant", "patient", "appointment_type"],
+                condition=models.Q(
+                    status__in=["pending", "confirmed", "in_progress"],
+                ),
+                name="uniq_active_patient_type_per_tenant",
+            ),
+            models.UniqueConstraint(
+                fields=["tenant", "patient"],
+                condition=models.Q(
+                    status__in=["pending", "confirmed", "in_progress"],
+                    appointment_type__in=["first_visit", "return", "surgery"],
+                ),
+                name="uniq_active_primary_flow_per_patient",
+            ),
+        ]
 
     def __str__(self) -> str:
         professional_name = self.professional.full_name if self.professional else "Unassigned"

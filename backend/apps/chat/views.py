@@ -326,6 +326,44 @@ LANGUAGE_COPY = {
     },
 }
 
+APPOINTMENT_TRUTH_RULES = {
+    "pt": (
+        "REGRAS DE AGENDAMENTO (OBRIGATÓRIO): use apenas a seção 'Próximos agendamentos' do contexto "
+        "como fonte da verdade. Nunca invente data/horário/status. Se não houver itens, diga claramente "
+        "que não existe agendamento futuro."
+    ),
+    "en": (
+        "APPOINTMENT RULES (MANDATORY): use only the 'Upcoming appointments' section from context as "
+        "the source of truth. Never invent date/time/status. If there are no items, clearly state there "
+        "are no upcoming appointments."
+    ),
+    "tr": (
+        "RANDEVU KURALLARI (ZORUNLU): yalnizca baglamdaki 'Yaklasan randevular' bolumunu kaynak kabul edin. "
+        "Tarih/saat/durum uydurmayin. Liste bos ise, yaklasan randevu olmadigini acikca soyleyin."
+    ),
+    "de": (
+        "TERMINREGELN (PFLICHT): verwenden Sie nur den Abschnitt 'Kommende Termine' im Kontext als "
+        "Wahrheitsquelle. Erfinden Sie niemals Datum/Uhrzeit/Status. Wenn keine Eintrage vorhanden sind, "
+        "sagen Sie klar, dass es keine kommenden Termine gibt."
+    ),
+    "es": (
+        "REGLAS DE CITAS (OBLIGATORIO): usa solo la sección 'Próximas citas' del contexto como fuente de "
+        "verdad. Nunca inventes fecha/hora/estado. Si no hay elementos, indica claramente que no hay citas "
+        "próximas."
+    ),
+    "ru": (
+        "PRAVILA PRIEMOV (OBYAZATELNO): ispolzuyte tolko razdel 'Blizhaishie priemy' iz konteksta kak "
+        "istochnik istiny. Nikogda ne pridumyvaite datu/vremya/status. Esli spisok pust, yavno skazhite, "
+        "chto blizhaishikh priemov net."
+    ),
+}
+
+AI_ACTIVE_APPOINTMENT_STATUSES = (
+    Appointment.StatusChoices.PENDING,
+    Appointment.StatusChoices.CONFIRMED,
+    Appointment.StatusChoices.IN_PROGRESS,
+)
+
 
 class MessagePagination(PageNumberPagination):
     page_size = 50
@@ -404,9 +442,13 @@ def _detect_interaction_language(*, text: str, accept_language: str | None) -> s
 def _build_patient_context(patient: Patient, language: str) -> str:
     copy = _resolve_language_copy(language)
     appointments = (
-        Appointment.objects.filter(patient_id=patient.id)
+        Appointment.objects.filter(
+            patient_id=patient.id,
+            tenant_id=patient.tenant_id,
+            status__in=AI_ACTIVE_APPOINTMENT_STATUSES,
+            appointment_date__gte=timezone.localdate(),
+        )
         .select_related("professional", "specialty")
-        .exclude(status=Appointment.StatusChoices.CANCELLED)
         .order_by("appointment_date", "appointment_time")[:6]
     )
     appointment_lines: list[str] = []
@@ -470,10 +512,12 @@ def _build_system_prompt(patient: Patient, language: str) -> str:
     base_prompt = tenant_prompt or copy["base_prompt"]
     privacy_rules = copy["security_rules"]
     style_rules = copy["style_rules"]
+    appointment_truth_rules = APPOINTMENT_TRUTH_RULES.get(language, APPOINTMENT_TRUTH_RULES["en"])
     return (
         f"{base_prompt}\n\n"
         f"{privacy_rules}\n\n"
         f"{style_rules}\n\n"
+        f"{appointment_truth_rules}\n\n"
         f"{_build_patient_context(patient, language)}"
     )
 
