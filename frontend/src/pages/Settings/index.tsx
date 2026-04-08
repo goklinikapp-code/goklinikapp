@@ -263,11 +263,19 @@ export default function SettingsPage() {
   const setCurrency = usePreferencesStore((state) => state.setCurrency)
   const useAutomaticCurrency = usePreferencesStore((state) => state.useAutomaticCurrency)
 
-  const [brandingForm, setBrandingForm] = useState<TenantBranding>(tenantConfig)
+  const [brandingDraft, setBrandingDraft] = useState<Partial<TenantBranding> | null>(null)
+  const brandingForm: TenantBranding = useMemo(
+    () => ({
+      ...tenantConfig,
+      ...(brandingDraft || {}),
+    }),
+    [tenantConfig, brandingDraft],
+  )
+
   const [procedureName, setProcedureName] = useState('')
   const [procedureDescription, setProcedureDescription] = useState('')
   const [editingProcedureId, setEditingProcedureId] = useState<string | null>(null)
-  const [logoPreview, setLogoPreview] = useState<string | null>(tenantConfig.logo_url || null)
+  const [logoPreview, setLogoPreview] = useState<string | null>(null)
   const [selectedLogoFile, setSelectedLogoFile] = useState<File | null>(null)
   const [isRemoveLogoModalOpen, setIsRemoveLogoModalOpen] = useState(false)
   const clinicAddresses = brandingForm.clinic_addresses || []
@@ -279,16 +287,19 @@ export default function SettingsPage() {
     mutationFn: async (payload: TenantBranding) => {
       let mergedPayload: TenantBranding = { ...payload }
       if (selectedLogoFile) {
-        await uploadBrandingLogo(selectedLogoFile, payload.id)
+        const uploaded = await uploadBrandingLogo(selectedLogoFile, payload.id)
         mergedPayload = {
           ...mergedPayload,
-          logo_url: undefined,
+          logo_url: uploaded.logo_url || mergedPayload.logo_url,
         }
       }
       return updateBranding(mergedPayload)
     },
     onSuccess: (data) => {
-      setTenantConfig({ ...brandingForm, ...data })
+      const nextConfig = { ...brandingForm, ...data }
+      setTenantConfig(nextConfig)
+      setBrandingDraft(null)
+      setLogoPreview(null)
       setSelectedLogoFile(null)
       toast.success('Configurações salvas com sucesso')
     },
@@ -368,7 +379,7 @@ export default function SettingsPage() {
   const handleConfirmRemoveLogo = () => {
     setSelectedLogoFile(null)
     setLogoPreview(null)
-    setBrandingForm((prev) => ({
+    setBrandingDraft((prev) => ({
       ...prev,
       logo_url: null,
     }))
@@ -376,24 +387,24 @@ export default function SettingsPage() {
   }
 
   const updateClinicAddress = (index: number, value: string) => {
-    setBrandingForm((prev) => {
-      const next = [...(prev.clinic_addresses || [])]
+    setBrandingDraft((prev) => {
+      const next = [...(brandingForm.clinic_addresses || [])]
       next[index] = value
       return { ...prev, clinic_addresses: next }
     })
   }
 
   const addClinicAddress = () => {
-    setBrandingForm((prev) => ({
+    setBrandingDraft((prev) => ({
       ...prev,
-      clinic_addresses: [...(prev.clinic_addresses || []), ''],
+      clinic_addresses: [...(brandingForm.clinic_addresses || []), ''],
     }))
   }
 
   const removeClinicAddress = (index: number) => {
-    setBrandingForm((prev) => ({
+    setBrandingDraft((prev) => ({
       ...prev,
-      clinic_addresses: (prev.clinic_addresses || []).filter((_, itemIndex) => itemIndex !== index),
+      clinic_addresses: (brandingForm.clinic_addresses || []).filter((_, itemIndex) => itemIndex !== index),
     }))
   }
 
@@ -468,7 +479,7 @@ export default function SettingsPage() {
                   className="mt-3"
                   variant="secondary"
                   onClick={() =>
-                    setBrandingForm((prev) => ({
+                    setBrandingDraft((prev) => ({
                       ...prev,
                       ...saasDefaultPalette,
                     }))
@@ -503,7 +514,12 @@ export default function SettingsPage() {
                   <input
                     type="text"
                     value={brandingForm[item.key]}
-                    onChange={(event) => setBrandingForm((prev) => ({ ...prev, [item.key]: event.target.value }))}
+                    onChange={(event) =>
+                      setBrandingDraft((prev) => ({
+                        ...prev,
+                        [item.key]: event.target.value,
+                      }))
+                    }
                     className="h-10 w-28 rounded-lg border border-slate-200 px-3 text-sm"
                   />
                   <label
@@ -514,7 +530,7 @@ export default function SettingsPage() {
                       type="color"
                       value={brandingForm[item.key]}
                       onChange={(event) =>
-                        setBrandingForm((prev) => ({
+                        setBrandingDraft((prev) => ({
                           ...prev,
                           [item.key]: event.target.value,
                         }))
@@ -574,7 +590,7 @@ export default function SettingsPage() {
                   <Input
                     value={brandingForm.name}
                     onChange={(event) =>
-                      setBrandingForm((prev) => ({
+                      setBrandingDraft((prev) => ({
                         ...prev,
                         name: event.target.value,
                       }))
@@ -633,7 +649,7 @@ export default function SettingsPage() {
                 rows={8}
                 value={brandingForm.ai_assistant_prompt || ''}
                 onChange={(event) =>
-                  setBrandingForm((prev) => ({
+                  setBrandingDraft((prev) => ({
                     ...prev,
                     ai_assistant_prompt: event.target.value,
                   }))
@@ -666,15 +682,17 @@ export default function SettingsPage() {
                   const url = URL.createObjectURL(file)
                   setSelectedLogoFile(file)
                   setLogoPreview(url)
-                  setBrandingForm((prev) => ({ ...prev, logo_url: url }))
+                  setBrandingDraft((prev) => ({ ...prev, logo_url: url }))
                 }}
               />
               </label>
 
-              {logoPreview ? (
+              {hasLogoConfigured ? (
                 <div className="mt-4 flex items-center gap-3 rounded-lg bg-tealIce p-3">
-                  <img src={resolveMediaUrl(logoPreview)} alt="preview" className="h-12 w-auto" />
-                  <p className="text-sm text-slate-600">Preview do novo logo</p>
+                  <img src={previewLogo} alt="Logo da clínica" className="h-12 w-auto" />
+                  <p className="text-sm text-slate-600">
+                    {selectedLogoFile ? 'Preview do novo logo' : 'Logo atual da clínica'}
+                  </p>
                 </div>
               ) : null}
             </Card>
@@ -701,8 +719,8 @@ export default function SettingsPage() {
               <Button
                 variant="secondary"
                 onClick={() => {
-                  setBrandingForm(tenantConfig)
-                  setLogoPreview(tenantConfig.logo_url || null)
+                  setBrandingDraft(null)
+                  setLogoPreview(null)
                   setSelectedLogoFile(null)
                 }}
               >
