@@ -24,6 +24,7 @@ import '../../features/profile/presentation/notification_preferences_screen.dart
 import '../../features/profile/presentation/profile_screen.dart';
 import '../../features/pre_operatory/presentation/pre_operatory_screen.dart';
 import '../../features/referrals/presentation/referrals_screen.dart';
+import '../../features/travel_plans/presentation/travel_plan_screen.dart';
 import 'app_shell.dart';
 
 final _routerRefreshProvider = Provider<ValueNotifier<int>>((ref) {
@@ -127,6 +128,9 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
               path: '/medical-records',
               builder: (context, state) => const MedicalRecordScreen()),
+          GoRoute(
+              path: '/travel-plan',
+              builder: (context, state) => const TravelPlanScreen()),
           GoRoute(
               path: '/profile',
               builder: (context, state) => const ProfileScreen()),

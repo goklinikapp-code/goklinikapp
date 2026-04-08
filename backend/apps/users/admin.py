@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
 
-from .models import GoKlinikUser, SaaSAISettings
+from .models import GoKlinikUser, SaaSAISettings, UploadedImageAsset
 
 
 @admin.register(GoKlinikUser)
@@ -79,3 +79,11 @@ class GoKlinikUserAdmin(UserAdmin):
 class SaaSAISettingsAdmin(admin.ModelAdmin):
     list_display = ("provider", "model_name", "is_active", "updated_at")
     readonly_fields = ("created_at", "updated_at")
+
+
+@admin.register(UploadedImageAsset)
+class UploadedImageAssetAdmin(admin.ModelAdmin):
+    list_display = ("target", "tenant", "patient", "uploaded_by", "created_at")
+    list_filter = ("target", "tenant")
+    search_fields = ("image_url", "storage_path", "patient__email", "uploaded_by__email")
+    readonly_fields = ("id", "created_at")

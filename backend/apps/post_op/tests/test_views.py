@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import timedelta
+from unittest.mock import patch
 
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.urls import reverse
@@ -226,7 +227,9 @@ class PostOpViewsTestCase(APITestCase):
         self.assertEqual(self.journey.start_date, timezone.localdate(first_day_timestamp))
         self.assertEqual(self.journey.current_day, 2)
 
-    def test_patient_can_upload_postop_photo_with_heic_mime(self):
+    @patch("apps.post_op.views.upload_file")
+    def test_patient_can_upload_postop_photo_with_heic_mime(self, upload_file_mock):
+        upload_file_mock.return_value = "https://cdn.example.com/post-op/photo.heic"
         self.client.force_authenticate(self.patient)
         url = reverse("postoperatory-photo-create")
         upload = SimpleUploadedFile(

@@ -1,24 +1,17 @@
 from __future__ import annotations
 
-import uuid
-from pathlib import Path
-from urllib.parse import urlsplit
-
-from django.conf import settings
-from django.core.files.storage import FileSystemStorage
-from django.core.files.storage import default_storage
 from django.db import transaction
 from django.utils import timezone
 from rest_framework import permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from config.media_urls import absolute_media_url
-
 from apps.patients.models import DoctorPatientAssignment, Patient
 from apps.post_op.models import PostOpJourney
 from apps.post_op.services import auto_complete_expired_journeys
 from apps.users.models import GoKlinikUser
+from services.storage_paths import build_storage_path
+from services.supabase_storage import SupabaseStorageError, delete_file, upload_file
 
 from .models import PreOperatory, PreOperatoryAuditLog, PreOperatoryFile
 from .serializers import (
@@ -28,26 +21,24 @@ from .serializers import (
 )
 
 
-def _save_uploaded_file(*, request, upload, folder: str) -> str:
-    original_name = getattr(upload, "name", "") or ""
-    suffix = Path(original_name).suffix.lower()[:10]
-    filename = f"{uuid.uuid4()}{suffix}"
-    storage_path = f"{folder}/{filename}"
-    try:
-        saved_path = default_storage.save(storage_path, upload)
-        file_url = default_storage.url(saved_path)
-    except Exception:
-        media_root = Path(getattr(settings, "MEDIA_ROOT", Path.cwd()))
-        base_url = getattr(settings, "MEDIA_URL", "/media/")
-        fallback_storage = FileSystemStorage(
-            location=str(media_root),
-            base_url=base_url,
-        )
-        if hasattr(upload, "seek"):
-            upload.seek(0)
-        saved_path = fallback_storage.save(storage_path, upload)
-        file_url = fallback_storage.url(saved_path)
-    return absolute_media_url(file_url, request=request)
+def _save_uploaded_file(
+    *,
+    upload,
+    tenant_id,
+    patient_id,
+    pre_operatory_id,
+    category: str,
+) -> str:
+    storage_path = build_storage_path(
+        tenant_id,
+        "patients",
+        patient_id,
+        "pre-operatory",
+        pre_operatory_id,
+        category,
+        upload=upload,
+    )
+    return upload_file(upload, storage_path)
 
 
 def _active_pre_operatory_for_patient(user: GoKlinikUser) -> PreOperatory | None:
@@ -191,24 +182,10 @@ def _delete_storage_file_from_url(file_url: str | None) -> None:
     if not value:
         return
 
-    path = urlsplit(value).path or value
-    marker = "/pre_operatory/"
-    index = path.find(marker)
-    if index < 0:
-        marker = "pre_operatory/"
-        index = path.find(marker)
-    if index < 0:
-        return
-
-    relative_path = path[index + 1 :] if path[index] == "/" else path[index:]
-    if not relative_path:
-        return
-
     try:
-        default_storage.delete(relative_path)
+        delete_file(value)
     except Exception:
-        # Silently ignore storage deletion errors because the DB reference
-        # still needs to be removed for UX consistency.
+        # Keep DB operation resilient even when storage cleanup fails.
         pass
 
 
@@ -285,54 +262,61 @@ class PreOperatoryCreateAPIView(APIView):
         photos = list(request.FILES.getlist("photos"))
         documents = list(request.FILES.getlist("documents"))
 
-        with transaction.atomic():
-            pre_operatory = PreOperatory.objects.create(
-                patient_id=user.id,
-                tenant_id=user.tenant_id,
-                allergies=data.get("allergies", ""),
-                medications=data.get("medications", ""),
-                previous_surgeries=data.get("previous_surgeries", ""),
-                diseases=data.get("diseases", ""),
-                smoking=data.get("smoking", False),
-                alcohol=data.get("alcohol", False),
-                height=data.get("height"),
-                weight=data.get("weight"),
-                status=PreOperatory.StatusChoices.PENDING,
-            )
-
-            for upload in photos:
-                file_url = _save_uploaded_file(
-                    request=request,
-                    upload=upload,
-                    folder=f"pre_operatory/{user.id}/{pre_operatory.id}/photos",
+        try:
+            with transaction.atomic():
+                pre_operatory = PreOperatory.objects.create(
+                    patient_id=user.id,
+                    tenant_id=user.tenant_id,
+                    allergies=data.get("allergies", ""),
+                    medications=data.get("medications", ""),
+                    previous_surgeries=data.get("previous_surgeries", ""),
+                    diseases=data.get("diseases", ""),
+                    smoking=data.get("smoking", False),
+                    alcohol=data.get("alcohol", False),
+                    height=data.get("height"),
+                    weight=data.get("weight"),
+                    status=PreOperatory.StatusChoices.PENDING,
                 )
-                PreOperatoryFile.objects.create(
+
+                for upload in photos:
+                    file_url = _save_uploaded_file(
+                        upload=upload,
+                        tenant_id=user.tenant_id,
+                        patient_id=user.id,
+                        pre_operatory_id=pre_operatory.id,
+                        category="photos",
+                    )
+                    PreOperatoryFile.objects.create(
+                        pre_operatory=pre_operatory,
+                        file_url=file_url,
+                        type=PreOperatoryFile.FileTypeChoices.PHOTO,
+                    )
+
+                for upload in documents:
+                    file_url = _save_uploaded_file(
+                        upload=upload,
+                        tenant_id=user.tenant_id,
+                        patient_id=user.id,
+                        pre_operatory_id=pre_operatory.id,
+                        category="documents",
+                    )
+                    PreOperatoryFile.objects.create(
+                        pre_operatory=pre_operatory,
+                        file_url=file_url,
+                        type=PreOperatoryFile.FileTypeChoices.DOCUMENT,
+                    )
+
+                _log_pre_operatory_event(
                     pre_operatory=pre_operatory,
-                    file_url=file_url,
-                    type=PreOperatoryFile.FileTypeChoices.PHOTO,
+                    actor=user,
+                    action=PreOperatoryAuditLog.ActionChoices.CREATED,
+                    details={
+                        "photos_uploaded": len(photos),
+                        "documents_uploaded": len(documents),
+                    },
                 )
-
-            for upload in documents:
-                file_url = _save_uploaded_file(
-                    request=request,
-                    upload=upload,
-                    folder=f"pre_operatory/{user.id}/{pre_operatory.id}/documents",
-                )
-                PreOperatoryFile.objects.create(
-                    pre_operatory=pre_operatory,
-                    file_url=file_url,
-                    type=PreOperatoryFile.FileTypeChoices.DOCUMENT,
-                )
-
-            _log_pre_operatory_event(
-                pre_operatory=pre_operatory,
-                actor=user,
-                action=PreOperatoryAuditLog.ActionChoices.CREATED,
-                details={
-                    "photos_uploaded": len(photos),
-                    "documents_uploaded": len(documents),
-                },
-            )
+        except SupabaseStorageError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_502_BAD_GATEWAY)
 
         pre_operatory = _pre_operatory_queryset().get(id=pre_operatory.id)
         return Response(
@@ -422,66 +406,73 @@ class PreOperatoryDetailAPIView(APIView):
         documents = list(request.FILES.getlist("documents"))
         previous_status = pre_operatory.status
 
-        with transaction.atomic():
-            changed_fields = []
-            for field_name in (
-                "allergies",
-                "medications",
-                "previous_surgeries",
-                "diseases",
-                "smoking",
-                "alcohol",
-                "height",
-                "weight",
-            ):
-                if field_name in data:
-                    if getattr(pre_operatory, field_name) != data[field_name]:
-                        changed_fields.append(field_name)
-                    setattr(pre_operatory, field_name, data[field_name])
+        try:
+            with transaction.atomic():
+                changed_fields = []
+                for field_name in (
+                    "allergies",
+                    "medications",
+                    "previous_surgeries",
+                    "diseases",
+                    "smoking",
+                    "alcohol",
+                    "height",
+                    "weight",
+                ):
+                    if field_name in data:
+                        if getattr(pre_operatory, field_name) != data[field_name]:
+                            changed_fields.append(field_name)
+                        setattr(pre_operatory, field_name, data[field_name])
 
-            if pre_operatory.status == PreOperatory.StatusChoices.REJECTED:
-                pre_operatory.status = PreOperatory.StatusChoices.PENDING
-                pre_operatory.approved_at = None
-                changed_fields.append("status")
+                if pre_operatory.status == PreOperatory.StatusChoices.REJECTED:
+                    pre_operatory.status = PreOperatory.StatusChoices.PENDING
+                    pre_operatory.approved_at = None
+                    changed_fields.append("status")
 
-            pre_operatory.save()
+                pre_operatory.save()
 
-            for upload in photos:
-                file_url = _save_uploaded_file(
-                    request=request,
-                    upload=upload,
-                    folder=f"pre_operatory/{user.id}/{pre_operatory.id}/photos",
-                )
-                PreOperatoryFile.objects.create(
+                for upload in photos:
+                    file_url = _save_uploaded_file(
+                        upload=upload,
+                        tenant_id=user.tenant_id,
+                        patient_id=user.id,
+                        pre_operatory_id=pre_operatory.id,
+                        category="photos",
+                    )
+                    PreOperatoryFile.objects.create(
+                        pre_operatory=pre_operatory,
+                        file_url=file_url,
+                        type=PreOperatoryFile.FileTypeChoices.PHOTO,
+                    )
+
+                for upload in documents:
+                    file_url = _save_uploaded_file(
+                        upload=upload,
+                        tenant_id=user.tenant_id,
+                        patient_id=user.id,
+                        pre_operatory_id=pre_operatory.id,
+                        category="documents",
+                    )
+                    PreOperatoryFile.objects.create(
+                        pre_operatory=pre_operatory,
+                        file_url=file_url,
+                        type=PreOperatoryFile.FileTypeChoices.DOCUMENT,
+                    )
+
+                _log_pre_operatory_event(
                     pre_operatory=pre_operatory,
-                    file_url=file_url,
-                    type=PreOperatoryFile.FileTypeChoices.PHOTO,
+                    actor=user,
+                    action=PreOperatoryAuditLog.ActionChoices.PATIENT_UPDATED,
+                    details={
+                        "changed_fields": sorted(set(changed_fields)),
+                        "photos_uploaded": len(photos),
+                        "documents_uploaded": len(documents),
+                        "previous_status": previous_status,
+                        "current_status": pre_operatory.status,
+                    },
                 )
-
-            for upload in documents:
-                file_url = _save_uploaded_file(
-                    request=request,
-                    upload=upload,
-                    folder=f"pre_operatory/{user.id}/{pre_operatory.id}/documents",
-                )
-                PreOperatoryFile.objects.create(
-                    pre_operatory=pre_operatory,
-                    file_url=file_url,
-                    type=PreOperatoryFile.FileTypeChoices.DOCUMENT,
-                )
-
-            _log_pre_operatory_event(
-                pre_operatory=pre_operatory,
-                actor=user,
-                action=PreOperatoryAuditLog.ActionChoices.PATIENT_UPDATED,
-                details={
-                    "changed_fields": sorted(set(changed_fields)),
-                    "photos_uploaded": len(photos),
-                    "documents_uploaded": len(documents),
-                    "previous_status": previous_status,
-                    "current_status": pre_operatory.status,
-                },
-            )
+        except SupabaseStorageError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_502_BAD_GATEWAY)
 
         pre_operatory = _pre_operatory_queryset().get(id=pre_operatory.id)
         return Response(

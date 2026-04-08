@@ -36,6 +36,7 @@ class ApiEndpoints {
       '/api/chat/rooms/$roomId/messages/';
   static String chatRoomRead(String roomId) => '/api/chat/rooms/$roomId/read/';
   static const chatAiMessages = '/api/chat/ai/messages/';
+  static const chatAiTypingStatus = '/api/chat/ai/typing-status/';
 
   static const notifications = '/api/notifications/';
   static String notificationsRead(String notificationId) =>
@@ -60,6 +61,10 @@ class ApiEndpoints {
       '/api/appointments/available-slots/';
   static const appointmentsAvailableProfessionals =
       '/api/appointments/available-professionals/';
+
+  static const travelPlansMyPlan = '/api/travel-plans/my-plan/';
+  static String travelPlansConfirmTransfer(String transferId) =>
+      '/api/travel-plans/transfers/$transferId/confirm/';
 
   static String publicTenantBranding(String slug) =>
       '/api/public/tenants/$slug/branding/';

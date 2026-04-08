@@ -102,6 +102,7 @@ INSTALLED_APPS = [
     "apps.referrals.apps.ReferralsConfig",
     "apps.medical_records.apps.MedicalRecordsConfig",
     "apps.pre_operatory.apps.PreOperatoryConfig",
+    "apps.travel_plans.apps.TravelPlansConfig",
 ]
 
 MIDDLEWARE = [
@@ -197,6 +198,7 @@ STATIC_ROOT = ROOT_DIR / "staticfiles"
 
 SUPABASE_PROJECT_ID = env("SUPABASE_PROJECT_ID", "your-supabase-project-id")
 SUPABASE_URL = env("SUPABASE_URL", "https://your-project-id.supabase.co")
+SUPABASE_SERVICE_ROLE_KEY = env("SUPABASE_SERVICE_ROLE_KEY", "")
 SUPABASE_ANON_KEY = env(
     "SUPABASE_ANON_KEY",
     "",
@@ -209,11 +211,17 @@ SUPABASE_OUTBOUND_EMAILS_ENABLED = env_bool("SUPABASE_OUTBOUND_EMAILS_ENABLED", 
 REFERRAL_BASE_URL = (
     env("REFERRAL_BASE_URL", "https://goklinik.com/ref") or "https://goklinik.com/ref"
 ).rstrip("/")
+SUPABASE_ASSETS_BUCKET = env("SUPABASE_ASSETS_BUCKET", "clinic-assets")
 
-SUPABASE_STORAGE_BUCKET = env("SUPABASE_STORAGE_BUCKET", "media")
+SUPABASE_STORAGE_BUCKET = (
+    env("SUPABASE_STORAGE_BUCKET", SUPABASE_ASSETS_BUCKET) or SUPABASE_ASSETS_BUCKET
+)
 AWS_ACCESS_KEY_ID = env("SUPABASE_STORAGE_ACCESS_KEY", "supabase")
-AWS_SECRET_ACCESS_KEY = env(
-    "SUPABASE_STORAGE_SECRET_KEY", env("SUPABASE_SERVICE_ROLE_KEY", SUPABASE_ANON_KEY)
+_supabase_storage_secret = env("SUPABASE_STORAGE_SECRET_KEY", "") or ""
+if _supabase_storage_secret.startswith("replace-with-"):
+    _supabase_storage_secret = ""
+AWS_SECRET_ACCESS_KEY = _supabase_storage_secret or env(
+    "SUPABASE_SERVICE_ROLE_KEY", SUPABASE_ANON_KEY
 )
 AWS_STORAGE_BUCKET_NAME = SUPABASE_STORAGE_BUCKET
 AWS_S3_REGION_NAME = env("SUPABASE_STORAGE_REGION", "us-east-1")
@@ -272,6 +280,8 @@ REST_FRAMEWORK = {
 
 from datetime import timedelta
 
+from celery.schedules import crontab
+
 SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(hours=1),
     "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
@@ -301,6 +311,12 @@ CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
 CELERY_TIMEZONE = TIME_ZONE
+CELERY_BEAT_SCHEDULE = {
+    "travel-plan-transfer-reminders-hourly": {
+        "task": "travel_plans.send_transfer_reminders",
+        "schedule": crontab(minute=0),
+    },
+}
 
 EMAIL_BACKEND = env(
     "EMAIL_BACKEND", "django.core.mail.backends.console.EmailBackend"

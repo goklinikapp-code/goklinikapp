@@ -7,7 +7,14 @@ from config.media_urls import AbsoluteMediaUrlsSerializerMixin
 from apps.patients.models import Patient
 from apps.users.models import GoKlinikUser
 
-from .models import ChatRoom, Message, PatientAIMessage
+from .models import (
+    ChatRoom,
+    Message,
+    PatientAIConversationControl,
+    PatientAIMessage,
+    PatientAITypingStatus,
+    TenantAIChatSettings,
+)
 
 
 class ChatRoomCreateSerializer(serializers.Serializer):
@@ -93,11 +100,59 @@ class ChatRoomListSerializer(AbsoluteMediaUrlsSerializerMixin, serializers.Model
 
 
 class PatientAIMessageSerializer(serializers.ModelSerializer):
+    sender = serializers.SerializerMethodField()
+
     class Meta:
         model = PatientAIMessage
-        fields = ("id", "role", "content", "created_at")
+        fields = ("id", "role", "source", "sender", "content", "created_at")
         read_only_fields = fields
+
+    def get_sender(self, obj):
+        if obj.sender_user_id:
+            sender = obj.sender_user
+            return {
+                "id": str(sender.id),
+                "name": sender.full_name,
+                "role": sender.role,
+            }
+        if obj.role == PatientAIMessage.RoleChoices.USER:
+            patient = obj.patient
+            return {
+                "id": str(patient.id),
+                "name": patient.full_name,
+                "role": patient.role,
+            }
+        return None
 
 
 class PatientAIMessageCreateSerializer(serializers.Serializer):
     content = serializers.CharField(min_length=1, max_length=4000)
+
+
+class TenantAIChatSettingsSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = TenantAIChatSettings
+        fields = ("ai_enabled", "updated_at")
+        read_only_fields = ("updated_at",)
+
+
+class PatientAIConversationControlSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PatientAIConversationControl
+        fields = ("force_human", "updated_at")
+        read_only_fields = ("updated_at",)
+
+
+class StaffPatientAIMessageCreateSerializer(serializers.Serializer):
+    content = serializers.CharField(min_length=1, max_length=4000)
+
+
+class PatientAITypingStatusSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PatientAITypingStatus
+        fields = ("is_typing", "expires_at", "updated_at")
+        read_only_fields = ("expires_at", "updated_at")
+
+
+class PatientAITypingUpdateSerializer(serializers.Serializer):
+    is_typing = serializers.BooleanField()

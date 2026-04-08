@@ -26,6 +26,8 @@ import {
   ChevronDown,
   Menu,
   Mailbox,
+  Luggage,
+  MessageSquareText,
   X,
 } from "lucide-react";
 
@@ -65,6 +67,8 @@ const clinicNavItems = [
   { icon: ClipboardCheck, label: "Pré-operatório", to: "/pre-operatory", permission: "patients" },
   { icon: HeartPulse, label: "Pós-operatório", to: "/post-operatory", permission: "patients" },
   { icon: Calendar, labelKey: "nav_schedule", to: "/schedule", permission: "schedule" },
+  { icon: Luggage, label: "Planos de Viagem", to: "/travel-plans", permission: "schedule" },
+  { icon: MessageSquareText, label: "Central de Chat", to: "/chat-center", permission: "patients" },
   { icon: Mailbox, label: "Caixa de mensagens", to: "/inbox", permission: "patients" },
   { icon: BarChart2, labelKey: "nav_reports", to: "/reports", permission: "reports" },
   { icon: Share2, labelKey: "nav_referrals", to: "/referrals", permission: "referrals" },
@@ -226,6 +230,20 @@ export function AppLayout() {
             return false;
           }
           if (item.to === "/inbox" && user.role !== "surgeon") {
+            return false;
+          }
+          if (
+            item.to === "/travel-plans" &&
+            user.role !== "clinic_master" &&
+            user.role !== "secretary"
+          ) {
+            return false;
+          }
+          if (
+            item.to === "/chat-center" &&
+            user.role !== "clinic_master" &&
+            user.role !== "secretary"
+          ) {
             return false;
           }
           if (

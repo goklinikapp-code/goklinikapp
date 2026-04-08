@@ -85,6 +85,16 @@ class ChatRepositoryImpl implements ChatRepository {
         .toList();
     return messages.reversed.toList(growable: false);
   }
+
+  @override
+  Future<bool> getAiTypingStatus() async {
+    final response = await _dio.get<dynamic>(ApiEndpoints.chatAiTypingStatus);
+    final payload = response.data;
+    if (payload is Map<String, dynamic>) {
+      return payload['is_typing'] == true;
+    }
+    return false;
+  }
 }
 
 final chatRepositoryProvider = Provider<ChatRepository>((ref) {

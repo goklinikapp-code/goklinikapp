@@ -4,7 +4,7 @@ from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from apps.chat.models import ChatRoom
+from apps.chat.models import ChatRoom, PatientAIMessage, TenantAIChatSettings
 from apps.notifications.models import Notification
 from apps.patients.models import Patient
 from apps.tenants.models import Tenant
@@ -122,3 +122,83 @@ class ChatViewsTestCase(APITestCase):
                 notification_type=Notification.NotificationTypeChoices.NEW_MESSAGE,
             ).exists()
         )
+
+    def test_ai_chat_returns_human_mode_when_global_ai_disabled(self):
+        TenantAIChatSettings.objects.create(
+            tenant=self.tenant,
+            ai_enabled=False,
+            updated_by=self.clinic_master,
+        )
+        self.client.force_authenticate(self.patient)
+        response = self.client.post(
+            reverse("chat-ai-messages"),
+            {"content": "Quero falar com alguém da clínica"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data.get("mode"), "human")
+        self.assertIsNone(response.data.get("assistant_message"))
+        self.assertEqual(len(response.data["messages"]), 1)
+        self.assertEqual(response.data["messages"][0]["source"], "patient")
+
+    def test_chat_admin_can_send_human_message_in_ai_conversation(self):
+        PatientAIMessage.objects.create(
+            tenant=self.tenant,
+            patient=self.patient,
+            role=PatientAIMessage.RoleChoices.USER,
+            source=PatientAIMessage.SourceChoices.PATIENT,
+            sender_user=self.patient,
+            content="Preciso de ajuda",
+        )
+        self.client.force_authenticate(self.staff)
+        response = self.client.post(
+            reverse(
+                "chat-admin-ai-conversation-messages",
+                kwargs={"patient_id": self.patient.id},
+            ),
+            {"content": "Claro, vou te orientar agora."},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["source"], "staff")
+        self.assertEqual(response.data["role"], "assistant")
+
+    def test_patient_sees_staff_typing_status(self):
+        self.client.force_authenticate(self.staff)
+        typing_response = self.client.put(
+            reverse(
+                "chat-admin-ai-patient-typing",
+                kwargs={"patient_id": self.patient.id},
+            ),
+            {"is_typing": True},
+            format="json",
+        )
+        self.assertEqual(typing_response.status_code, status.HTTP_200_OK)
+
+        self.client.force_authenticate(self.patient)
+        status_response = self.client.get(reverse("chat-ai-typing-status"))
+        self.assertEqual(status_response.status_code, status.HTTP_200_OK)
+        self.assertTrue(status_response.data["is_typing"])
+
+    def test_patient_mode_override_disables_ai_for_specific_patient(self):
+        self.client.force_authenticate(self.clinic_master)
+        mode_response = self.client.put(
+            reverse(
+                "chat-admin-ai-patient-mode",
+                kwargs={"patient_id": self.patient.id},
+            ),
+            {"force_human": True},
+            format="json",
+        )
+        self.assertEqual(mode_response.status_code, status.HTTP_200_OK)
+        self.assertFalse(mode_response.data["effective_ai_enabled"])
+
+        self.client.force_authenticate(self.patient)
+        response = self.client.post(
+            reverse("chat-ai-messages"),
+            {"content": "oi"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data.get("mode"), "human")
+        self.assertIsNone(response.data.get("assistant_message"))

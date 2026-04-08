@@ -1,16 +1,10 @@
-import uuid
-from pathlib import Path
-
-from django.conf import settings
-from django.core.files.storage import FileSystemStorage
-from django.core.files.storage import default_storage
 from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from config.media_urls import absolute_media_url
-
 from apps.users.models import GoKlinikUser
+from services.storage_paths import build_storage_path
+from services.supabase_storage import SupabaseStorageError, upload_file
 
 from .models import Tenant, TenantSpecialty
 from .serializers import (
@@ -105,27 +99,17 @@ class TenantBrandingLogoUploadAPIView(APIView):
         if not content_type.startswith("image/"):
             return Response({"detail": "Invalid file type."}, status=status.HTTP_400_BAD_REQUEST)
 
-        extension = logo_file.name.split(".")[-1].lower() if "." in logo_file.name else "png"
-        unique_name = f"tenant-branding/{tenant.slug}/logo-{uuid.uuid4().hex}.{extension}"
-
+        storage_path = build_storage_path(
+            tenant.id,
+            "clinic",
+            "branding",
+            "logos",
+            upload=logo_file,
+        )
         try:
-            # Avoids an S3 existence check (`HeadObject`) that may be forbidden
-            # in constrained storage policies.
-            saved_path = default_storage._save(unique_name, logo_file)
-            logo_url = default_storage.url(saved_path)
-        except Exception:
-            # Fallback for local/dev environments without valid object-storage keys.
-            local_root = Path(getattr(settings, "MEDIA_ROOT", Path.cwd()))
-            base_url = getattr(settings, "MEDIA_URL", "/media/")
-            fallback_storage = FileSystemStorage(
-                location=str(local_root),
-                base_url=base_url,
-            )
-            logo_file.seek(0)
-            saved_path = fallback_storage.save(unique_name, logo_file)
-            logo_url = fallback_storage.url(saved_path)
-
-        logo_url = absolute_media_url(logo_url, request=request)
+            logo_url = upload_file(logo_file, storage_path)
+        except SupabaseStorageError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_502_BAD_GATEWAY)
 
         tenant.logo_url = logo_url
         tenant.save(update_fields=["logo_url", "updated_at"])

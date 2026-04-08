@@ -1,5 +1,4 @@
 from __future__ import annotations
-
 from datetime import timedelta
 from urllib.parse import parse_qsl, urlencode, urlparse
 
@@ -13,11 +12,14 @@ from django.utils.crypto import get_random_string
 from django.utils import timezone
 from django.utils.text import slugify
 from django.contrib.auth.hashers import make_password
+from rest_framework.exceptions import PermissionDenied
 from rest_framework import serializers
 
 from config.media_urls import AbsoluteMediaUrlsSerializerMixin
 
 from apps.tenants.models import Tenant
+from services.storage_paths import build_storage_path
+from services.supabase_storage import upload_file
 
 from .access import (
     ACCESS_PERMISSION_KEYS,
@@ -35,10 +37,18 @@ from .models import (
     SaaSSeller,
     TutorialProgress,
     TutorialVideo,
+    UploadedImageAsset,
     extract_youtube_video_id,
 )
 from .saas_email import send_saas_invite_email, send_signup_code_email
 from .supabase_client import supabase_send_reset_password, supabase_sign_in, supabase_sign_up
+
+STAFF_UPLOAD_ROLES = {
+    GoKlinikUser.RoleChoices.CLINIC_MASTER,
+    GoKlinikUser.RoleChoices.SECRETARY,
+    GoKlinikUser.RoleChoices.SURGEON,
+    GoKlinikUser.RoleChoices.NURSE,
+}
 
 
 class TenantEmbeddedSerializer(AbsoluteMediaUrlsSerializerMixin, serializers.ModelSerializer):
@@ -276,6 +286,123 @@ class ForgotPasswordSerializer(serializers.Serializer):
                 fail_silently=True,
             )
         return {"email": email, "sent_with_supabase": sent}
+
+
+class SupabaseImageUploadSerializer(serializers.Serializer):
+    class TargetChoices(models.TextChoices):
+        PATIENT = "patient", "Patient"
+        CLINIC = "clinic", "Clinic"
+
+    target = serializers.ChoiceField(choices=TargetChoices.choices)
+    patient_id = serializers.UUIDField(required=False, allow_null=True)
+    file = serializers.ImageField(write_only=True)
+    image_url = serializers.URLField(read_only=True)
+    storage_path = serializers.CharField(read_only=True)
+    asset_id = serializers.UUIDField(read_only=True)
+
+    def validate(self, attrs):
+        request = self.context["request"]
+        user = request.user
+        target = attrs["target"]
+        patient_id = attrs.get("patient_id")
+
+        if not user.tenant_id:
+            raise serializers.ValidationError({"detail": "Tenant context is required for uploads."})
+
+        if target == self.TargetChoices.CLINIC:
+            if user.role not in STAFF_UPLOAD_ROLES:
+                raise PermissionDenied("Only clinic staff can upload clinic images.")
+            attrs["_tenant"] = user.tenant
+            attrs["patient_id"] = None
+            return attrs
+
+        if user.role == GoKlinikUser.RoleChoices.PATIENT:
+            if patient_id and str(patient_id) != str(user.id):
+                raise PermissionDenied("Patient can upload only their own image.")
+            patient_id = user.id
+        elif user.role in STAFF_UPLOAD_ROLES:
+            if not patient_id:
+                raise serializers.ValidationError(
+                    {"patient_id": "patient_id is required when target is patient."}
+                )
+        else:
+            raise PermissionDenied("You do not have permission to upload patient images.")
+
+        from apps.patients.models import Patient
+
+        patient = (
+            Patient.objects.select_related("tenant")
+            .filter(id=patient_id, tenant_id=user.tenant_id)
+            .first()
+        )
+        if not patient:
+            raise serializers.ValidationError(
+                {"patient_id": "Patient not found for your clinic."}
+            )
+
+        attrs["patient_id"] = patient.id
+        attrs["_patient"] = patient
+        return attrs
+
+    def _build_storage_path(self, *, tenant_id: str, target: str, patient_id=None, upload=None) -> str:
+        if target == self.TargetChoices.PATIENT and patient_id:
+            return build_storage_path(
+                tenant_id,
+                "patients",
+                patient_id,
+                "avatars",
+                upload=upload,
+            )
+        return build_storage_path(
+            tenant_id,
+            "clinic",
+            "assets",
+            upload=upload,
+        )
+
+    def create(self, validated_data):
+        request = self.context["request"]
+        user = request.user
+        target = validated_data["target"]
+        upload = validated_data["file"]
+        patient = validated_data.get("_patient")
+        tenant = validated_data.get("_tenant") or user.tenant
+
+        if tenant is None:
+            raise serializers.ValidationError({"detail": "Tenant was not resolved for upload."})
+
+        storage_path = self._build_storage_path(
+            tenant_id=str(tenant.id),
+            target=target,
+            patient_id=getattr(patient, "id", None),
+            upload=upload,
+        )
+
+        image_url = upload_file(upload, storage_path)
+
+        if target == self.TargetChoices.PATIENT:
+            patient.avatar_url = image_url
+            patient.save(update_fields=["avatar_url"])
+        else:
+            tenant.logo_url = image_url
+            tenant.save(update_fields=["logo_url", "updated_at"])
+
+        asset = UploadedImageAsset.objects.create(
+            tenant=tenant,
+            patient=patient,
+            target=target,
+            image_url=image_url,
+            storage_path=storage_path,
+            uploaded_by=user,
+        )
+
+        return {
+            "asset_id": asset.id,
+            "target": target,
+            "patient_id": str(patient.id) if patient else None,
+            "image_url": image_url,
+            "storage_path": storage_path,
+        }
 
 
 class ChangePasswordSerializer(serializers.Serializer):

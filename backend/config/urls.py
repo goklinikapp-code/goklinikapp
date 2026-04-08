@@ -101,6 +101,7 @@ urlpatterns = [
     path("api/referral/", include("apps.referrals.public_urls")),
     path("referral/", include("apps.referrals.public_urls")),
     path("api/medical-records/", include("apps.medical_records.urls")),
+    path("api/travel-plans/", include("apps.travel_plans.urls")),
     path("api/public/", include("apps.tenants.urls")),
     path("api/admin/dashboard/", AdminDashboardAPIView.as_view(), name="api-admin-dashboard"),
     path("media/<path:path>", serve, {"document_root": settings.MEDIA_ROOT}),

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -25,6 +26,11 @@ class ChatRoomScreen extends ConsumerStatefulWidget {
 class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
   final _messageController = TextEditingController();
   bool _sending = false;
+  bool _awaitingAiReplyVisual = false;
+  bool _staffTyping = false;
+  Timer? _typingPollTimer;
+  Timer? _messagesPollTimer;
+  final Set<String> _delayedAssistantMessageIds = <String>{};
   bool get _isAiChat => widget.roomId == aiChatRoomId;
 
   static const _quickReplies = [
@@ -37,7 +43,18 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
   @override
   void initState() {
     super.initState();
-    if (!_isAiChat) {
+    if (_isAiChat) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        unawaited(_refreshAiMessagesSilently());
+        unawaited(_refreshStaffTypingStatus());
+      });
+      _typingPollTimer = Timer.periodic(const Duration(seconds: 2), (_) {
+        unawaited(_refreshStaffTypingStatus());
+      });
+      _messagesPollTimer = Timer.periodic(const Duration(seconds: 2), (_) {
+        unawaited(_refreshAiMessagesSilently());
+      });
+    } else {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         ref.read(chatMessagesProvider(widget.roomId).notifier).markRead();
       });
@@ -46,29 +63,96 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
 
   @override
   void dispose() {
+    _typingPollTimer?.cancel();
+    _messagesPollTimer?.cancel();
     _messageController.dispose();
     super.dispose();
+  }
+
+  Future<void> _refreshAiMessagesSilently() async {
+    if (!_isAiChat || !mounted) return;
+    await ref
+        .read(chatMessagesProvider(widget.roomId).notifier)
+        .refreshLatest();
+  }
+
+  Future<void> _refreshStaffTypingStatus() async {
+    if (!_isAiChat || !mounted) return;
+    final isTyping = await ref
+        .read(chatMessagesProvider(widget.roomId).notifier)
+        .fetchAiTypingStatus();
+    if (!mounted) return;
+    setState(() {
+      _staffTyping = isTyping;
+    });
   }
 
   Future<void> _sendText() async {
     final text = _messageController.text.trim();
     if (text.isEmpty) return;
 
-    setState(() => _sending = true);
+    final notifier = ref.read(chatMessagesProvider(widget.roomId).notifier);
+    final previousItems =
+        ref.read(chatMessagesProvider(widget.roomId)).valueOrNull ?? const [];
+    final previousIds = previousItems.map((item) => item.id).toSet();
+    setState(() {
+      _sending = true;
+    });
+
     try {
-      await ref
-          .read(chatMessagesProvider(widget.roomId).notifier)
-          .send(content: text);
+      await notifier.send(content: text);
       _messageController.clear();
       ref.read(chatRoomsProvider.notifier).load();
+
+      if (_isAiChat) {
+        final updatedItems =
+            ref.read(chatMessagesProvider(widget.roomId)).valueOrNull ??
+                const [];
+        String? delayedAssistantId;
+        for (final item in updatedItems) {
+          final isNewMessage = !previousIds.contains(item.id);
+          if (!isNewMessage) continue;
+          if (item.senderId == 'assistant') {
+            delayedAssistantId = item.id;
+            break;
+          }
+        }
+
+        final assistantId = delayedAssistantId;
+        if (assistantId != null && mounted) {
+          setState(() {
+            _delayedAssistantMessageIds.add(assistantId);
+          });
+          // Show user message first, then typing bubble, then assistant answer.
+          await Future.delayed(const Duration(milliseconds: 220));
+          if (!mounted) return;
+          setState(() {
+            _awaitingAiReplyVisual = true;
+          });
+          await Future.delayed(const Duration(seconds: 3));
+          if (!mounted) return;
+          setState(() {
+            _delayedAssistantMessageIds.remove(assistantId);
+            _awaitingAiReplyVisual = false;
+          });
+        }
+      }
     } catch (error) {
       if (!mounted) return;
+      if (_isAiChat) {
+        setState(() {
+          _awaitingAiReplyVisual = false;
+        });
+      }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(_friendlyError(error))),
       );
     } finally {
       if (mounted) {
         setState(() => _sending = false);
+      }
+      if (_isAiChat) {
+        unawaited(_refreshStaffTypingStatus());
       }
     }
   }
@@ -191,7 +275,14 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
               loading: () => const Center(child: CircularProgressIndicator()),
               error: (error, _) => Center(child: Text('Erro no chat: $error')),
               data: (items) {
-                if (items.isEmpty) {
+                final visibleItems = items
+                    .where((item) =>
+                        !_delayedAssistantMessageIds.contains(item.id))
+                    .toList(growable: false);
+                final showTypingIndicator =
+                    _isAiChat && (_awaitingAiReplyVisual || _staffTyping);
+
+                if (visibleItems.isEmpty && !showTypingIndicator) {
                   return const Center(
                       child: Text(
                           'Conversa iniciada. Envie sua primeira mensagem.'));
@@ -200,9 +291,21 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
                 return ListView.builder(
                   reverse: true,
                   padding: const EdgeInsets.all(12),
-                  itemCount: items.length,
+                  itemCount:
+                      visibleItems.length + (showTypingIndicator ? 1 : 0),
                   itemBuilder: (context, index) {
-                    final message = items[index];
+                    if (showTypingIndicator && index == 0) {
+                      return const Align(
+                        alignment: Alignment.centerLeft,
+                        child: Padding(
+                          padding: EdgeInsets.only(bottom: 8),
+                          child: _TypingBubble(),
+                        ),
+                      );
+                    }
+
+                    final messageIndex = index - (showTypingIndicator ? 1 : 0);
+                    final message = visibleItems[messageIndex];
                     final mine = session?.user.id == message.senderId ||
                         message.senderId == 'user';
 
@@ -325,20 +428,83 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
                     onPressed: _sending ? null : _sendText,
                     style: FilledButton.styleFrom(
                         backgroundColor: colorScheme.primary),
-                    child: _sending
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(
-                                strokeWidth: 2, color: Colors.white),
-                          )
-                        : const Icon(Icons.send),
+                    child: const Icon(Icons.send),
                   ),
                 ],
               ),
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _TypingBubble extends StatefulWidget {
+  const _TypingBubble();
+
+  @override
+  State<_TypingBubble> createState() => _TypingBubbleState();
+}
+
+class _TypingBubbleState extends State<_TypingBubble>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 900),
+  )..repeat();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  double _opacityFor(int index) {
+    final phase = (_controller.value + (index * 0.2)) % 1;
+    final distance = (phase - 0.5).abs();
+    final wave = (1 - (distance * 2)).clamp(0.0, 1.0).toDouble();
+    return 0.35 + (wave * 0.65);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Container(
+      constraints: const BoxConstraints(maxWidth: 90),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: colorScheme.surface,
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x12000000),
+            blurRadius: 6,
+            offset: Offset(0, 2),
+          ),
+        ],
+      ),
+      child: AnimatedBuilder(
+        animation: _controller,
+        builder: (_, __) {
+          return Row(
+            mainAxisSize: MainAxisSize.min,
+            children: List.generate(3, (index) {
+              return Opacity(
+                opacity: _opacityFor(index),
+                child: Container(
+                  width: 6,
+                  height: 6,
+                  margin: EdgeInsets.only(right: index == 2 ? 0 : 4),
+                  decoration: BoxDecoration(
+                    color: colorScheme.onSurfaceVariant,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+              );
+            }),
+          );
+        },
       ),
     );
   }

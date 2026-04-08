@@ -101,6 +101,52 @@ class GoKlinikUser(AbstractUser):
         return joined or self.email
 
 
+class UploadedImageAsset(models.Model):
+    class TargetChoices(models.TextChoices):
+        PATIENT = "patient", "Patient"
+        CLINIC = "clinic", "Clinic"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    tenant = models.ForeignKey(
+        "tenants.Tenant",
+        related_name="uploaded_image_assets",
+        on_delete=models.CASCADE,
+    )
+    patient = models.ForeignKey(
+        "patients.Patient",
+        related_name="uploaded_image_assets",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+    )
+    target = models.CharField(
+        max_length=20,
+        choices=TargetChoices.choices,
+    )
+    image_url = models.URLField(max_length=2048)
+    storage_path = models.CharField(max_length=512)
+    uploaded_by = models.ForeignKey(
+        "users.GoKlinikUser",
+        related_name="assets_uploaded",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "uploaded_image_assets"
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["tenant", "target"]),
+            models.Index(fields=["patient"]),
+            models.Index(fields=["created_at"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.target}:{self.image_url}"
+
+
 class SaaSSeller(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     full_name = models.CharField(max_length=255)

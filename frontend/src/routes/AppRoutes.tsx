@@ -15,6 +15,8 @@ import SaaSSellersPage from "@/pages/SaaSSellers";
 import SaaSLaunchPage from "@/pages/SaaSLaunch";
 import PatientsPage from "@/pages/Patients";
 import SchedulePage from "@/pages/Schedule";
+import TravelPlansPage from "@/pages/TravelPlans";
+import ChatCenterPage from "@/pages/ChatCenter";
 import ReportsPage from "@/pages/Reports";
 import InboxPage from "@/pages/Inbox";
 import ReferralsPage from "@/pages/Referrals";
@@ -170,6 +172,22 @@ export function AppRoutes() {
           element={
             <RoleRoute allow={clinicRoles} permission="schedule">
               <SchedulePage />
+            </RoleRoute>
+          }
+        />
+        <Route
+          path="/travel-plans"
+          element={
+            <RoleRoute allow={["clinic_master", "secretary"]}>
+              <TravelPlansPage />
+            </RoleRoute>
+          }
+        />
+        <Route
+          path="/chat-center"
+          element={
+            <RoleRoute allow={["clinic_master", "secretary"]}>
+              <ChatCenterPage />
             </RoleRoute>
           }
         />

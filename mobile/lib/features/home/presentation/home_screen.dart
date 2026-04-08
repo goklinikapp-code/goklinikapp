@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/settings/app_preferences.dart';
 import '../../../core/settings/app_translations.dart';
+import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/gk_avatar.dart';
 import '../../../core/widgets/gk_badge.dart';
 import '../../../core/widgets/gk_button.dart';
@@ -13,7 +14,16 @@ import '../../../core/utils/formatters.dart';
 import '../../auth/presentation/auth_controller.dart';
 import '../../branding/presentation/tenant_branding_controller.dart';
 import '../../notifications/presentation/notifications_controller.dart';
+import '../../travel_plans/presentation/travel_plan_controller.dart';
 import 'home_controller.dart';
+
+String _formatCompactTime(String rawTime) {
+  final cleaned = rawTime.trim();
+  if (cleaned.length >= 5) {
+    return cleaned.substring(0, 5);
+  }
+  return cleaned;
+}
 
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
@@ -22,6 +32,7 @@ class HomeScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final homeData = ref.watch(homeProvider);
     final notifications = ref.watch(notificationsControllerProvider);
+    final travelPlanState = ref.watch(travelPlanProvider);
     final tenantBranding = ref.watch(tenantBrandingProvider);
     final authState = ref.watch(authControllerProvider);
     final language = ref.watch(appPreferencesControllerProvider).language;
@@ -43,6 +54,10 @@ class HomeScreen extends ConsumerWidget {
               final next = data.nextAppointments.isNotEmpty
                   ? data.nextAppointments.first
                   : null;
+              final upcomingTransfer = travelPlanState.maybeWhen(
+                data: (plan) => plan?.nextTransferWithinHours(hours: 24),
+                orElse: () => null,
+              );
               final hasTenantLogo = (tenantBranding.logoUrl ?? '').isNotEmpty;
               final tenantNameFromSession =
                   authState.session?.user.tenant?.name.trim() ?? '';
@@ -145,6 +160,22 @@ class HomeScreen extends ConsumerWidget {
                           badge: t('next_appointment_badge'),
                           unitLabel: clinicName,
                         ),
+                        if (upcomingTransfer != null) ...[
+                          const SizedBox(width: 12),
+                          _HighlightCard(
+                            title: 'Proximo Transfer',
+                            subtitle:
+                                '${upcomingTransfer.title} • ${formatDate(upcomingTransfer.transferDate)} • ${_formatCompactTime(upcomingTransfer.transferTime)} • ${upcomingTransfer.origin}',
+                            gradient: LinearGradient(
+                              colors: [
+                                GKColors.secondary,
+                                GKColors.secondary.withValues(alpha: 0.82),
+                              ],
+                            ),
+                            badge: 'TRANSFER 24H',
+                            unitLabel: clinicName,
+                          ),
+                        ],
                         const SizedBox(width: 12),
                         _HighlightCard(
                           title: t('postop_active'),
@@ -180,6 +211,10 @@ class HomeScreen extends ConsumerWidget {
             crossAxisSpacing: 10,
             mainAxisSpacing: 10,
             children: [
+              _QuickAction(
+                  title: 'Plano de Viagem',
+                  icon: Icons.flight,
+                  onTap: () => context.push('/travel-plan')),
               _QuickAction(
                   title: t('quick_my_appointments'),
                   icon: Icons.calendar_month,

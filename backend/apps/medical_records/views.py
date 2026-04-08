@@ -1,12 +1,7 @@
 from __future__ import annotations
 
 import re
-import uuid
-from pathlib import Path
 
-from django.conf import settings
-from django.core.files.storage import FileSystemStorage
-from django.core.files.storage import default_storage
 from django.db import transaction
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -19,6 +14,8 @@ from config.media_urls import absolute_media_url
 from apps.appointments.models import Appointment
 from apps.patients.models import Patient
 from apps.users.models import GoKlinikUser
+from services.storage_paths import build_storage_path
+from services.supabase_storage import SupabaseStorageError, upload_file
 
 from .audit import log_record_access
 from .models import (
@@ -55,25 +52,16 @@ STAFF_UPLOAD_ROLES = {
 }
 
 
-def _save_uploaded_file(*, request, upload, folder: str) -> str:
-    filename = f"{uuid.uuid4()}_{upload.name}"
-    storage_path = f"{folder}/{filename}"
-    try:
-        saved_path = default_storage.save(storage_path, upload)
-        file_url = default_storage.url(saved_path)
-    except Exception:
-        # Fallback local para evitar falha em ambiente sem permissão completa no storage remoto.
-        local_root = Path(getattr(settings, "MEDIA_ROOT", Path.cwd()))
-        base_url = getattr(settings, "MEDIA_URL", "/media/")
-        fallback_storage = FileSystemStorage(
-            location=str(local_root),
-            base_url=base_url,
-        )
-        if hasattr(upload, "seek"):
-            upload.seek(0)
-        saved_path = fallback_storage.save(storage_path, upload)
-        file_url = fallback_storage.url(saved_path)
-    return absolute_media_url(file_url, request=request)
+def _save_uploaded_file(*, upload, tenant_id, patient_id, segments: tuple[str, ...]) -> str:
+    storage_path = build_storage_path(
+        tenant_id,
+        "patients",
+        patient_id,
+        "medical-records",
+        *segments,
+        upload=upload,
+    )
+    return upload_file(upload, storage_path)
 
 
 def _extract_request_list(request, key: str) -> list[str]:
@@ -165,15 +153,19 @@ class MedicalDocumentListCreateAPIView(APIView):
         serializer.is_valid(raise_exception=True)
         payload = serializer.validated_data
 
-        file_url = payload.get("file_url")
-        if payload.get("file"):
-            file_url = _save_uploaded_file(
-                request=request,
-                upload=payload["file"],
-                folder=f"medical_docs/{patient.id}",
-            )
-        else:
-            file_url = absolute_media_url(file_url, request=request)
+        try:
+            file_url = payload.get("file_url")
+            if payload.get("file"):
+                file_url = _save_uploaded_file(
+                    upload=payload["file"],
+                    tenant_id=patient.tenant_id,
+                    patient_id=patient.id,
+                    segments=("medical-documents",),
+                )
+            else:
+                file_url = absolute_media_url(file_url, request=request)
+        except SupabaseStorageError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_502_BAD_GATEWAY)
 
         document = MedicalDocument.objects.create(
             patient=patient,
@@ -318,30 +310,34 @@ class PatientProcedureListCreateAPIView(APIView):
         uploaded_images = list(request.FILES.getlist("images"))
         image_urls = data.get("image_urls", []) or _extract_request_list(request, "image_urls")
 
-        with transaction.atomic():
-            procedure = PatientProcedure.objects.create(
-                patient=patient,
-                tenant=patient.tenant,
-                nome_procedimento=data["nome_procedimento"],
-                descricao=data.get("descricao", ""),
-                data_procedimento=data["data_procedimento"],
-                profissional_responsavel=data.get("profissional_responsavel", ""),
-                observacoes=data.get("observacoes", ""),
-            )
-
-            for upload in uploaded_images:
-                image_url = _save_uploaded_file(
-                    request=request,
-                    upload=upload,
-                    folder=f"patient_procedures/{patient.id}/{procedure.id}",
+        try:
+            with transaction.atomic():
+                procedure = PatientProcedure.objects.create(
+                    patient=patient,
+                    tenant=patient.tenant,
+                    nome_procedimento=data["nome_procedimento"],
+                    descricao=data.get("descricao", ""),
+                    data_procedimento=data["data_procedimento"],
+                    profissional_responsavel=data.get("profissional_responsavel", ""),
+                    observacoes=data.get("observacoes", ""),
                 )
-                PatientProcedureImage.objects.create(procedure=procedure, image_url=image_url)
 
-            for image_url in image_urls:
-                PatientProcedureImage.objects.create(
-                    procedure=procedure,
-                    image_url=absolute_media_url(image_url, request=request),
-                )
+                for upload in uploaded_images:
+                    image_url = _save_uploaded_file(
+                        upload=upload,
+                        tenant_id=patient.tenant_id,
+                        patient_id=patient.id,
+                        segments=("procedures", str(procedure.id), "images"),
+                    )
+                    PatientProcedureImage.objects.create(procedure=procedure, image_url=image_url)
+
+                for image_url in image_urls:
+                    PatientProcedureImage.objects.create(
+                        procedure=procedure,
+                        image_url=absolute_media_url(image_url, request=request),
+                    )
+        except SupabaseStorageError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_502_BAD_GATEWAY)
 
         log_record_access(request, patient, MedicalRecordAccessLog.ActionChoices.EDIT)
         procedure = PatientProcedure.objects.prefetch_related("images").get(id=procedure.id)
@@ -376,31 +372,35 @@ class PatientProcedureDetailAPIView(APIView):
         uploaded_images = list(request.FILES.getlist("images"))
         image_urls = data.get("image_urls", []) or _extract_request_list(request, "image_urls")
 
-        with transaction.atomic():
-            for attr in (
-                "nome_procedimento",
-                "descricao",
-                "data_procedimento",
-                "profissional_responsavel",
-                "observacoes",
-            ):
-                if attr in data:
-                    setattr(procedure, attr, data[attr])
-            procedure.save()
+        try:
+            with transaction.atomic():
+                for attr in (
+                    "nome_procedimento",
+                    "descricao",
+                    "data_procedimento",
+                    "profissional_responsavel",
+                    "observacoes",
+                ):
+                    if attr in data:
+                        setattr(procedure, attr, data[attr])
+                procedure.save()
 
-            for upload in uploaded_images:
-                image_url = _save_uploaded_file(
-                    request=request,
-                    upload=upload,
-                    folder=f"patient_procedures/{patient.id}/{procedure.id}",
-                )
-                PatientProcedureImage.objects.create(procedure=procedure, image_url=image_url)
+                for upload in uploaded_images:
+                    image_url = _save_uploaded_file(
+                        upload=upload,
+                        tenant_id=patient.tenant_id,
+                        patient_id=patient.id,
+                        segments=("procedures", str(procedure.id), "images"),
+                    )
+                    PatientProcedureImage.objects.create(procedure=procedure, image_url=image_url)
 
-            for image_url in image_urls:
-                PatientProcedureImage.objects.create(
-                    procedure=procedure,
-                    image_url=absolute_media_url(image_url, request=request),
-                )
+                for image_url in image_urls:
+                    PatientProcedureImage.objects.create(
+                        procedure=procedure,
+                        image_url=absolute_media_url(image_url, request=request),
+                    )
+        except SupabaseStorageError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_502_BAD_GATEWAY)
 
         log_record_access(request, patient, MedicalRecordAccessLog.ActionChoices.EDIT)
         procedure = PatientProcedure.objects.prefetch_related("images").get(id=procedure.id)
@@ -472,14 +472,18 @@ class PatientDocumentListCreateAPIView(APIView):
         serializer.is_valid(raise_exception=True)
         payload = serializer.validated_data
 
-        arquivo_url = payload.get("file_url")
-        if payload.get("file"):
-            arquivo_url = _save_uploaded_file(
-                request=request,
-                upload=payload["file"],
-                folder=f"patient_documents/{patient.id}",
-            )
-        arquivo_url = absolute_media_url(arquivo_url, request=request)
+        try:
+            arquivo_url = payload.get("file_url")
+            if payload.get("file"):
+                arquivo_url = _save_uploaded_file(
+                    upload=payload["file"],
+                    tenant_id=patient.tenant_id,
+                    patient_id=patient.id,
+                    segments=("documents",),
+                )
+            arquivo_url = absolute_media_url(arquivo_url, request=request)
+        except SupabaseStorageError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_502_BAD_GATEWAY)
 
         document = PatientDocument.objects.create(
             patient=patient,
@@ -519,17 +523,21 @@ class PatientDocumentDetailAPIView(APIView):
             if field_name in payload:
                 setattr(document, field_name, payload[field_name])
 
-        if payload.get("file"):
-            document.arquivo_url = _save_uploaded_file(
-                request=request,
-                upload=payload["file"],
-                folder=f"patient_documents/{patient.id}",
-            )
-        elif payload.get("file_url"):
-            document.arquivo_url = absolute_media_url(
-                payload["file_url"],
-                request=request,
-            )
+        try:
+            if payload.get("file"):
+                document.arquivo_url = _save_uploaded_file(
+                    upload=payload["file"],
+                    tenant_id=patient.tenant_id,
+                    patient_id=patient.id,
+                    segments=("documents",),
+                )
+            elif payload.get("file_url"):
+                document.arquivo_url = absolute_media_url(
+                    payload["file_url"],
+                    request=request,
+                )
+        except SupabaseStorageError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_502_BAD_GATEWAY)
 
         document.save()
         log_record_access(request, patient, MedicalRecordAccessLog.ActionChoices.EDIT)

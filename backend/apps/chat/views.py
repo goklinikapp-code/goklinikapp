@@ -4,12 +4,12 @@ import base64
 import binascii
 import logging
 import re
-import uuid
+from datetime import timedelta
 from decimal import Decimal
 
 from django.db import models
+from django.db.models import OuterRef, Subquery
 from django.core.files.base import ContentFile
-from django.core.files.storage import default_storage
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import serializers, status, viewsets
@@ -28,16 +28,29 @@ from apps.post_op.models import PostOpJourney
 from apps.referrals.models import Referral
 from apps.users.models import GoKlinikUser
 from apps.users.invite_email import normalize_invite_email_language
+from services.storage_paths import build_storage_path
+from services.supabase_storage import SupabaseStorageError, upload_file
 
 from .ai_service import AIServiceError, request_chat_completion, resolve_ai_runtime_config
-from .models import ChatRoom, Message, PatientAIMessage
+from .models import (
+    ChatRoom,
+    Message,
+    PatientAIConversationControl,
+    PatientAIMessage,
+    PatientAITypingStatus,
+    TenantAIChatSettings,
+)
 from .serializers import (
     ChatMessageCreateSerializer,
     ChatRoomCreateSerializer,
     ChatRoomListSerializer,
     MessageSerializer,
+    PatientAIConversationControlSerializer,
     PatientAIMessageCreateSerializer,
     PatientAIMessageSerializer,
+    PatientAITypingUpdateSerializer,
+    StaffPatientAIMessageCreateSerializer,
+    TenantAIChatSettingsSerializer,
 )
 
 logger = logging.getLogger(__name__)
@@ -48,6 +61,48 @@ STAFF_ROLES = {
     GoKlinikUser.RoleChoices.SECRETARY,
     GoKlinikUser.RoleChoices.NURSE,
 }
+
+CHAT_ADMIN_ROLES = {
+    GoKlinikUser.RoleChoices.CLINIC_MASTER,
+    GoKlinikUser.RoleChoices.SECRETARY,
+}
+
+AI_TYPING_TTL_SECONDS = 12
+
+
+def _is_chat_admin(user: GoKlinikUser) -> bool:
+    return user.role in CHAT_ADMIN_ROLES
+
+
+def _get_or_create_tenant_ai_settings(tenant_id):
+    settings, _ = TenantAIChatSettings.objects.get_or_create(tenant_id=tenant_id)
+    return settings
+
+
+def _get_or_create_patient_ai_control(*, tenant_id, patient_id):
+    control, _ = PatientAIConversationControl.objects.get_or_create(
+        tenant_id=tenant_id,
+        patient_id=patient_id,
+    )
+    return control
+
+
+def _is_patient_ai_enabled(*, tenant_id, patient_id) -> bool:
+    tenant_settings = _get_or_create_tenant_ai_settings(tenant_id)
+    if not tenant_settings.ai_enabled:
+        return False
+
+    control = (
+        PatientAIConversationControl.objects.filter(
+            tenant_id=tenant_id,
+            patient_id=patient_id,
+        )
+        .only("force_human")
+        .first()
+    )
+    if control and control.force_human:
+        return False
+    return True
 
 EMOJI_PATTERN = re.compile(
     "["
@@ -294,12 +349,21 @@ def _decode_base64_image(value: str) -> tuple[str, bytes]:
     return extension, decoded
 
 
-def _store_chat_image(content: str, *, request=None) -> str:
+def _store_chat_image(content: str, *, room: ChatRoom, request=None) -> str:
     extension, decoded = _decode_base64_image(content)
-    filename = f"{uuid.uuid4()}.{extension}"
-    storage_path = f"chat_images/{filename}"
-    saved = default_storage.save(storage_path, ContentFile(decoded))
-    return absolute_media_url(default_storage.url(saved), request=request)
+    normalized_extension = re.sub(r"[^a-z0-9]", "", extension.lower())[:8] or "bin"
+    upload_content = ContentFile(decoded, name=f"upload.{normalized_extension}")
+    upload_content.content_type = f"image/{normalized_extension}"
+    storage_path = build_storage_path(
+        room.tenant_id,
+        "patients",
+        room.patient_id,
+        "chat",
+        room.id,
+        "images",
+        upload=upload_content,
+    )
+    return upload_file(upload_content, storage_path)
 
 
 def _resolve_language_copy(language: str | None) -> dict[str, str]:
@@ -430,6 +494,119 @@ def _friendly_ai_error_message(detail: str, language: str) -> str:
     if "api key" in lowered or "not configured" in lowered:
         return copy["err_key"]
     return copy["err_default"]
+
+
+def _ai_message_preview(raw_content: str) -> str:
+    raw = " ".join((raw_content or "").strip().split())
+    if not raw:
+        return "Nova mensagem."
+    if len(raw) > 140:
+        return f"{raw[:137]}..."
+    return raw
+
+
+def _notify_staff_for_human_followup(*, patient: Patient, content: str) -> None:
+    from apps.notifications.services import NotificationService
+
+    recipients = GoKlinikUser.objects.filter(
+        tenant_id=patient.tenant_id,
+        role__in=CHAT_ADMIN_ROLES,
+        is_active=True,
+    )
+    preview = _ai_message_preview(content)
+    for recipient in recipients:
+        title = "Paciente aguardando equipe humana"
+        body = f"{patient.full_name}: {preview}"
+        payload = {
+            "event": "chat_ai_human_followup",
+            "patient_id": str(patient.id),
+        }
+        try:
+            NotificationService.send_push_to_user(
+                user=recipient,
+                title=title,
+                body=body,
+                data_extra=payload,
+                event_code="chat_ai_human_followup",
+                segment="chat",
+                idempotency_key=f"chat_ai_human_followup:{patient.id}:{recipient.id}:{timezone.now().isoformat()}",
+                notification_type="new_message",
+                related_object_id=patient.id,
+                create_in_app_notification=False,
+            )
+        except Exception:  # noqa: BLE001
+            logger.exception(
+                "Unable to notify staff for human followup patient=%s recipient=%s",
+                patient.id,
+                recipient.id,
+            )
+
+        try:
+            NotificationService.create_in_app_notification(
+                recipient=recipient,
+                title=title,
+                body=body,
+                notification_type="new_message",
+                related_object_id=patient.id,
+            )
+        except Exception:  # noqa: BLE001
+            logger.exception(
+                "Unable to create staff in-app notification patient=%s recipient=%s",
+                patient.id,
+                recipient.id,
+            )
+
+
+def _notify_patient_about_staff_ai_message(
+    *,
+    patient: Patient,
+    staff_user: GoKlinikUser,
+    content: str,
+) -> None:
+    from apps.notifications.services import NotificationService
+
+    title = "Nova mensagem da clínica"
+    preview = _ai_message_preview(content)
+    body = f"{staff_user.full_name}: {preview}"
+    payload = {
+        "event": "chat_ai_staff_message",
+        "patient_id": str(patient.id),
+        "sender_id": str(staff_user.id),
+    }
+    try:
+        NotificationService.send_push_to_user(
+            user=patient,
+            title=title,
+            body=body,
+            data_extra=payload,
+            event_code="chat_ai_staff_message",
+            segment="chat",
+            idempotency_key=f"chat_ai_staff_message:{patient.id}:{staff_user.id}:{timezone.now().isoformat()}",
+            notification_type="new_message",
+            related_object_id=patient.id,
+            create_in_app_notification=False,
+        )
+    except Exception:  # noqa: BLE001
+        logger.exception(
+            "Unable to send patient push for staff ai message patient=%s sender=%s",
+            patient.id,
+            staff_user.id,
+        )
+
+    try:
+        NotificationService.create_in_app_notification(
+            recipient=patient,
+            title=title,
+            body=body,
+            notification_type="new_message",
+            related_object_id=patient.id,
+        )
+    except Exception:  # noqa: BLE001
+        logger.exception(
+            "Unable to persist patient in-app for staff ai message patient=%s sender=%s",
+            patient.id,
+            staff_user.id,
+        )
 
 
 def _chat_message_preview(message: Message) -> str:
@@ -633,7 +810,14 @@ class ChatRoomViewSet(viewsets.GenericViewSet):
             if content.startswith("http://") or content.startswith("https://"):
                 normalized_content = absolute_media_url(content, request=request)
             else:
-                normalized_content = _store_chat_image(content, request=request)
+                try:
+                    normalized_content = _store_chat_image(
+                        content,
+                        room=room,
+                        request=request,
+                    )
+                except SupabaseStorageError as exc:
+                    return Response({"detail": str(exc)}, status=status.HTTP_502_BAD_GATEWAY)
         else:
             normalized_content = content
 
@@ -697,8 +881,30 @@ class PatientAIChatAPIView(APIView):
             tenant_id=patient.tenant_id,
             patient_id=patient.id,
             role=PatientAIMessage.RoleChoices.USER,
+            source=PatientAIMessage.SourceChoices.PATIENT,
+            sender_user_id=request.user.id,
             content=user_content,
         )
+
+        ai_enabled = _is_patient_ai_enabled(
+            tenant_id=patient.tenant_id,
+            patient_id=patient.id,
+        )
+        if not ai_enabled:
+            _notify_staff_for_human_followup(patient=patient, content=user_content)
+            serialized_history = PatientAIMessageSerializer(
+                PatientAIMessage.objects.filter(patient_id=patient.id).order_by("created_at"),
+                many=True,
+            ).data
+            return Response(
+                {
+                    "user_message": PatientAIMessageSerializer(user_message).data,
+                    "assistant_message": None,
+                    "messages": serialized_history,
+                    "mode": "human",
+                },
+                status=status.HTTP_201_CREATED,
+            )
 
         recent_messages = list(
             PatientAIMessage.objects.filter(patient_id=patient.id).order_by("-created_at")[:20]
@@ -723,6 +929,7 @@ class PatientAIChatAPIView(APIView):
                 tenant_id=patient.tenant_id,
                 patient_id=patient.id,
                 role=PatientAIMessage.RoleChoices.ASSISTANT,
+                source=PatientAIMessage.SourceChoices.AI,
                 content=_sanitize_ai_content(ai_answer),
             )
         except AIServiceError as exc:
@@ -731,6 +938,7 @@ class PatientAIChatAPIView(APIView):
                 tenant_id=patient.tenant_id,
                 patient_id=patient.id,
                 role=PatientAIMessage.RoleChoices.ASSISTANT,
+                source=PatientAIMessage.SourceChoices.SYSTEM,
                 content=_friendly_ai_error_message(provider_error, interaction_language),
             )
 
@@ -747,3 +955,274 @@ class PatientAIChatAPIView(APIView):
             payload["provider_error"] = provider_error
 
         return Response(payload, status=status.HTTP_201_CREATED)
+
+
+class ChatAIAdminMixin:
+    def _get_admin_user(self, request) -> GoKlinikUser | None:
+        user = request.user
+        if not _is_chat_admin(user):
+            return None
+        if not user.tenant_id:
+            return None
+        return user
+
+    def _get_tenant_patient(self, *, tenant_id, patient_id) -> Patient | None:
+        return (
+            Patient.objects.select_related("tenant")
+            .filter(id=patient_id, tenant_id=tenant_id)
+            .first()
+        )
+
+
+class ChatAIAdminSettingsAPIView(ChatAIAdminMixin, APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        user = self._get_admin_user(request)
+        if not user:
+            return Response(status=status.HTTP_403_FORBIDDEN)
+        settings_obj = _get_or_create_tenant_ai_settings(user.tenant_id)
+        return Response(TenantAIChatSettingsSerializer(settings_obj).data, status=status.HTTP_200_OK)
+
+    def put(self, request):
+        user = self._get_admin_user(request)
+        if not user:
+            return Response(status=status.HTTP_403_FORBIDDEN)
+
+        settings_obj = _get_or_create_tenant_ai_settings(user.tenant_id)
+        serializer = TenantAIChatSettingsSerializer(
+            settings_obj,
+            data=request.data,
+            partial=True,
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save(updated_by=user)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+class ChatAIAdminConversationListAPIView(ChatAIAdminMixin, APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        user = self._get_admin_user(request)
+        if not user:
+            return Response(status=status.HTTP_403_FORBIDDEN)
+
+        search = (request.query_params.get("search") or "").strip()
+        messages_qs = PatientAIMessage.objects.filter(patient_id=OuterRef("id")).order_by("-created_at")
+        control_qs = PatientAIConversationControl.objects.filter(patient_id=OuterRef("id"))
+        patients_qs = (
+            Patient.objects.filter(tenant_id=user.tenant_id, ai_messages__isnull=False)
+            .distinct()
+            .annotate(
+                last_message_at=Subquery(messages_qs.values("created_at")[:1]),
+                last_message_content=Subquery(messages_qs.values("content")[:1]),
+                last_message_role=Subquery(messages_qs.values("role")[:1]),
+                last_message_source=Subquery(messages_qs.values("source")[:1]),
+                force_human=Subquery(control_qs.values("force_human")[:1]),
+            )
+            .order_by("-last_message_at", "first_name", "last_name", "email")
+        )
+
+        if search:
+            patients_qs = patients_qs.filter(
+                models.Q(first_name__icontains=search)
+                | models.Q(last_name__icontains=search)
+                | models.Q(email__icontains=search)
+            )
+
+        tenant_settings = _get_or_create_tenant_ai_settings(user.tenant_id)
+        payload = []
+        for patient in patients_qs:
+            force_human = bool(patient.force_human)
+            payload.append(
+                {
+                    "patient_id": str(patient.id),
+                    "patient_name": patient.full_name,
+                    "patient_email": patient.email,
+                    "patient_avatar_url": patient.avatar_url or "",
+                    "last_message_at": patient.last_message_at,
+                    "last_message_preview": _ai_message_preview(patient.last_message_content or ""),
+                    "last_message_role": patient.last_message_role or "",
+                    "last_message_source": patient.last_message_source or "",
+                    "force_human": force_human,
+                    "effective_ai_enabled": bool(tenant_settings.ai_enabled and not force_human),
+                }
+            )
+
+        return Response(
+            {
+                "global_ai_enabled": tenant_settings.ai_enabled,
+                "results": payload,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class ChatAIAdminConversationMessagesAPIView(ChatAIAdminMixin, APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, patient_id):
+        user = self._get_admin_user(request)
+        if not user:
+            return Response(status=status.HTTP_403_FORBIDDEN)
+
+        patient = self._get_tenant_patient(tenant_id=user.tenant_id, patient_id=patient_id)
+        if not patient:
+            return Response({"detail": "Patient not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        tenant_settings = _get_or_create_tenant_ai_settings(user.tenant_id)
+        control = _get_or_create_patient_ai_control(tenant_id=user.tenant_id, patient_id=patient.id)
+        messages = PatientAIMessage.objects.filter(patient_id=patient.id).order_by("created_at")
+        return Response(
+            {
+                "patient": {
+                    "id": str(patient.id),
+                    "name": patient.full_name,
+                    "email": patient.email,
+                    "avatar_url": patient.avatar_url or "",
+                },
+                "global_ai_enabled": tenant_settings.ai_enabled,
+                "force_human": control.force_human,
+                "effective_ai_enabled": bool(tenant_settings.ai_enabled and not control.force_human),
+                "messages": PatientAIMessageSerializer(messages, many=True).data,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+    def post(self, request, patient_id):
+        user = self._get_admin_user(request)
+        if not user:
+            return Response(status=status.HTTP_403_FORBIDDEN)
+
+        patient = self._get_tenant_patient(tenant_id=user.tenant_id, patient_id=patient_id)
+        if not patient:
+            return Response({"detail": "Patient not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        input_serializer = StaffPatientAIMessageCreateSerializer(data=request.data)
+        input_serializer.is_valid(raise_exception=True)
+        content = input_serializer.validated_data["content"].strip()
+
+        message = PatientAIMessage.objects.create(
+            tenant_id=user.tenant_id,
+            patient_id=patient.id,
+            role=PatientAIMessage.RoleChoices.ASSISTANT,
+            source=PatientAIMessage.SourceChoices.STAFF,
+            sender_user_id=user.id,
+            content=content,
+        )
+
+        typing_status, _ = PatientAITypingStatus.objects.get_or_create(
+            tenant_id=user.tenant_id,
+            patient_id=patient.id,
+        )
+        typing_status.is_typing = False
+        typing_status.typed_by = user
+        typing_status.expires_at = timezone.now()
+        typing_status.save(update_fields=["is_typing", "typed_by", "expires_at", "updated_at"])
+
+        _notify_patient_about_staff_ai_message(patient=patient, staff_user=user, content=content)
+        return Response(PatientAIMessageSerializer(message).data, status=status.HTTP_201_CREATED)
+
+
+class ChatAIAdminPatientModeAPIView(ChatAIAdminMixin, APIView):
+    permission_classes = [IsAuthenticated]
+
+    def put(self, request, patient_id):
+        user = self._get_admin_user(request)
+        if not user:
+            return Response(status=status.HTTP_403_FORBIDDEN)
+
+        patient = self._get_tenant_patient(tenant_id=user.tenant_id, patient_id=patient_id)
+        if not patient:
+            return Response({"detail": "Patient not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        control = _get_or_create_patient_ai_control(tenant_id=user.tenant_id, patient_id=patient.id)
+        serializer = PatientAIConversationControlSerializer(control, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save(updated_by=user)
+
+        tenant_settings = _get_or_create_tenant_ai_settings(user.tenant_id)
+        data = serializer.data
+        data["effective_ai_enabled"] = bool(tenant_settings.ai_enabled and not control.force_human)
+        return Response(data, status=status.HTTP_200_OK)
+
+
+class ChatAIAdminTypingAPIView(ChatAIAdminMixin, APIView):
+    permission_classes = [IsAuthenticated]
+
+    def put(self, request, patient_id):
+        user = self._get_admin_user(request)
+        if not user:
+            return Response(status=status.HTTP_403_FORBIDDEN)
+
+        patient = self._get_tenant_patient(tenant_id=user.tenant_id, patient_id=patient_id)
+        if not patient:
+            return Response({"detail": "Patient not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        serializer = PatientAITypingUpdateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        is_typing = serializer.validated_data["is_typing"]
+
+        status_obj, _ = PatientAITypingStatus.objects.get_or_create(
+            tenant_id=user.tenant_id,
+            patient_id=patient.id,
+        )
+        status_obj.is_typing = is_typing
+        status_obj.typed_by = user if is_typing else None
+        status_obj.expires_at = (
+            timezone.now() + timedelta(seconds=AI_TYPING_TTL_SECONDS)
+            if is_typing
+            else timezone.now()
+        )
+        status_obj.save(update_fields=["is_typing", "typed_by", "expires_at", "updated_at"])
+
+        return Response(
+            {
+                "is_typing": status_obj.is_typing,
+                "expires_at": status_obj.expires_at,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class PatientAITypingStatusAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def _get_patient(self, request) -> Patient | None:
+        if request.user.role != GoKlinikUser.RoleChoices.PATIENT:
+            return None
+        return Patient.objects.filter(id=request.user.id).first()
+
+    def get(self, request):
+        patient = self._get_patient(request)
+        if not patient:
+            return Response(status=status.HTTP_403_FORBIDDEN)
+
+        typing_status = (
+            PatientAITypingStatus.objects.select_related("typed_by")
+            .filter(tenant_id=patient.tenant_id, patient_id=patient.id)
+            .first()
+        )
+        if not typing_status:
+            return Response({"is_typing": False}, status=status.HTTP_200_OK)
+
+        now = timezone.now()
+        is_typing = bool(
+            typing_status.is_typing
+            and typing_status.expires_at
+            and typing_status.expires_at > now
+        )
+        if typing_status.is_typing and not is_typing:
+            typing_status.is_typing = False
+            typing_status.typed_by = None
+            typing_status.save(update_fields=["is_typing", "typed_by", "updated_at"])
+
+        return Response(
+            {
+                "is_typing": is_typing,
+                "typed_by": typing_status.typed_by.full_name if is_typing and typing_status.typed_by else "",
+                "expires_at": typing_status.expires_at,
+            },
+            status=status.HTTP_200_OK,
+        )

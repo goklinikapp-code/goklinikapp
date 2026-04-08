@@ -1,11 +1,6 @@
-import uuid
 import logging
-from pathlib import Path
 
 from django.contrib.admin.models import LogEntry
-from django.conf import settings
-from django.core.files.storage import FileSystemStorage
-from django.core.files.storage import default_storage
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from drf_spectacular.utils import OpenApiResponse, extend_schema, inline_serializer
@@ -15,9 +10,9 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from config.media_urls import absolute_media_url
-
 from apps.notifications.services import NotificationService
+from services.storage_paths import build_storage_path
+from services.supabase_storage import SupabaseStorageError, upload_file
 
 from .models import GoKlinikUser, TutorialProgress, TutorialVideo
 from .serializers import (
@@ -28,6 +23,7 @@ from .serializers import (
     InviteUserSerializer,
     LoginSerializer,
     RegisterPatientSerializer,
+    SupabaseImageUploadSerializer,
     TutorialProgressUpdateSerializer,
     TutorialVideoSerializer,
     TutorialVideoWriteSerializer,
@@ -194,6 +190,7 @@ class CurrentUserAvatarUploadAPIView(APIView):
         responses={
             status.HTTP_200_OK: GoKlinikUserSerializer,
             status.HTTP_400_BAD_REQUEST: OpenApiResponse(description="Invalid file."),
+            status.HTTP_502_BAD_GATEWAY: OpenApiResponse(description="Storage provider unavailable."),
             status.HTTP_401_UNAUTHORIZED: OpenApiResponse(description="Authentication required."),
         },
     )
@@ -212,25 +209,21 @@ class CurrentUserAvatarUploadAPIView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        extension = avatar_file.name.split(".")[-1].lower() if "." in avatar_file.name else "png"
-        tenant_slug = (
-            getattr(getattr(request.user, "tenant", None), "slug", None) or "shared"
+        tenant_id = str(request.user.tenant_id or "shared")
+        storage_path = build_storage_path(
+            tenant_id,
+            "patients",
+            request.user.id,
+            "avatars",
+            upload=avatar_file,
         )
-        unique_name = f"user-avatars/{tenant_slug}/{request.user.id}-{uuid.uuid4().hex}.{extension}"
-
         try:
-            saved_path = default_storage._save(unique_name, avatar_file)
-            avatar_url = absolute_media_url(default_storage.url(saved_path), request=request)
-        except Exception:
-            local_root = Path(getattr(settings, "MEDIA_ROOT", Path.cwd()))
-            base_url = getattr(settings, "MEDIA_URL", "/media/")
-            fallback_storage = FileSystemStorage(
-                location=str(local_root),
-                base_url=base_url,
+            avatar_url = upload_file(avatar_file, storage_path)
+        except SupabaseStorageError as exc:
+            return Response(
+                {"detail": str(exc)},
+                status=status.HTTP_502_BAD_GATEWAY,
             )
-            avatar_file.seek(0)
-            saved_path = fallback_storage.save(unique_name, avatar_file)
-            avatar_url = absolute_media_url(fallback_storage.url(saved_path), request=request)
 
         request.user.avatar_url = avatar_url
         request.user.save(update_fields=["avatar_url"])
@@ -242,6 +235,32 @@ class CurrentUserAvatarUploadAPIView(APIView):
             ).data,
             status=status.HTTP_200_OK,
         )
+
+
+class ImageAssetUploadAPIView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
+
+    @extend_schema(
+        request=SupabaseImageUploadSerializer,
+        responses={
+            status.HTTP_201_CREATED: OpenApiResponse(description="Image uploaded successfully."),
+            status.HTTP_400_BAD_REQUEST: OpenApiResponse(description="Validation error."),
+            status.HTTP_502_BAD_GATEWAY: OpenApiResponse(description="Storage provider unavailable."),
+            status.HTTP_401_UNAUTHORIZED: OpenApiResponse(description="Authentication required."),
+        },
+    )
+    def post(self, request, *args, **kwargs):
+        serializer = SupabaseImageUploadSerializer(data=request.data, context={"request": request})
+        serializer.is_valid(raise_exception=True)
+        try:
+            payload = serializer.save()
+        except SupabaseStorageError as exc:
+            return Response(
+                {"detail": str(exc)},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+        return Response(payload, status=status.HTTP_201_CREATED)
 
 
 class TeamMembersAPIView(APIView):

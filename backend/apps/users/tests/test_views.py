@@ -1,16 +1,21 @@
 from __future__ import annotations
 
+from io import BytesIO
 from unittest.mock import patch
 
 from django.core import mail
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import override_settings
 from django.urls import reverse
+from PIL import Image
 from rest_framework import status
 from rest_framework.test import APITestCase
 
 from apps.notifications.models import Notification
+from apps.patients.models import Patient
 from apps.tenants.models import Tenant
 from apps.users.models import GoKlinikUser
+from services.supabase_storage import SupabaseStorageUploadError
 
 
 class AdminDashboardViewTestCase(APITestCase):
@@ -189,3 +194,79 @@ class RegisterPatientNotificationsTestCase(APITestCase):
             title="Novo paciente cadastrado",
         ).first()
         self.assertIsNotNone(notification)
+
+
+class ImageAssetUploadAPIViewTestCase(APITestCase):
+    def setUp(self):
+        self.tenant = Tenant.objects.create(name="Upload Tenant", slug="upload-tenant")
+        self.master = GoKlinikUser.objects.create_user(
+            email="master@upload.com",
+            password="pass12345",
+            tenant=self.tenant,
+            role=GoKlinikUser.RoleChoices.CLINIC_MASTER,
+        )
+        self.patient = Patient.objects.create_user(
+            email="patient@upload.com",
+            password="pass12345",
+            tenant=self.tenant,
+            role=GoKlinikUser.RoleChoices.PATIENT,
+        )
+        self.upload_url = reverse("auth-assets-upload-image")
+
+    @staticmethod
+    def _png_file(name: str = "avatar.png") -> SimpleUploadedFile:
+        buffer = BytesIO()
+        Image.new("RGB", (2, 2), color=(12, 90, 190)).save(buffer, format="PNG")
+        content = buffer.getvalue()
+        return SimpleUploadedFile(name=name, content=content, content_type="image/png")
+
+    @patch("apps.users.serializers.upload_file")
+    def test_clinic_master_uploads_patient_image(self, upload_file_mock):
+        upload_file_mock.return_value = "https://cdn.example.com/tenant/patient/avatar.png"
+        self.client.force_authenticate(self.master)
+
+        response = self.client.post(
+            self.upload_url,
+            {
+                "target": "patient",
+                "patient_id": str(self.patient.id),
+                "file": self._png_file(),
+            },
+            format="multipart",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.patient.refresh_from_db()
+        self.assertEqual(self.patient.avatar_url, upload_file_mock.return_value)
+        self.assertEqual(response.data["image_url"], upload_file_mock.return_value)
+        self.assertIn(f"{self.tenant.id}/patients/{self.patient.id}/", response.data["storage_path"])
+
+    def test_patient_cannot_upload_clinic_image(self):
+        self.client.force_authenticate(self.patient)
+        response = self.client.post(
+            self.upload_url,
+            {
+                "target": "clinic",
+                "file": self._png_file(),
+            },
+            format="multipart",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    @patch("apps.users.serializers.upload_file")
+    def test_returns_502_when_storage_provider_fails(self, upload_file_mock):
+        upload_file_mock.side_effect = SupabaseStorageUploadError("storage down")
+        self.client.force_authenticate(self.master)
+
+        response = self.client.post(
+            self.upload_url,
+            {
+                "target": "patient",
+                "patient_id": str(self.patient.id),
+                "file": self._png_file(),
+            },
+            format="multipart",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_502_BAD_GATEWAY)

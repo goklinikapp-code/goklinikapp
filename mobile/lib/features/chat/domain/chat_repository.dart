@@ -12,4 +12,5 @@ abstract class ChatRepository {
   Future<int> markRoomRead(String roomId);
   Future<List<ChatMessage>> getAiMessages();
   Future<List<ChatMessage>> sendAiMessage({required String content});
+  Future<bool> getAiTypingStatus();
 }

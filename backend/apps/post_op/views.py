@@ -1,14 +1,10 @@
 from __future__ import annotations
 
 import logging
-import uuid
 from collections import defaultdict
 from datetime import timedelta
 from pathlib import Path
 
-from django.conf import settings
-from django.core.files.storage import FileSystemStorage
-from django.core.files.storage import default_storage
 from django.db import models
 from django.utils import timezone
 from rest_framework import permissions, status
@@ -20,6 +16,8 @@ from config.media_urls import absolute_media_url
 from apps.appointments.models import Appointment
 from apps.patients.models import DoctorPatientAssignment, Patient
 from apps.users.models import GoKlinikUser
+from services.storage_paths import build_storage_path
+from services.supabase_storage import SupabaseStorageError, upload_file
 
 from .models import (
     EvolutionPhoto,
@@ -491,27 +489,17 @@ def _notify_urgent_request_answered(urgent_request: UrgentMedicalRequest) -> Non
         )
 
 
-def _save_postop_upload(*, upload, journey_id, request) -> str:
-    safe_name = Path(getattr(upload, "name", "") or "upload.bin").name
-    filename = f"{uuid.uuid4()}_{safe_name}"
-    storage_path = f"post_op_photos/{journey_id}/{filename}"
-
-    try:
-        stored_path = default_storage.save(storage_path, upload)
-        file_url = default_storage.url(stored_path)
-    except Exception:
-        media_root = Path(getattr(settings, "MEDIA_ROOT", Path.cwd()))
-        base_url = getattr(settings, "MEDIA_URL", "/media/")
-        fallback_storage = FileSystemStorage(
-            location=str(media_root),
-            base_url=base_url,
-        )
-        if hasattr(upload, "seek"):
-            upload.seek(0)
-        stored_path = fallback_storage.save(storage_path, upload)
-        file_url = fallback_storage.url(stored_path)
-
-    return absolute_media_url(file_url, request=request)
+def _save_postop_upload(*, upload, journey: PostOpJourney, category: str = "photos") -> str:
+    storage_path = build_storage_path(
+        journey.patient.tenant_id,
+        "patients",
+        journey.patient_id,
+        "post-op",
+        journey.id,
+        category,
+        upload=upload,
+    )
+    return upload_file(upload, storage_path)
 
 
 def _validate_urgent_ticket_upload(upload) -> None:
@@ -757,11 +745,14 @@ class EvolutionPhotoCreateAPIView(APIView):
             return Response(status=status.HTTP_403_FORBIDDEN)
 
         upload = payload["photo"]
-        photo_url = _save_postop_upload(
-            upload=upload,
-            journey_id=journey.id,
-            request=request,
-        )
+        try:
+            photo_url = _save_postop_upload(
+                upload=upload,
+                journey=journey,
+                category="evolution-photos",
+            )
+        except SupabaseStorageError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_502_BAD_GATEWAY)
 
         photo = EvolutionPhoto.objects.create(
             journey=journey,
@@ -797,11 +788,14 @@ class PostOperatoryPhotoCreateAPIView(APIView):
         day_number = payload.get("day") or journey.current_day
         upload = payload["image"]
 
-        photo_url = _save_postop_upload(
-            upload=upload,
-            journey_id=journey.id,
-            request=request,
-        )
+        try:
+            photo_url = _save_postop_upload(
+                upload=upload,
+                journey=journey,
+                category="patient-photos",
+            )
+        except SupabaseStorageError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_502_BAD_GATEWAY)
 
         photo = EvolutionPhoto.objects.create(
             journey=journey,
@@ -1323,13 +1317,16 @@ class UrgentTicketListCreateAPIView(APIView):
             except ValueError as exc:
                 return Response({"images": [str(exc)]}, status=status.HTTP_400_BAD_REQUEST)
 
-            image_urls.append(
-                _save_postop_upload(
-                    upload=upload,
-                    journey_id=journey.id,
-                    request=request,
+            try:
+                image_urls.append(
+                    _save_postop_upload(
+                        upload=upload,
+                        journey=journey,
+                        category="urgent-tickets",
+                    )
                 )
-            )
+            except SupabaseStorageError as exc:
+                return Response({"detail": str(exc)}, status=status.HTTP_502_BAD_GATEWAY)
 
         ticket = UrgentTicket.objects.create(
             patient_id=patient.id,
