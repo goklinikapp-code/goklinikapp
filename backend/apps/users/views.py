@@ -13,7 +13,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 
 from apps.notifications.services import NotificationService
 from services.storage_paths import build_storage_path
-from services.supabase_storage import SupabaseStorageError, upload_file
+from services.supabase_storage import SupabaseStorageError, delete_file, upload_file
 
 from .models import GoKlinikUser, TutorialProgress, TutorialVideo
 from .serializers import (
@@ -74,6 +74,17 @@ def _resolve_image_content_type(upload) -> tuple[str, bool]:
         return inferred, True
 
     return raw_content_type, False
+
+
+def _cleanup_replaced_avatar(previous_url: str | None, current_url: str | None) -> None:
+    previous = (previous_url or "").strip()
+    current = (current_url or "").strip()
+    if not previous or previous == current:
+        return
+    try:
+        delete_file(previous)
+    except SupabaseStorageError:
+        logger.exception("Unable to delete replaced avatar asset: %s", previous)
 
 
 class RegisterAPIView(APIView):
@@ -238,6 +249,7 @@ class CurrentUserAvatarUploadAPIView(APIView):
         avatar_file.content_type = content_type
 
         tenant_id = str(request.user.tenant_id or "shared")
+        previous_avatar_url = request.user.avatar_url
         storage_path = build_storage_path(
             tenant_id,
             "patients",
@@ -254,7 +266,20 @@ class CurrentUserAvatarUploadAPIView(APIView):
             )
 
         request.user.avatar_url = avatar_url
-        request.user.save(update_fields=["avatar_url"])
+        try:
+            request.user.save(update_fields=["avatar_url"])
+        except Exception:  # noqa: BLE001
+            try:
+                delete_file(avatar_url)
+            except SupabaseStorageError:
+                logger.exception("Unable to delete failed avatar upload: %s", avatar_url)
+            logger.exception("Failed to persist uploaded avatar for user=%s", request.user.id)
+            return Response(
+                {"detail": "Could not persist avatar after upload."},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+
+        _cleanup_replaced_avatar(previous_avatar_url, avatar_url)
 
         return Response(
             GoKlinikUserSerializer(

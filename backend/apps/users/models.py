@@ -73,7 +73,7 @@ class GoKlinikUser(AbstractUser):
         blank=True,
     )
     date_of_birth = models.DateField(null=True, blank=True)
-    avatar_url = models.URLField(blank=True)
+    avatar_url = models.URLField(blank=True, max_length=2048)
     bio = models.TextField(blank=True)
     crm_number = models.CharField(max_length=60, blank=True)
     years_experience = models.PositiveIntegerField(null=True, blank=True)

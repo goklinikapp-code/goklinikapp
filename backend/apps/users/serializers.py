@@ -554,7 +554,7 @@ class TeamMemberUpdateSerializer(serializers.Serializer):
     phone = serializers.CharField(max_length=30, required=False, allow_blank=True)
     cpf = serializers.CharField(max_length=14, required=False, allow_blank=True)
     date_of_birth = serializers.DateField(required=False, allow_null=True)
-    avatar_url = serializers.URLField(required=False, allow_blank=True)
+    avatar_url = serializers.URLField(required=False, allow_blank=True, max_length=2048)
     bio = serializers.CharField(required=False, allow_blank=True)
     crm_number = serializers.CharField(max_length=60, required=False, allow_blank=True)
     years_experience = serializers.IntegerField(required=False, allow_null=True, min_value=0)

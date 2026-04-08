@@ -299,7 +299,12 @@ class CurrentUserAvatarUploadAPIViewTestCase(APITestCase):
 
     @patch("apps.users.views.upload_file")
     def test_upload_accepts_octet_stream_when_extension_is_image(self, upload_file_mock):
-        upload_file_mock.return_value = "https://cdn.example.com/patient/avatar.heic"
+        upload_file_mock.return_value = (
+            "https://vjhdsqtrdfhmjqrajbty.supabase.co/storage/v1/object/public/"
+            "clinic-assets/fe90f211-a15a-4304-847a-dac25092ac97/patients/"
+            "1df50cbc-eab4-4f12-ad6d-6e20f3d14f99/avatars/"
+            "161ed0a562db4c2f93fbcbe2441f4f74.jpg"
+        )
         self.client.force_authenticate(self.patient)
 
         response = self.client.post(
@@ -311,6 +316,33 @@ class CurrentUserAvatarUploadAPIViewTestCase(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.patient.refresh_from_db()
         self.assertEqual(self.patient.avatar_url, upload_file_mock.return_value)
+
+    @patch("apps.users.views.delete_file")
+    @patch("apps.patients.models.Patient.save", side_effect=Exception("db failure"))
+    @patch("apps.users.views.upload_file")
+    def test_upload_removes_uploaded_file_when_db_persist_fails(
+        self,
+        upload_file_mock,
+        _save_mock,
+        delete_file_mock,
+    ):
+        uploaded_url = (
+            "https://vjhdsqtrdfhmjqrajbty.supabase.co/storage/v1/object/public/clinic-assets/"
+            "fe90f211-a15a-4304-847a-dac25092ac97/patients/1df50cbc-eab4-4f12-ad6d-6e20f3d14f99/"
+            "avatars/29fd834e1627430d8580a0f5daddb60d.jpg"
+        )
+        upload_file_mock.return_value = uploaded_url
+        self.client.force_authenticate(self.patient)
+
+        response = self.client.post(
+            self.upload_url,
+            {"avatar": self._image_file(name="avatar.jpg", content_type="image/jpeg")},
+            format="multipart",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_502_BAD_GATEWAY)
+        self.assertEqual(response.data["detail"], "Could not persist avatar after upload.")
+        delete_file_mock.assert_called_once_with(uploaded_url)
 
     @patch("apps.users.views.upload_file")
     def test_upload_rejects_non_image_extension_with_octet_stream(self, upload_file_mock):
