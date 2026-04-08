@@ -73,6 +73,15 @@ class NotificationReadAllAPIView(APIView):
         return Response({"updated_count": count}, status=status.HTTP_200_OK)
 
 
+class NotificationClearAllAPIView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def delete(self, request):
+        queryset = Notification.objects.filter(recipient=request.user)
+        deleted_count, _ = queryset.delete()
+        return Response({"deleted_count": deleted_count}, status=status.HTTP_200_OK)
+
+
 class NotificationUnreadCountAPIView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 

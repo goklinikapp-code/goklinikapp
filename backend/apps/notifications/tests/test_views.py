@@ -391,3 +391,39 @@ class NotificationViewsTestCase(APITestCase):
         item = ScheduledNotification.objects.first()
         self.assertEqual(item.status, ScheduledNotification.StatusChoices.PENDING)
         self.assertEqual(item.celery_task_id, "task-123")
+
+    def test_clear_all_notifications_deletes_only_current_user_items(self):
+        other_patient = Patient.objects.create_user(
+            email="other-patient@notif.com",
+            password="pass12345",
+            tenant=self.tenant,
+            role=GoKlinikUser.RoleChoices.PATIENT,
+            first_name="Other",
+            last_name="Patient",
+        )
+        Notification.objects.create(
+            tenant=self.tenant,
+            recipient=self.patient,
+            title="Second",
+            body="Body",
+            notification_type=Notification.NotificationTypeChoices.SYSTEM,
+        )
+        Notification.objects.create(
+            tenant=self.tenant,
+            recipient=other_patient,
+            title="Other user notification",
+            body="Body",
+            notification_type=Notification.NotificationTypeChoices.SYSTEM,
+        )
+
+        self.client.force_authenticate(self.patient)
+        response = self.client.delete(reverse("notifications-clear-all"))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["deleted_count"], 2)
+        self.assertEqual(Notification.objects.filter(recipient=self.patient).count(), 0)
+        self.assertEqual(Notification.objects.filter(recipient=other_patient).count(), 1)
+
+    def test_clear_all_notifications_requires_authentication(self):
+        response = self.client.delete(reverse("notifications-clear-all"))
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)

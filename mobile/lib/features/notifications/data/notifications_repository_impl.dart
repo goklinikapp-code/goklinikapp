@@ -53,6 +53,15 @@ class NotificationsRepositoryImpl implements NotificationsRepository {
     if (data is! Map) return 0;
     return int.tryParse((data['updated_count'] ?? 0).toString()) ?? 0;
   }
+
+  @override
+  Future<int> clearAll() async {
+    final response =
+        await _dio.delete<dynamic>(ApiEndpoints.notificationsClearAll);
+    final data = response.data;
+    if (data is! Map) return 0;
+    return int.tryParse((data['deleted_count'] ?? 0).toString()) ?? 0;
+  }
 }
 
 final notificationsRepositoryProvider =

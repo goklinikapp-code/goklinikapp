@@ -270,3 +270,58 @@ class ImageAssetUploadAPIViewTestCase(APITestCase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_502_BAD_GATEWAY)
+
+
+class CurrentUserAvatarUploadAPIViewTestCase(APITestCase):
+    def setUp(self):
+        self.tenant = Tenant.objects.create(name="Avatar Tenant", slug="avatar-tenant")
+        self.patient = Patient.objects.create_user(
+            email="avatar@upload.com",
+            password="pass12345",
+            tenant=self.tenant,
+            role=GoKlinikUser.RoleChoices.PATIENT,
+        )
+        self.upload_url = reverse("auth-me-avatar")
+
+    @staticmethod
+    def _image_file(
+        name: str = "avatar.heic",
+        *,
+        content_type: str = "application/octet-stream",
+    ) -> SimpleUploadedFile:
+        buffer = BytesIO()
+        Image.new("RGB", (2, 2), color=(12, 90, 190)).save(buffer, format="PNG")
+        return SimpleUploadedFile(
+            name=name,
+            content=buffer.getvalue(),
+            content_type=content_type,
+        )
+
+    @patch("apps.users.views.upload_file")
+    def test_upload_accepts_octet_stream_when_extension_is_image(self, upload_file_mock):
+        upload_file_mock.return_value = "https://cdn.example.com/patient/avatar.heic"
+        self.client.force_authenticate(self.patient)
+
+        response = self.client.post(
+            self.upload_url,
+            {"avatar": self._image_file()},
+            format="multipart",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.patient.refresh_from_db()
+        self.assertEqual(self.patient.avatar_url, upload_file_mock.return_value)
+
+    @patch("apps.users.views.upload_file")
+    def test_upload_rejects_non_image_extension_with_octet_stream(self, upload_file_mock):
+        self.client.force_authenticate(self.patient)
+
+        response = self.client.post(
+            self.upload_url,
+            {"avatar": self._image_file(name="avatar.txt")},
+            format="multipart",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data["detail"], "Invalid file type.")
+        upload_file_mock.assert_not_called()

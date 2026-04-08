@@ -1,4 +1,5 @@
 import logging
+from pathlib import Path
 
 from django.contrib.admin.models import LogEntry
 from django.shortcuts import get_object_or_404
@@ -47,6 +48,32 @@ DETAIL_RESPONSE_SERIALIZER = inline_serializer(
 )
 
 logger = logging.getLogger(__name__)
+
+IMAGE_EXTENSION_CONTENT_TYPES = {
+    "jpg": "image/jpeg",
+    "jpeg": "image/jpeg",
+    "png": "image/png",
+    "webp": "image/webp",
+    "heic": "image/heic",
+    "heif": "image/heif",
+    "gif": "image/gif",
+    "bmp": "image/bmp",
+    "tif": "image/tiff",
+    "tiff": "image/tiff",
+}
+
+
+def _resolve_image_content_type(upload) -> tuple[str, bool]:
+    raw_content_type = (getattr(upload, "content_type", "") or "").lower().strip()
+    if raw_content_type.startswith("image/"):
+        return raw_content_type, True
+
+    extension = Path(str(getattr(upload, "name", "") or "")).suffix.lower().lstrip(".")
+    inferred = IMAGE_EXTENSION_CONTENT_TYPES.get(extension, "")
+    if inferred:
+        return inferred, True
+
+    return raw_content_type, False
 
 
 class RegisterAPIView(APIView):
@@ -202,12 +229,13 @@ class CurrentUserAvatarUploadAPIView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        content_type = (getattr(avatar_file, "content_type", "") or "").lower()
-        if not content_type.startswith("image/"):
+        content_type, is_image = _resolve_image_content_type(avatar_file)
+        if not is_image:
             return Response(
                 {"detail": "Invalid file type."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        avatar_file.content_type = content_type
 
         tenant_id = str(request.user.tenant_id or "shared")
         storage_path = build_storage_path(

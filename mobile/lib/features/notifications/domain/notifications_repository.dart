@@ -6,4 +6,5 @@ abstract class NotificationsRepository {
   Future<void> registerToken({required String token, required String platform});
   Future<void> markAsRead(String id);
   Future<int> markAllAsRead();
+  Future<int> clearAll();
 }

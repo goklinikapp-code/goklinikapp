@@ -2,6 +2,7 @@ from django.urls import path
 
 from .views import (
     BroadcastNotificationAPIView,
+    NotificationClearAllAPIView,
     NotificationLogListAPIView,
     NotificationListAPIView,
     NotificationReadAPIView,
@@ -21,6 +22,7 @@ urlpatterns = [
     path("", NotificationListAPIView.as_view(), name="notifications-list"),
     path("register-token/", RegisterTokenAPIView.as_view(), name="notifications-register-token"),
     path("read-all/", NotificationReadAllAPIView.as_view(), name="notifications-read-all"),
+    path("clear-all/", NotificationClearAllAPIView.as_view(), name="notifications-clear-all"),
     path("unread-count/", NotificationUnreadCountAPIView.as_view(), name="notifications-unread-count"),
     path("<uuid:notification_id>/read/", NotificationReadAPIView.as_view(), name="notifications-read"),
     path("admin/broadcast/", BroadcastNotificationAPIView.as_view(), name="notifications-admin-broadcast"),

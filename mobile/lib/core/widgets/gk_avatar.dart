@@ -27,13 +27,22 @@ class GKAvatar extends StatelessWidget {
     final normalizedImageUrl =
         imageUrl == null ? '' : resolveApiMediaUrl(imageUrl!);
     if (normalizedImageUrl.isNotEmpty) {
-      return CircleAvatar(
-        radius: radius,
-        backgroundColor: colorScheme.primary.withValues(alpha: 0.12),
-        backgroundImage: CachedNetworkImageProvider(normalizedImageUrl),
+      return ClipOval(
+        child: CachedNetworkImage(
+          imageUrl: normalizedImageUrl,
+          width: radius * 2,
+          height: radius * 2,
+          fit: BoxFit.cover,
+          placeholder: (_, __) => _fallbackAvatar(colorScheme),
+          errorWidget: (_, __, ___) => _fallbackAvatar(colorScheme),
+        ),
       );
     }
 
+    return _fallbackAvatar(colorScheme);
+  }
+
+  CircleAvatar _fallbackAvatar(ColorScheme colorScheme) {
     return CircleAvatar(
       radius: radius,
       backgroundColor: colorScheme.primary.withValues(alpha: 0.14),

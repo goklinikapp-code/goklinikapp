@@ -43,6 +43,13 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
         title: const Text('Notificações'),
         actions: [
           TextButton(
+            onPressed: state.items.isEmpty ? null : _handleClearAll,
+            child: const Text(
+              'Limpar tudo',
+              style: TextStyle(color: GKColors.neutral),
+            ),
+          ),
+          TextButton(
             onPressed: () => ref
                 .read(notificationsControllerProvider.notifier)
                 .markAllAsRead(),
@@ -118,6 +125,55 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
         ),
       ),
     );
+  }
+
+  Future<void> _handleClearAll() async {
+    final shouldClear = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Limpar notificações'),
+        content: const Text(
+          'Deseja remover todas as notificações desta lista?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancelar'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text(
+              'Limpar',
+              style: TextStyle(color: GKColors.danger),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (shouldClear != true || !mounted) return;
+
+    try {
+      final deletedCount =
+          await ref.read(notificationsControllerProvider.notifier).clearAll();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            deletedCount > 0
+                ? '$deletedCount notificações removidas.'
+                : 'Nenhuma notificação para remover.',
+          ),
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Não foi possível limpar as notificações.'),
+        ),
+      );
+    }
   }
 
   bool _isToday(DateTime dt) {

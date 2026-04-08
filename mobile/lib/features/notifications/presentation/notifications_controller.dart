@@ -45,9 +45,11 @@ class NotificationsController extends StateNotifier<NotificationsState> {
       final repo = _ref.read(notificationsRepositoryProvider);
       final items = await repo.getNotifications();
       final unread = await repo.getUnreadCount();
-      state = state.copyWith(items: items, unreadCount: unread, loading: false, clearError: true);
+      state = state.copyWith(
+          items: items, unreadCount: unread, loading: false, clearError: true);
     } catch (_) {
-      state = state.copyWith(loading: false, error: 'Falha ao carregar notificações.');
+      state = state.copyWith(
+          loading: false, error: 'Falha ao carregar notificações.');
     }
   }
 
@@ -59,6 +61,17 @@ class NotificationsController extends StateNotifier<NotificationsState> {
   Future<void> markAllAsRead() async {
     await _ref.read(notificationsRepositoryProvider).markAllAsRead();
     await load();
+  }
+
+  Future<int> clearAll() async {
+    final deletedCount =
+        await _ref.read(notificationsRepositoryProvider).clearAll();
+    state = state.copyWith(
+      items: const [],
+      unreadCount: 0,
+      clearError: true,
+    );
+    return deletedCount;
   }
 }
 
