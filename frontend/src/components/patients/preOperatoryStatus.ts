@@ -1,15 +1,21 @@
 import type { PreOperatoryRecord } from '@/types'
+import type { TranslationKey } from '@/i18n/system'
 
-export function preOperatoryStatusLabel(status?: PreOperatoryRecord['status']) {
+type Translator = (key: TranslationKey) => string
+
+export function preOperatoryStatusLabel(
+  status?: PreOperatoryRecord['status'],
+  t?: Translator,
+) {
   switch (status) {
     case 'approved':
-      return 'Aprovado'
+      return t ? t('preop_status_approved') : 'Aprovado'
     case 'in_review':
-      return 'Em análise'
+      return t ? t('preop_status_in_review') : 'Em análise'
     case 'rejected':
-      return 'Rejeitado'
+      return t ? t('preop_status_rejected') : 'Rejeitado'
     case 'pending':
     default:
-      return 'Pendente'
+      return t ? t('preop_status_pending') : 'Pendente'
   }
 }

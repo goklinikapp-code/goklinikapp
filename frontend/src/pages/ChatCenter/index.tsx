@@ -20,13 +20,15 @@ import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
 import { TextArea } from '@/components/ui/TextArea'
+import { getLocaleForLanguage, t as translate, type TranslationKey } from '@/i18n/system'
+import { usePreferencesStore } from '@/stores/preferencesStore'
 import { cn } from '@/utils/cn'
 
-function formatDateTime(value?: string | null) {
+function formatDateTime(value: string | null | undefined, locale: string) {
   if (!value) return '-'
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return '-'
-  return new Intl.DateTimeFormat('pt-BR', {
+  return new Intl.DateTimeFormat(locale, {
     day: '2-digit',
     month: '2-digit',
     hour: '2-digit',
@@ -34,14 +36,20 @@ function formatDateTime(value?: string | null) {
   }).format(date)
 }
 
-function messageSourceLabel(message: ChatAIMessage) {
-  if (message.source === 'staff') return 'EQUIPE'
-  if (message.source === 'ai') return 'IA'
-  if (message.source === 'system') return 'SISTEMA'
-  return 'PACIENTE'
+function messageSourceLabel(
+  message: ChatAIMessage,
+  t: (key: TranslationKey) => string,
+) {
+  if (message.source === 'staff') return t('chat_center_source_team')
+  if (message.source === 'ai') return t('chat_center_source_ai')
+  if (message.source === 'system') return t('chat_center_source_system')
+  return t('chat_center_source_patient')
 }
 
 export default function ChatCenterPage() {
+  const language = usePreferencesStore((state) => state.language)
+  const t = (key: TranslationKey) => translate(language, key)
+  const locale = getLocaleForLanguage(language)
   const queryClient = useQueryClient()
   const [search, setSearch] = useState('')
   const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null)
@@ -77,13 +85,13 @@ export default function ChatCenterPage() {
   const updateGlobalSettingsMutation = useMutation({
     mutationFn: updateChatAISettings,
     onSuccess: async () => {
-      toast.success('Modo global do chat atualizado.')
+      toast.success(t('chat_center_toast_global_updated'))
       await queryClient.invalidateQueries({ queryKey: ['chat-ai-settings'] })
       await queryClient.invalidateQueries({ queryKey: ['chat-ai-conversations'] })
       await queryClient.invalidateQueries({ queryKey: ['chat-ai-conversation-detail'] })
     },
     onError: () => {
-      toast.error('Não foi possível atualizar o modo global agora.')
+      toast.error(t('chat_center_toast_global_error'))
     },
   })
 
@@ -91,12 +99,12 @@ export default function ChatCenterPage() {
     mutationFn: (payload: { patientId: string; forceHuman: boolean }) =>
       setChatAIPatientMode(payload.patientId, payload.forceHuman),
     onSuccess: async () => {
-      toast.success('Modo da conversa atualizado.')
+      toast.success(t('chat_center_toast_mode_updated'))
       await queryClient.invalidateQueries({ queryKey: ['chat-ai-conversations'] })
       await queryClient.invalidateQueries({ queryKey: ['chat-ai-conversation-detail'] })
     },
     onError: () => {
-      toast.error('Não foi possível atualizar o modo dessa conversa.')
+      toast.error(t('chat_center_toast_mode_error'))
     },
   })
 
@@ -105,12 +113,12 @@ export default function ChatCenterPage() {
       sendChatAIStaffMessage(payload.patientId, payload.content),
     onSuccess: async () => {
       setDraft('')
-      toast.success('Mensagem enviada para o paciente.')
+      toast.success(t('chat_center_toast_message_sent'))
       await queryClient.invalidateQueries({ queryKey: ['chat-ai-conversations'] })
       await queryClient.invalidateQueries({ queryKey: ['chat-ai-conversation-detail'] })
     },
     onError: () => {
-      toast.error('Não foi possível enviar a mensagem agora.')
+      toast.error(t('chat_center_toast_message_error'))
     },
   })
 
@@ -172,8 +180,8 @@ export default function ChatCenterPage() {
   return (
     <div className="space-y-5">
       <SectionHeader
-        title="Central de Chat"
-        subtitle="Acompanhe conversas, intervenha manualmente e controle quando a IA deve pausar."
+        title={t('chat_center_title')}
+        subtitle={t('chat_center_subtitle')}
         actions={
           <>
             <Button
@@ -188,7 +196,7 @@ export default function ChatCenterPage() {
               }}
             >
               <RefreshCw className={cn('h-4 w-4', (conversationsQuery.isFetching || detailQuery.isFetching) && 'animate-spin')} />
-              Atualizar
+              {t('chat_center_refresh')}
             </Button>
             <Button
               type="button"
@@ -197,7 +205,9 @@ export default function ChatCenterPage() {
               onClick={handleToggleGlobalAI}
             >
               <Bot className="h-4 w-4" />
-              {settingsQuery.data?.ai_enabled === false ? 'Retomar IA Global' : 'Pausar IA Global'}
+              {settingsQuery.data?.ai_enabled === false
+                ? t('chat_center_resume_global_ai')
+                : t('chat_center_pause_global_ai')}
             </Button>
           </>
         }
@@ -206,24 +216,24 @@ export default function ChatCenterPage() {
       <div className="grid gap-5 lg:grid-cols-[320px_minmax(0,1fr)]">
         <Card className="flex h-[calc(100vh-240px)] min-h-[620px] max-h-[860px] flex-col overflow-hidden p-0">
           <div className="border-b border-slate-100 p-4">
-            <p className="overline">Conversas</p>
+            <p className="overline">{t('chat_center_conversations')}</p>
             <div className="mt-2 flex items-center gap-2">
               <Search className="h-4 w-4 text-slate-400" />
               <Input
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
-                placeholder="Buscar paciente por nome ou e-mail"
+                placeholder={t('chat_center_search_placeholder')}
               />
             </div>
           </div>
 
           <div className="min-h-0 flex-1 space-y-1 overflow-y-auto p-2">
             {conversationsQuery.isLoading ? (
-              <p className="px-3 py-4 text-sm text-slate-500">Carregando conversas...</p>
+              <p className="px-3 py-4 text-sm text-slate-500">{t('chat_center_loading_conversations')}</p>
             ) : conversationsQuery.isError ? (
-              <p className="px-3 py-4 text-sm text-slate-500">Não foi possível carregar as conversas.</p>
+              <p className="px-3 py-4 text-sm text-slate-500">{t('chat_center_load_conversations_error')}</p>
             ) : conversationRows.length === 0 ? (
-              <p className="px-3 py-4 text-sm text-slate-500">Nenhuma conversa encontrada.</p>
+              <p className="px-3 py-4 text-sm text-slate-500">{t('chat_center_no_conversations')}</p>
             ) : (
               conversationRows.map((item) => (
                 <button
@@ -246,7 +256,7 @@ export default function ChatCenterPage() {
                     <div className="min-w-0 flex-1">
                       <div className="flex items-start justify-between gap-2">
                         <p className="truncate text-sm font-semibold text-night">{item.patient_name}</p>
-                        <p className="text-[11px] text-slate-500">{formatDateTime(item.last_message_at)}</p>
+                        <p className="text-[11px] text-slate-500">{formatDateTime(item.last_message_at, locale)}</p>
                       </div>
                       <p className="caption truncate">{item.patient_email}</p>
                       <p className="mt-1 truncate text-xs text-slate-600">{item.last_message_preview}</p>
@@ -254,7 +264,7 @@ export default function ChatCenterPage() {
                   </div>
                   <div className="mt-2 flex justify-end">
                     <Badge className={item.effective_ai_enabled ? 'bg-success/15 text-success' : 'bg-amber-100 text-amber-700'}>
-                      {item.effective_ai_enabled ? 'IA ativa' : 'Humano'}
+                      {item.effective_ai_enabled ? t('chat_center_ai_active') : t('chat_center_human')}
                     </Badge>
                   </div>
                 </button>
@@ -266,15 +276,15 @@ export default function ChatCenterPage() {
         <Card className="flex h-[calc(100vh-240px)] min-h-[620px] max-h-[860px] flex-col">
           {!effectiveSelectedPatientId ? (
             <div className="flex flex-1 items-center justify-center text-sm text-slate-500">
-              Selecione uma conversa para começar.
+              {t('chat_center_select_conversation')}
             </div>
           ) : detailQuery.isLoading ? (
             <div className="flex flex-1 items-center justify-center text-sm text-slate-500">
-              Carregando mensagens...
+              {t('chat_center_loading_messages')}
             </div>
           ) : detailQuery.isError || !detailQuery.data ? (
             <div className="flex flex-1 items-center justify-center text-sm text-slate-500">
-              Não foi possível carregar esta conversa.
+              {t('chat_center_load_conversation_error')}
             </div>
           ) : (
             <>
@@ -292,7 +302,7 @@ export default function ChatCenterPage() {
                 </div>
                 <div className="flex items-center gap-2">
                   <Badge className={detailQuery.data.effective_ai_enabled ? 'bg-success/15 text-success' : 'bg-amber-100 text-amber-700'}>
-                    {detailQuery.data.effective_ai_enabled ? 'IA ativa' : 'Humano assumiu'}
+                    {detailQuery.data.effective_ai_enabled ? t('chat_center_ai_active') : t('chat_center_human_taken')}
                   </Badge>
                   <Button
                     type="button"
@@ -300,7 +310,9 @@ export default function ChatCenterPage() {
                     disabled={updatePatientModeMutation.isPending}
                     onClick={handleTogglePatientMode}
                   >
-                    {detailQuery.data.force_human ? 'Retomar IA neste paciente' : 'Assumir conversa (Humano)'}
+                    {detailQuery.data.force_human
+                      ? t('chat_center_resume_ai_for_patient')
+                      : t('chat_center_take_over_human')}
                   </Button>
                 </div>
               </div>
@@ -310,17 +322,17 @@ export default function ChatCenterPage() {
                 className="min-h-0 flex-1 space-y-2 overflow-y-auto rounded-2xl bg-slate-100/80 p-4"
               >
                 {detailQuery.data.messages.length === 0 ? (
-                  <p className="text-sm text-slate-500">Ainda não há mensagens nessa conversa.</p>
+                  <p className="text-sm text-slate-500">{t('chat_center_no_messages')}</p>
                 ) : (
                   detailQuery.data.messages.map((message) => {
                     const isPatientMessage = message.role === 'user'
                     const speakerLabel = isPatientMessage
-                      ? 'Paciente'
+                      ? t('chat_center_speaker_patient')
                       : message.source === 'staff'
-                        ? 'Equipe da clínica'
+                        ? t('chat_center_speaker_team')
                         : message.source === 'ai'
-                          ? 'Assistente IA'
-                          : 'Sistema'
+                          ? t('chat_center_speaker_ai')
+                          : t('chat_center_speaker_system')
                     return (
                       <div
                         key={message.id}
@@ -344,12 +356,12 @@ export default function ChatCenterPage() {
                                 isPatientMessage ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600',
                               )}
                             >
-                              {messageSourceLabel(message)}
+                              {messageSourceLabel(message, t)}
                             </Badge>
                           </div>
                           <p className="whitespace-pre-wrap text-sm">{message.content}</p>
                           <p className={cn('mt-1 text-[11px]', isPatientMessage ? 'text-white/70' : 'text-slate-500')}>
-                            {formatDateTime(message.created_at)}
+                            {formatDateTime(message.created_at, locale)}
                           </p>
                         </div>
                       </div>
@@ -372,7 +384,7 @@ export default function ChatCenterPage() {
                   }}
                   onFocus={() => setComposerFocused(true)}
                   onBlur={() => setComposerFocused(false)}
-                  placeholder="Digite a resposta da equipe da clínica..."
+                  placeholder={t('chat_center_composer_placeholder')}
                 />
                 <div className="flex items-center justify-between">
                   <div className="space-y-1">
@@ -383,11 +395,11 @@ export default function ChatCenterPage() {
                         checked={sendOnEnter}
                         onChange={(event) => setSendOnEnter(event.target.checked)}
                       />
-                      Enter envia mensagem (Shift + Enter quebra linha)
+                      {t('chat_center_enter_to_send')}
                     </label>
                     <p className="caption flex items-center gap-1">
                       <UserRound className="h-3.5 w-3.5" />
-                      O paciente verá “digitando...” enquanto você escreve.
+                      {t('chat_center_typing_hint')}
                     </p>
                   </div>
                   <Button
@@ -396,7 +408,7 @@ export default function ChatCenterPage() {
                     onClick={() => void handleSendMessage()}
                   >
                     <SendHorizonal className="h-4 w-4" />
-                    {sendMessageMutation.isPending ? 'Enviando...' : 'Enviar mensagem'}
+                    {sendMessageMutation.isPending ? t('chat_center_sending') : t('chat_center_send')}
                   </Button>
                 </div>
               </div>

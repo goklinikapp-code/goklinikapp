@@ -543,7 +543,7 @@ export default function TeamPage() {
                 <th className="px-4 py-3 text-left overline">{t('team_log_datetime')}</th>
                 <th className="px-4 py-3 text-left overline">{t('team_log_user')}</th>
                 <th className="px-4 py-3 text-left overline">{t('team_log_action')}</th>
-                <th className="px-4 py-3 text-left overline">IP</th>
+                <th className="px-4 py-3 text-left overline">{t('team_log_ip')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 bg-white">
@@ -604,7 +604,7 @@ export default function TeamPage() {
 
           {selectedRole ? (
             <div>
-              <p className="mb-2 text-xs font-medium text-slate-600">Funcionalidades no painel</p>
+              <p className="mb-2 text-xs font-medium text-slate-600">{t('team_panel_features')}</p>
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
                 <div className="grid gap-2 sm:grid-cols-2">
                   {ACCESS_PERMISSION_DEFINITIONS.map((permission) => {
@@ -624,8 +624,8 @@ export default function TeamPage() {
                           onChange={() => toggleInvitePermission(permission.key)}
                         />
                         <span>
-                          <span className="block text-sm font-semibold text-night">{permission.label}</span>
-                          <span className="caption">{permission.description}</span>
+                          <span className="block text-sm font-semibold text-night">{t(permission.labelKey)}</span>
+                          <span className="caption">{t(permission.descriptionKey)}</span>
                         </span>
                       </label>
                     )
@@ -633,11 +633,11 @@ export default function TeamPage() {
                 </div>
                 {isClinicMasterInvite ? (
                   <p className="caption mt-2">
-                    Perfil Dono da Clínica recebe acesso total automaticamente.
+                    {t('team_clinic_master_auto_access')}
                   </p>
                 ) : (
                   <p className="caption mt-2">
-                    Os itens já vêm marcados com o padrão do perfil selecionado. Você pode ajustar manualmente.
+                    {t('team_role_permissions_hint')}
                   </p>
                 )}
               </div>

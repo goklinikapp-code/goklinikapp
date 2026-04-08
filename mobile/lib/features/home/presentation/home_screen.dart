@@ -163,7 +163,7 @@ class HomeScreen extends ConsumerWidget {
                         if (upcomingTransfer != null) ...[
                           const SizedBox(width: 12),
                           _HighlightCard(
-                            title: 'Proximo Transfer',
+                            title: t('home_upcoming_transfer_title'),
                             subtitle:
                                 '${upcomingTransfer.title} • ${formatDate(upcomingTransfer.transferDate)} • ${_formatCompactTime(upcomingTransfer.transferTime)} • ${upcomingTransfer.origin}',
                             gradient: LinearGradient(
@@ -172,7 +172,7 @@ class HomeScreen extends ConsumerWidget {
                                 GKColors.secondary.withValues(alpha: 0.82),
                               ],
                             ),
-                            badge: 'TRANSFER 24H',
+                            badge: t('home_upcoming_transfer_badge'),
                             unitLabel: clinicName,
                           ),
                         ],
@@ -212,7 +212,7 @@ class HomeScreen extends ConsumerWidget {
             mainAxisSpacing: 10,
             children: [
               _QuickAction(
-                  title: 'Plano de Viagem',
+                  title: t('quick_travel_plan'),
                   icon: Icons.flight,
                   onTap: () => context.push('/travel-plan')),
               _QuickAction(

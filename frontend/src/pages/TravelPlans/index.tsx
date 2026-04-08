@@ -36,6 +36,8 @@ import { Input } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { Select } from '@/components/ui/Select'
 import { TextArea } from '@/components/ui/TextArea'
+import { t as translate, type TranslationKey } from '@/i18n/system'
+import { usePreferencesStore } from '@/stores/preferencesStore'
 import { formatDate } from '@/utils/format'
 
 const QUERY_ADMIN_PATIENTS = ['travel-plans-admin-patients'] as const
@@ -43,21 +45,14 @@ const QUERY_PLAN_DETAIL = 'travel-plan-detail'
 
 const CUSTOM_TITLE_OPTION = '__custom__'
 const TRANSFER_PRESET_TITLES = [
-  'Transfer Aeroporto Hotel',
-  'Transfer Hotel Clinica Dia da Cirurgia',
-  'Transfer Clinica Hotel Apos Cirurgia',
-  'Transfer Hotel Clinica Revisao',
-  'Transfer Clinica Hotel Apos Revisao',
-  'Transfer Hotel Aeroporto',
-] as const
+  { value: 'Transfer Aeroporto Hotel', labelKey: 'travel_plans_preset_airport_hotel' },
+  { value: 'Transfer Hotel Clinica Dia da Cirurgia', labelKey: 'travel_plans_preset_hotel_clinic_surgery_day' },
+  { value: 'Transfer Clinica Hotel Apos Cirurgia', labelKey: 'travel_plans_preset_clinic_hotel_after_surgery' },
+  { value: 'Transfer Hotel Clinica Revisao', labelKey: 'travel_plans_preset_hotel_clinic_followup' },
+  { value: 'Transfer Clinica Hotel Apos Revisao', labelKey: 'travel_plans_preset_clinic_hotel_after_followup' },
+  { value: 'Transfer Hotel Aeroporto', labelKey: 'travel_plans_preset_hotel_airport' },
+] as const satisfies ReadonlyArray<{ value: string; labelKey: TranslationKey }>
 const TRANSFER_STATUS_ORDER: TransferStatus[] = ['scheduled', 'confirmed', 'completed', 'cancelled']
-
-const TRANSFER_STATUS_LABEL: Record<TransferStatus, string> = {
-  scheduled: 'Agendado',
-  confirmed: 'Confirmado',
-  completed: 'Concluido',
-  cancelled: 'Cancelado',
-}
 
 const TRANSFER_STATUS_BADGE_CLASS: Record<TransferStatus, string> = {
   scheduled: 'bg-amber-100 text-amber-700',
@@ -124,7 +119,7 @@ const EMPTY_HOTEL_FORM: HotelFormState = {
 }
 
 const EMPTY_TRANSFER_FORM: TransferFormState = {
-  title_option: TRANSFER_PRESET_TITLES[0],
+  title_option: TRANSFER_PRESET_TITLES[0].value,
   custom_title: '',
   transfer_date: '',
   transfer_time: '',
@@ -206,7 +201,7 @@ function getTransferFormTitle(form: TransferFormState): string {
 }
 
 function toTransferForm(transfer: TransferItem): TransferFormState {
-  const isPreset = TRANSFER_PRESET_TITLES.includes(transfer.title as (typeof TRANSFER_PRESET_TITLES)[number])
+  const isPreset = TRANSFER_PRESET_TITLES.some((item) => item.value === transfer.title)
   return {
     title_option: isPreset ? transfer.title : CUSTOM_TITLE_OPTION,
     custom_title: isPreset ? '' : transfer.title,
@@ -239,7 +234,22 @@ function extractErrorMessage(error: unknown, fallback: string): string {
   return fallback
 }
 
+function transferStatusLabel(status: TransferStatus, t: (key: TranslationKey) => string): string {
+  if (status === 'scheduled') return t('travel_plans_status_scheduled')
+  if (status === 'confirmed') return t('travel_plans_status_confirmed')
+  if (status === 'completed') return t('travel_plans_status_completed')
+  return t('travel_plans_status_cancelled')
+}
+
+function transferPresetLabel(value: string, t: (key: TranslationKey) => string): string {
+  const match = TRANSFER_PRESET_TITLES.find((item) => item.value === value)
+  if (!match) return value
+  return t(match.labelKey)
+}
+
 export default function TravelPlansPage() {
+  const language = usePreferencesStore((state) => state.language)
+  const t = (key: TranslationKey) => translate(language, key)
   const queryClient = useQueryClient()
 
   const [isEditorOpen, setIsEditorOpen] = useState(false)
@@ -310,10 +320,10 @@ export default function TravelPlansPage() {
       setTransfers(normalizeTransfersOrder(plan.transfers || []))
       setActiveTab('flights')
       await queryClient.invalidateQueries({ queryKey: QUERY_ADMIN_PATIENTS })
-      toast.success('Plano criado com sucesso.')
+      toast.success(t('travel_plans_create_success'))
     },
     onError: (error) => {
-      toast.error(extractErrorMessage(error, 'Não foi possível criar o plano.'))
+      toast.error(extractErrorMessage(error, t('travel_plans_create_error')))
     },
   })
 
@@ -325,10 +335,10 @@ export default function TravelPlansPage() {
         queryClient.invalidateQueries({ queryKey: QUERY_ADMIN_PATIENTS }),
         queryClient.invalidateQueries({ queryKey: [QUERY_PLAN_DETAIL, editingPlanId] }),
       ])
-      toast.success('Dados do plano atualizados.')
+      toast.success(t('travel_plans_plan_updated'))
     },
     onError: (error) => {
-      toast.error(extractErrorMessage(error, 'Não foi possível atualizar o plano.'))
+      toast.error(extractErrorMessage(error, t('travel_plans_plan_update_error')))
     },
   })
 
@@ -354,10 +364,10 @@ export default function TravelPlansPage() {
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: [QUERY_PLAN_DETAIL, editingPlanId] })
       await queryClient.invalidateQueries({ queryKey: QUERY_ADMIN_PATIENTS })
-      toast.success('Voo salvo com sucesso.')
+      toast.success(t('travel_plans_flight_saved'))
     },
     onError: (error) => {
-      toast.error(extractErrorMessage(error, 'Não foi possível salvar o voo.'))
+      toast.error(extractErrorMessage(error, t('travel_plans_flight_save_error')))
     },
   })
 
@@ -378,10 +388,10 @@ export default function TravelPlansPage() {
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: [QUERY_PLAN_DETAIL, editingPlanId] })
       await queryClient.invalidateQueries({ queryKey: QUERY_ADMIN_PATIENTS })
-      toast.success('Hotel salvo com sucesso.')
+      toast.success(t('travel_plans_hotel_saved'))
     },
     onError: (error) => {
-      toast.error(extractErrorMessage(error, 'Não foi possível salvar o hotel.'))
+      toast.error(extractErrorMessage(error, t('travel_plans_hotel_save_error')))
     },
   })
 
@@ -402,10 +412,10 @@ export default function TravelPlansPage() {
       await queryClient.invalidateQueries({ queryKey: QUERY_ADMIN_PATIENTS })
       setTransferForm({ ...EMPTY_TRANSFER_FORM })
       setEditingTransferId(null)
-      toast.success('Transfer adicionado com sucesso.')
+      toast.success(t('travel_plans_transfer_added'))
     },
     onError: (error) => {
-      toast.error(extractErrorMessage(error, 'Não foi possível adicionar o transfer.'))
+      toast.error(extractErrorMessage(error, t('travel_plans_transfer_add_error')))
     },
   })
 
@@ -439,10 +449,10 @@ export default function TravelPlansPage() {
       await queryClient.invalidateQueries({ queryKey: QUERY_ADMIN_PATIENTS })
       setTransferForm({ ...EMPTY_TRANSFER_FORM })
       setEditingTransferId(null)
-      toast.success('Transfer removido com sucesso.')
+      toast.success(t('travel_plans_transfer_removed'))
     },
     onError: (error) => {
-      toast.error(extractErrorMessage(error, 'Não foi possível remover o transfer.'))
+      toast.error(extractErrorMessage(error, t('travel_plans_transfer_remove_error')))
     },
   })
 
@@ -487,7 +497,7 @@ export default function TravelPlansPage() {
 
   const handleCreatePlan = async () => {
     if (!selectedPatientId) {
-      toast.error('Selecione um paciente para criar o plano.')
+      toast.error(t('travel_plans_select_patient_to_create'))
       return
     }
 
@@ -502,7 +512,7 @@ export default function TravelPlansPage() {
   const handleSaveFlight = async (direction: FlightDirection, form: FlightFormState) => {
     if (!editingPlanId) return
     if (!form.flight_number || !form.flight_date || !form.flight_time || !form.airport) {
-      toast.error('Preencha número, data, hora e aeroporto do voo.')
+      toast.error(t('travel_plans_required_flight_fields'))
       return
     }
 
@@ -523,7 +533,7 @@ export default function TravelPlansPage() {
       !hotelForm.checkout_date ||
       !hotelForm.checkout_time
     ) {
-      toast.error('Preencha os campos obrigatórios do hotel.')
+      toast.error(t('travel_plans_required_hotel_fields'))
       return
     }
 
@@ -541,7 +551,7 @@ export default function TravelPlansPage() {
       !transferForm.origin.trim() ||
       !transferForm.destination.trim()
     ) {
-      toast.error('Preencha os campos obrigatórios do transfer.')
+      toast.error(t('travel_plans_required_transfer_fields'))
       return
     }
 
@@ -568,7 +578,7 @@ export default function TravelPlansPage() {
 
     setTransferForm({ ...EMPTY_TRANSFER_FORM })
     setEditingTransferId(null)
-    toast.success('Transfer atualizado com sucesso.')
+    toast.success(t('travel_plans_transfer_updated'))
   }
 
   const handleEditTransfer = (transfer: TransferItem) => {
@@ -577,7 +587,7 @@ export default function TravelPlansPage() {
   }
 
   const handleDeleteTransfer = async (transferId: string) => {
-    const shouldDelete = window.confirm('Deseja remover este transfer?')
+    const shouldDelete = window.confirm(t('travel_plans_delete_transfer_confirm'))
     if (!shouldDelete) return
 
     await deleteTransferMutation.mutateAsync(transferId)
@@ -591,7 +601,7 @@ export default function TravelPlansPage() {
       transferId: transfer.id,
       payload: { status: nextStatus },
     })
-    toast.success(`Status alterado para ${TRANSFER_STATUS_LABEL[nextStatus]}.`)
+    toast.success(`${t('travel_plans_status_changed_to')} ${transferStatusLabel(nextStatus, t)}.`)
   }
 
   const persistTransferOrder = async (orderedTransfers: TransferItem[]) => {
@@ -607,9 +617,9 @@ export default function TravelPlansPage() {
       )
       await queryClient.invalidateQueries({ queryKey: [QUERY_PLAN_DETAIL, editingPlanId] })
       await queryClient.invalidateQueries({ queryKey: QUERY_ADMIN_PATIENTS })
-      toast.success('Ordem dos transfers atualizada.')
+      toast.success(t('travel_plans_order_saved'))
     } catch (error) {
-      toast.error(extractErrorMessage(error, 'Não foi possível reordenar os transfers.'))
+      toast.error(extractErrorMessage(error, t('travel_plans_order_error')))
       await queryClient.invalidateQueries({ queryKey: [QUERY_PLAN_DETAIL, editingPlanId] })
     }
   }
@@ -630,8 +640,8 @@ export default function TravelPlansPage() {
   return (
     <div className="space-y-5">
       <SectionHeader
-        title="Planos de Viagem"
-        subtitle="Gerencie as informações logísticas dos pacientes internacionais."
+        title={t('travel_plans_title')}
+        subtitle={t('travel_plans_subtitle')}
         actions={(
           <>
             <Button
@@ -641,11 +651,11 @@ export default function TravelPlansPage() {
               disabled={adminPatientsQuery.isFetching}
             >
               <RefreshCw className={`h-4 w-4 ${adminPatientsQuery.isFetching ? 'animate-spin' : ''}`} />
-              Atualizar
+              {t('travel_plans_refresh')}
             </Button>
             <Button type="button" onClick={openCreatePlanModal}>
               <Plus className="h-4 w-4" />
-              Novo Plano
+              {t('travel_plans_new_plan')}
             </Button>
           </>
         )}
@@ -656,37 +666,37 @@ export default function TravelPlansPage() {
           <table className="min-w-full divide-y divide-slate-100">
             <thead className="bg-slate-50">
               <tr>
-                <th className="px-4 py-3 text-left overline">PACIENTE</th>
-                <th className="px-4 py-3 text-left overline">DATA DE CHEGADA</th>
-                <th className="px-4 py-3 text-left overline">HOTEL</th>
-                <th className="px-4 py-3 text-left overline">TRANSFERS</th>
-                <th className="px-4 py-3 text-left overline">STATUS DO PRÓXIMO TRANSFER</th>
-                <th className="px-4 py-3 text-right overline">AÇÕES</th>
+                <th className="px-4 py-3 text-left overline">{t('travel_plans_col_patient')}</th>
+                <th className="px-4 py-3 text-left overline">{t('travel_plans_col_arrival_date')}</th>
+                <th className="px-4 py-3 text-left overline">{t('travel_plans_col_hotel')}</th>
+                <th className="px-4 py-3 text-left overline">{t('travel_plans_col_transfers')}</th>
+                <th className="px-4 py-3 text-left overline">{t('travel_plans_col_next_transfer_status')}</th>
+                <th className="px-4 py-3 text-right overline">{t('travel_plans_col_actions')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 bg-white">
               {adminPatientsQuery.isLoading ? (
                 <tr>
                   <td colSpan={6} className="px-4 py-10 text-center text-sm text-slate-500">
-                    Carregando planos de viagem...
+                    {t('travel_plans_loading')}
                   </td>
                 </tr>
               ) : adminPatientsQuery.isError ? (
                 <tr>
                   <td colSpan={6} className="px-4 py-10 text-center text-sm text-slate-500">
-                    Não foi possível carregar os planos de viagem.
+                    {t('travel_plans_load_error')}
                   </td>
                 </tr>
               ) : patientsWithPlans.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="px-4 py-10 text-center text-sm text-slate-500">
-                    Ainda não existe nenhum plano de viagem cadastrado.
+                    {t('travel_plans_empty')}
                   </td>
                 </tr>
               ) : (
                 patientsWithPlans.map((item) => {
                   const status = item.next_transfer_status as TransferStatus | ''
-                  const statusLabel = status ? TRANSFER_STATUS_LABEL[status] : '-'
+                  const statusLabel = status ? transferStatusLabel(status, t) : '-'
                   const statusClass = status ? TRANSFER_STATUS_BADGE_CLASS[status] : ''
 
                   return (
@@ -713,7 +723,7 @@ export default function TravelPlansPage() {
                             onClick={() => openEditPlanModal(item.travel_plan_id as string, item.patient_id)}
                           >
                             <Pencil className="h-4 w-4" />
-                            Editar Plano
+                            {t('travel_plans_edit_plan')}
                           </Button>
                         ) : (
                           <span className="text-sm text-slate-500">-</span>
@@ -731,18 +741,18 @@ export default function TravelPlansPage() {
       <Modal
         isOpen={isEditorOpen}
         onClose={closeEditor}
-        title={editingPlanId ? 'Editar Plano de Viagem' : 'Novo Plano de Viagem'}
+        title={editingPlanId ? t('travel_plans_modal_edit_title') : t('travel_plans_modal_new_title')}
         className="max-w-6xl"
       >
         {!editingPlanId ? (
           <div className="space-y-4">
             <Card className="border-dashed border-slate-300 bg-slate-50">
-              <p className="mb-2 text-sm font-semibold text-night">Selecione o paciente</p>
+              <p className="mb-2 text-sm font-semibold text-night">{t('travel_plans_select_patient')}</p>
               <Select
                 value={selectedPatientId}
                 onChange={(event) => setSelectedPatientId(event.target.value)}
               >
-                <option value="">Selecione</option>
+                <option value="">{t('travel_plans_select')}</option>
                 {availablePatientsForNewPlan.map((item) => (
                   <option key={item.patient_id} value={item.patient_id}>
                     {item.patient_name}
@@ -751,7 +761,7 @@ export default function TravelPlansPage() {
               </Select>
               {availablePatientsForNewPlan.length === 0 ? (
                 <p className="mt-2 text-xs text-slate-500">
-                  Todos os pacientes já possuem plano cadastrado.
+                  {t('travel_plans_all_patients_have_plan')}
                 </p>
               ) : null}
               <div className="mt-3 flex justify-end">
@@ -761,33 +771,33 @@ export default function TravelPlansPage() {
                   disabled={!selectedPatientId || createPlanMutation.isPending}
                 >
                   <Luggage className="h-4 w-4" />
-                  {createPlanMutation.isPending ? 'Criando...' : 'Criar plano'}
+                  {createPlanMutation.isPending ? t('travel_plans_creating') : t('travel_plans_create')}
                 </Button>
               </div>
             </Card>
           </div>
         ) : planDetailQuery.isLoading ? (
-          <div className="py-10 text-center text-sm text-slate-500">Carregando plano...</div>
+          <div className="py-10 text-center text-sm text-slate-500">{t('travel_plans_loading_plan')}</div>
         ) : planDetailQuery.isError ? (
           <div className="py-10 text-center text-sm text-slate-500">
-            Não foi possível carregar o plano selecionado.
+            {t('travel_plans_load_plan_error')}
           </div>
         ) : (
           <div className="space-y-4">
             <Card>
               <div className="grid gap-3 md:grid-cols-[1fr_300px_auto] md:items-end">
                 <div>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Paciente</p>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{t('travel_plans_patient_label')}</p>
                   <p className="text-sm font-semibold text-night">{currentPatient?.patient_name || '-'}</p>
                 </div>
                 <div>
                   <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    Passaporte
+                    {t('travel_plans_passport_label')}
                   </p>
                   <Input
                     value={passportNumber}
                     onChange={(event) => setPassportNumber(event.target.value)}
-                    placeholder="Número do passaporte"
+                    placeholder={t('travel_plans_passport_placeholder')}
                   />
                 </div>
                 <Button
@@ -796,7 +806,7 @@ export default function TravelPlansPage() {
                   onClick={() => void handleSavePlan()}
                   disabled={updatePlanMutation.isPending}
                 >
-                  Salvar Plano
+                  {t('travel_plans_save_plan')}
                 </Button>
               </div>
             </Card>
@@ -809,21 +819,21 @@ export default function TravelPlansPage() {
                   onClick={() => setActiveTab('flights')}
                 >
                   <Plane className="h-4 w-4" />
-                  Voos
+                  {t('travel_plans_tab_flights')}
                 </Button>
                 <Button
                   type="button"
                   variant={activeTab === 'hotel' ? 'primary' : 'secondary'}
                   onClick={() => setActiveTab('hotel')}
                 >
-                  Hotel
+                  {t('travel_plans_tab_hotel')}
                 </Button>
                 <Button
                   type="button"
                   variant={activeTab === 'transfers' ? 'primary' : 'secondary'}
                   onClick={() => setActiveTab('transfers')}
                 >
-                  Transfers
+                  {t('travel_plans_tab_transfers')}
                 </Button>
               </div>
             </Card>
@@ -831,14 +841,14 @@ export default function TravelPlansPage() {
             {activeTab === 'flights' ? (
               <div className="grid gap-4 xl:grid-cols-2">
                 <Card>
-                  <h3 className="section-heading mb-3">Voo de Chegada</h3>
+                  <h3 className="section-heading mb-3">{t('travel_plans_arrival_flight')}</h3>
                   <div className="grid gap-3 md:grid-cols-2">
                     <Input
                       value={arrivalFlight.flight_number}
                       onChange={(event) =>
                         setArrivalFlight((prev) => ({ ...prev, flight_number: event.target.value }))
                       }
-                      placeholder="Número do voo"
+                      placeholder={t('travel_plans_flight_number_placeholder')}
                     />
                     <Input
                       type="date"
@@ -859,7 +869,7 @@ export default function TravelPlansPage() {
                       onChange={(event) =>
                         setArrivalFlight((prev) => ({ ...prev, airline: event.target.value }))
                       }
-                      placeholder="Companhia"
+                      placeholder={t('travel_plans_airline_placeholder')}
                     />
                     <Input
                       className="md:col-span-2"
@@ -867,7 +877,7 @@ export default function TravelPlansPage() {
                       onChange={(event) =>
                         setArrivalFlight((prev) => ({ ...prev, airport: event.target.value }))
                       }
-                      placeholder="Aeroporto"
+                      placeholder={t('travel_plans_airport_placeholder')}
                     />
                     <TextArea
                       className="md:col-span-2"
@@ -876,7 +886,7 @@ export default function TravelPlansPage() {
                       onChange={(event) =>
                         setArrivalFlight((prev) => ({ ...prev, observations: event.target.value }))
                       }
-                      placeholder="Observações"
+                      placeholder={t('travel_plans_observations_placeholder')}
                     />
                   </div>
                   <div className="mt-3 flex justify-end">
@@ -885,20 +895,20 @@ export default function TravelPlansPage() {
                       onClick={() => void handleSaveFlight('arrival', arrivalFlight)}
                       disabled={upsertFlightMutation.isPending}
                     >
-                      Salvar Voo de Chegada
+                      {t('travel_plans_save_arrival_flight')}
                     </Button>
                   </div>
                 </Card>
 
                 <Card>
-                  <h3 className="section-heading mb-3">Voo de Regresso</h3>
+                  <h3 className="section-heading mb-3">{t('travel_plans_departure_flight')}</h3>
                   <div className="grid gap-3 md:grid-cols-2">
                     <Input
                       value={departureFlight.flight_number}
                       onChange={(event) =>
                         setDepartureFlight((prev) => ({ ...prev, flight_number: event.target.value }))
                       }
-                      placeholder="Número do voo"
+                      placeholder={t('travel_plans_flight_number_placeholder')}
                     />
                     <Input
                       type="date"
@@ -919,7 +929,7 @@ export default function TravelPlansPage() {
                       onChange={(event) =>
                         setDepartureFlight((prev) => ({ ...prev, airline: event.target.value }))
                       }
-                      placeholder="Companhia"
+                      placeholder={t('travel_plans_airline_placeholder')}
                     />
                     <Input
                       className="md:col-span-2"
@@ -927,7 +937,7 @@ export default function TravelPlansPage() {
                       onChange={(event) =>
                         setDepartureFlight((prev) => ({ ...prev, airport: event.target.value }))
                       }
-                      placeholder="Aeroporto"
+                      placeholder={t('travel_plans_airport_placeholder')}
                     />
                     <TextArea
                       className="md:col-span-2"
@@ -936,7 +946,7 @@ export default function TravelPlansPage() {
                       onChange={(event) =>
                         setDepartureFlight((prev) => ({ ...prev, observations: event.target.value }))
                       }
-                      placeholder="Observações"
+                      placeholder={t('travel_plans_observations_placeholder')}
                     />
                   </div>
                   <div className="mt-3 flex justify-end">
@@ -945,7 +955,7 @@ export default function TravelPlansPage() {
                       onClick={() => void handleSaveFlight('departure', departureFlight)}
                       disabled={upsertFlightMutation.isPending}
                     >
-                      Salvar Voo de Regresso
+                      {t('travel_plans_save_departure_flight')}
                     </Button>
                   </div>
                 </Card>
@@ -954,23 +964,23 @@ export default function TravelPlansPage() {
 
             {activeTab === 'hotel' ? (
               <Card>
-                <h3 className="section-heading mb-3">Informações do Hotel</h3>
+                <h3 className="section-heading mb-3">{t('travel_plans_hotel_info')}</h3>
                 <div className="grid gap-3 md:grid-cols-2">
                   <Input
                     value={hotelForm.hotel_name}
                     onChange={(event) => setHotelForm((prev) => ({ ...prev, hotel_name: event.target.value }))}
-                    placeholder="Nome do hotel"
+                    placeholder={t('travel_plans_hotel_name_placeholder')}
                   />
                   <Input
                     value={hotelForm.hotel_phone}
                     onChange={(event) => setHotelForm((prev) => ({ ...prev, hotel_phone: event.target.value }))}
-                    placeholder="Telefone do hotel"
+                    placeholder={t('travel_plans_hotel_phone_placeholder')}
                   />
                   <Input
                     className="md:col-span-2"
                     value={hotelForm.address}
                     onChange={(event) => setHotelForm((prev) => ({ ...prev, address: event.target.value }))}
-                    placeholder="Endereço"
+                    placeholder={t('travel_plans_address_placeholder')}
                   />
                   <Input
                     type="date"
@@ -995,19 +1005,19 @@ export default function TravelPlansPage() {
                   <Input
                     value={hotelForm.room_number}
                     onChange={(event) => setHotelForm((prev) => ({ ...prev, room_number: event.target.value }))}
-                    placeholder="Número do quarto"
+                    placeholder={t('travel_plans_room_number_placeholder')}
                   />
                   <Input
                     value={hotelForm.location_link}
                     onChange={(event) => setHotelForm((prev) => ({ ...prev, location_link: event.target.value }))}
-                    placeholder="Link do Google Maps"
+                    placeholder={t('travel_plans_maps_link_placeholder')}
                   />
                   <TextArea
                     className="md:col-span-2"
                     rows={3}
                     value={hotelForm.observations}
                     onChange={(event) => setHotelForm((prev) => ({ ...prev, observations: event.target.value }))}
-                    placeholder="Observações"
+                    placeholder={t('travel_plans_observations_placeholder')}
                   />
                 </div>
 
@@ -1017,7 +1027,7 @@ export default function TravelPlansPage() {
                     onClick={() => void handleSaveHotel()}
                     disabled={upsertHotelMutation.isPending}
                   >
-                    Salvar Hotel
+                    {t('travel_plans_save_hotel')}
                   </Button>
                 </div>
               </Card>
@@ -1028,7 +1038,7 @@ export default function TravelPlansPage() {
                 <Card>
                   <div className="mb-3 flex items-center justify-between">
                     <h3 className="section-heading">
-                      {editingTransferId ? 'Editar Transfer' : 'Adicionar Transfer'}
+                      {editingTransferId ? t('travel_plans_transfer_edit_title') : t('travel_plans_transfer_add_title')}
                     </h3>
                     {editingTransferId ? (
                       <Button
@@ -1040,7 +1050,7 @@ export default function TravelPlansPage() {
                           setTransferForm({ ...EMPTY_TRANSFER_FORM })
                         }}
                       >
-                        Cancelar edição
+                        {t('travel_plans_cancel_edit')}
                       </Button>
                     ) : null}
                   </div>
@@ -1055,12 +1065,12 @@ export default function TravelPlansPage() {
                         }))
                       }
                     >
-                      {TRANSFER_PRESET_TITLES.map((title) => (
-                        <option key={title} value={title}>
-                          {title}
+                      {TRANSFER_PRESET_TITLES.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {t(option.labelKey)}
                         </option>
                       ))}
-                      <option value={CUSTOM_TITLE_OPTION}>Titulo personalizado</option>
+                      <option value={CUSTOM_TITLE_OPTION}>{t('travel_plans_custom_title_option')}</option>
                     </Select>
 
                     <Select
@@ -1072,10 +1082,10 @@ export default function TravelPlansPage() {
                         }))
                       }
                     >
-                      <option value="scheduled">Agendado</option>
-                      <option value="confirmed">Confirmado</option>
-                      <option value="completed">Concluido</option>
-                      <option value="cancelled">Cancelado</option>
+                      <option value="scheduled">{t('travel_plans_status_scheduled')}</option>
+                      <option value="confirmed">{t('travel_plans_status_confirmed')}</option>
+                      <option value="completed">{t('travel_plans_status_completed')}</option>
+                      <option value="cancelled">{t('travel_plans_status_cancelled')}</option>
                     </Select>
 
                     {transferForm.title_option === CUSTOM_TITLE_OPTION ? (
@@ -1085,7 +1095,7 @@ export default function TravelPlansPage() {
                         onChange={(event) =>
                           setTransferForm((prev) => ({ ...prev, custom_title: event.target.value }))
                         }
-                        placeholder="Informe o título"
+                        placeholder={t('travel_plans_custom_title_placeholder')}
                       />
                     ) : null}
 
@@ -1108,14 +1118,14 @@ export default function TravelPlansPage() {
                       onChange={(event) =>
                         setTransferForm((prev) => ({ ...prev, origin: event.target.value }))
                       }
-                      placeholder="Origem"
+                      placeholder={t('travel_plans_origin_placeholder')}
                     />
                     <Input
                       value={transferForm.destination}
                       onChange={(event) =>
                         setTransferForm((prev) => ({ ...prev, destination: event.target.value }))
                       }
-                      placeholder="Destino"
+                      placeholder={t('travel_plans_destination_placeholder')}
                     />
                     <TextArea
                       className="md:col-span-2"
@@ -1124,7 +1134,7 @@ export default function TravelPlansPage() {
                       onChange={(event) =>
                         setTransferForm((prev) => ({ ...prev, observations: event.target.value }))
                       }
-                      placeholder="Observações"
+                      placeholder={t('travel_plans_observations_placeholder')}
                     />
                   </div>
 
@@ -1135,7 +1145,7 @@ export default function TravelPlansPage() {
                       disabled={createTransferMutation.isPending || updateTransferMutation.isPending}
                     >
                       <Plus className="h-4 w-4" />
-                      {editingTransferId ? 'Salvar alterações' : 'Adicionar Transfer'}
+                      {editingTransferId ? t('travel_plans_save_changes') : t('travel_plans_add_transfer')}
                     </Button>
                   </div>
                 </Card>
@@ -1143,11 +1153,11 @@ export default function TravelPlansPage() {
                 <div className="space-y-3">
                   {transfers.length === 0 ? (
                     <Card>
-                      <p className="text-sm text-slate-500">Nenhum transfer cadastrado.</p>
+                      <p className="text-sm text-slate-500">{t('travel_plans_no_transfers')}</p>
                     </Card>
                   ) : (
                     transfers.map((transfer) => {
-                      const statusLabel = TRANSFER_STATUS_LABEL[transfer.status]
+                      const statusLabel = transferStatusLabel(transfer.status, t)
                       const statusClass = TRANSFER_STATUS_BADGE_CLASS[transfer.status]
 
                       return (
@@ -1163,16 +1173,16 @@ export default function TravelPlansPage() {
                             <div className="min-w-0 flex-1">
                               <div className="mb-2 flex items-center gap-2">
                                 <GripVertical className="h-4 w-4 text-slate-400" />
-                                <p className="text-sm font-semibold text-night">{transfer.title}</p>
+                                <p className="text-sm font-semibold text-night">{transferPresetLabel(transfer.title, t)}</p>
                                 <Badge className={statusClass}>{statusLabel}</Badge>
                                 {transfer.confirmed_by_patient ? (
                                   <Badge className="bg-emerald-100 text-emerald-700">
-                                    VISTO PELO PACIENTE
+                                    {t('travel_plans_seen_by_patient')}
                                   </Badge>
                                 ) : null}
                               </div>
                               <p className="text-xs text-slate-500">
-                                {formatDate(transfer.transfer_date)} às {normalizeApiTime(transfer.transfer_time)}
+                                {formatDate(transfer.transfer_date)} {t('travel_plans_at')} {normalizeApiTime(transfer.transfer_time)}
                               </p>
                               <p className="mt-1 text-sm text-slate-700">
                                 {transfer.origin} → {transfer.destination}
@@ -1190,7 +1200,7 @@ export default function TravelPlansPage() {
                                 onClick={() => handleEditTransfer(transfer)}
                               >
                                 <Pencil className="h-4 w-4" />
-                                Editar
+                                {t('travel_plans_edit')}
                               </Button>
                               <Button
                                 type="button"
@@ -1198,7 +1208,7 @@ export default function TravelPlansPage() {
                                 variant="secondary"
                                 onClick={() => void handleCycleTransferStatus(transfer)}
                               >
-                                Mudar Status
+                                {t('travel_plans_change_status')}
                               </Button>
                               <Button
                                 type="button"
@@ -1207,7 +1217,7 @@ export default function TravelPlansPage() {
                                 onClick={() => void handleDeleteTransfer(transfer.id)}
                               >
                                 <Trash2 className="h-4 w-4" />
-                                Excluir
+                                {t('travel_plans_delete')}
                               </Button>
                             </div>
                           </div>

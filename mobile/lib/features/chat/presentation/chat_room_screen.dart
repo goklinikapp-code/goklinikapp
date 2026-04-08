@@ -8,6 +8,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 
+import '../../../core/settings/app_preferences.dart';
+import '../../../core/settings/app_translations.dart';
 import '../../../core/utils/api_media_url.dart';
 import '../../../core/widgets/gk_avatar.dart';
 import '../../auth/presentation/auth_controller.dart';
@@ -33,12 +35,17 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
   final Set<String> _delayedAssistantMessageIds = <String>{};
   bool get _isAiChat => widget.roomId == aiChatRoomId;
 
-  static const _quickReplies = [
-    'Tudo bem',
-    'Sentindo dor',
-    'Dúvida sobre remédio',
-    'Posso dirigir?',
-  ];
+  String _t(String key) {
+    final language = ref.read(appPreferencesControllerProvider).language;
+    return appTr(key: key, language: language);
+  }
+
+  List<String> get _quickReplies => [
+        _t('chat_quick_reply_ok'),
+        _t('chat_quick_reply_pain'),
+        _t('chat_quick_reply_medication'),
+        _t('chat_quick_reply_drive'),
+      ];
 
   @override
   void initState() {
@@ -161,9 +168,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
     if (_isAiChat) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Neste canal, envie apenas mensagens de texto.'),
-        ),
+        SnackBar(content: Text(_t('chat_room_text_only'))),
       );
       return;
     }
@@ -206,22 +211,22 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
         }
       }
     }
-    return 'Não foi possível enviar sua mensagem agora.';
+    return _t('chat_room_send_error');
   }
 
   String _displayContent(String value) {
     var sanitized = value
         .replaceAll(
           RegExp(r'assistente\s+IA', caseSensitive: false),
-          'atendimento da clínica',
+          _t('chat_care_label'),
         )
         .replaceAll(
           RegExp(r'\bIA\b', caseSensitive: false),
-          'atendimento',
+          _t('chat_care_short_label'),
         )
         .replaceAll(
           'opção de dúvida urgente',
-          'opção de mensagem para o médico',
+          _t('chat_doctor_option_label'),
         );
 
     return sanitized;
@@ -232,10 +237,12 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
     final messagesState = ref.watch(chatMessagesProvider(widget.roomId));
     final session = ref.watch(authControllerProvider).session;
     final tenantBranding = ref.watch(tenantBrandingProvider);
+    final language = ref.watch(appPreferencesControllerProvider).language;
+    String t(String key) => appTr(key: key, language: language);
     final colorScheme = Theme.of(context).colorScheme;
     final clinicName = tenantBranding.name.trim().isNotEmpty
         ? tenantBranding.name.trim()
-        : 'Equipe da Clínica';
+        : t('chat_room_team_label');
     final aiLogoUrl = (tenantBranding.logoUrl ?? '').trim();
 
     return Scaffold(
@@ -243,7 +250,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
         title: Row(
           children: [
             GKAvatar(
-              name: _isAiChat ? clinicName : 'Equipe',
+              name: _isAiChat ? clinicName : t('chat_room_team_short'),
               imageUrl: _isAiChat && aiLogoUrl.isNotEmpty ? aiLogoUrl : null,
               radius: 18,
             ),
@@ -252,12 +259,14 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  _isAiChat ? clinicName : 'Equipe da Clínica',
+                  _isAiChat ? clinicName : t('chat_room_team_label'),
                   style: const TextStyle(
                       fontSize: 14, fontWeight: FontWeight.w700),
                 ),
                 Text(
-                  _isAiChat ? 'ATENDIMENTO DIGITAL' : 'ONLINE',
+                  _isAiChat
+                      ? t('chat_room_digital_care')
+                      : t('chat_room_online'),
                   style: TextStyle(
                     fontSize: 10,
                     color: colorScheme.secondary,
@@ -273,7 +282,8 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
           Expanded(
             child: messagesState.when(
               loading: () => const Center(child: CircularProgressIndicator()),
-              error: (error, _) => Center(child: Text('Erro no chat: $error')),
+              error: (error, _) =>
+                  Center(child: Text('${t('chat_room_error_prefix')} $error')),
               data: (items) {
                 final visibleItems = items
                     .where((item) =>
@@ -283,9 +293,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
                     _isAiChat && (_awaitingAiReplyVisual || _staffTyping);
 
                 if (visibleItems.isEmpty && !showTypingIndicator) {
-                  return const Center(
-                      child: Text(
-                          'Conversa iniciada. Envie sua primeira mensagem.'));
+                  return Center(child: Text(t('chat_room_empty')));
                 }
 
                 return ListView.builder(
@@ -417,7 +425,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
                       cursorColor: colorScheme.primary,
                       style: TextStyle(color: colorScheme.onSurface),
                       decoration: InputDecoration(
-                        hintText: 'Digite sua mensagem',
+                        hintText: t('chat_room_placeholder'),
                         hintStyle:
                             TextStyle(color: colorScheme.onSurfaceVariant),
                       ),

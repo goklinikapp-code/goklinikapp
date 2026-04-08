@@ -4,6 +4,8 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../../core/settings/app_preferences.dart';
+import '../../../core/settings/app_translations.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/gk_badge.dart';
 import '../../../core/widgets/gk_button.dart';
@@ -12,6 +14,16 @@ import '../../../core/widgets/gk_loading_shimmer.dart';
 import '../data/travel_plans_repository_impl.dart';
 import '../domain/travel_plan_models.dart';
 import 'travel_plan_controller.dart';
+
+typedef _Translate = String Function(String key);
+
+String _replaceParams(String source, Map<String, String> values) {
+  var result = source;
+  for (final entry in values.entries) {
+    result = result.replaceAll('{${entry.key}}', entry.value);
+  }
+  return result;
+}
 
 class TravelPlanScreen extends ConsumerStatefulWidget {
   const TravelPlanScreen({super.key});
@@ -36,18 +48,22 @@ class _TravelPlanScreenState extends ConsumerState<TravelPlanScreen> {
     });
 
     try {
-      await ref.read(travelPlansRepositoryProvider).confirmTransfer(transfer.id);
+      await ref
+          .read(travelPlansRepositoryProvider)
+          .confirmTransfer(transfer.id);
+      final language = ref.read(appPreferencesControllerProvider).language;
+      String t(String key) => appTr(key: key, language: language);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Transfer confirmado com sucesso.')),
+        SnackBar(content: Text(t('travel_plan_transfer_confirm_success'))),
       );
       ref.invalidate(travelPlanProvider);
     } catch (_) {
+      final language = ref.read(appPreferencesControllerProvider).language;
+      String t(String key) => appTr(key: key, language: language);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Nao foi possivel confirmar este transfer.'),
-        ),
+        SnackBar(content: Text(t('travel_plan_transfer_confirm_error'))),
       );
     } finally {
       if (mounted) {
@@ -73,10 +89,13 @@ class _TravelPlanScreenState extends ConsumerState<TravelPlanScreen> {
   @override
   Widget build(BuildContext context) {
     final planState = ref.watch(travelPlanProvider);
+    final language = ref.watch(appPreferencesControllerProvider).language;
+    final localeTag = localeFromLanguage(language);
+    String t(String key) => appTr(key: key, language: language);
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Plano de Viagem'),
+        title: Text(t('travel_plan_title')),
         actions: [
           IconButton(
             onPressed: _refresh,
@@ -104,8 +123,8 @@ class _TravelPlanScreenState extends ConsumerState<TravelPlanScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      'Nao foi possivel carregar seu plano de viagem.',
+                    Text(
+                      t('travel_plan_load_error'),
                       style: TextStyle(fontWeight: FontWeight.w700),
                     ),
                     const SizedBox(height: 8),
@@ -115,7 +134,7 @@ class _TravelPlanScreenState extends ConsumerState<TravelPlanScreen> {
                     ),
                     const SizedBox(height: 14),
                     GKButton(
-                      label: 'Tentar novamente',
+                      label: t('travel_plan_try_again'),
                       onPressed: _refresh,
                     ),
                   ],
@@ -132,24 +151,21 @@ class _TravelPlanScreenState extends ConsumerState<TravelPlanScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Row(
+                        Row(
                           children: [
-                            Icon(Icons.luggage_rounded, size: 22),
-                            SizedBox(width: 8),
+                            const Icon(Icons.luggage_rounded, size: 22),
+                            const SizedBox(width: 8),
                             Text(
-                              'Plano de Viagem',
+                              t('travel_plan_title'),
                               style: TextStyle(fontWeight: FontWeight.w700),
                             ),
                           ],
                         ),
                         const SizedBox(height: 10),
-                        const Text(
-                          'A clinica ainda nao cadastrou seu plano de viagem. '
-                          'Assim que estiver pronto, voce vera voos, hotel e transfers aqui.',
-                        ),
+                        Text(t('travel_plan_empty_description')),
                         const SizedBox(height: 16),
                         GKButton(
-                          label: 'Falar com a clinica',
+                          label: t('travel_plan_contact_clinic'),
                           onPressed: () => context.go('/chat'),
                           icon: const Icon(Icons.chat_bubble_outline_rounded),
                         ),
@@ -160,8 +176,12 @@ class _TravelPlanScreenState extends ConsumerState<TravelPlanScreen> {
               );
             }
 
-            final subtitle = _buildTravelRangeSubtitle(plan);
-            final events = _buildTimelineEvents(plan);
+            final subtitle = _buildTravelRangeSubtitle(
+              plan,
+              t,
+              localeTag,
+            );
+            final events = _buildTimelineEvents(plan, t);
 
             return ListView(
               padding: const EdgeInsets.all(16),
@@ -170,8 +190,8 @@ class _TravelPlanScreenState extends ConsumerState<TravelPlanScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
-                        'Plano de Viagem',
+                      Text(
+                        t('travel_plan_title'),
                         style: TextStyle(
                           fontSize: 20,
                           fontWeight: FontWeight.w700,
@@ -195,12 +215,20 @@ class _TravelPlanScreenState extends ConsumerState<TravelPlanScreen> {
                   return _TimelineTile(
                     event: event,
                     isLast: isLast,
-                    isConfirming: _confirmingTransfers.contains(event.transfer?.id),
+                    translate: t,
+                    localeTag: localeTag,
+                    patientSeenBadgeLabel: t('travel_plan_patient_seen_badge'),
+                    openMapLabel: t('travel_plan_open_maps'),
+                    confirmingLabel: t('travel_plan_confirming'),
+                    confirmReadLabel: t('travel_plan_confirm_read'),
+                    isConfirming:
+                        _confirmingTransfers.contains(event.transfer?.id),
                     onConfirmTransfer: event.transfer == null
                         ? null
                         : () => _confirmTransfer(event.transfer!),
-                    onOpenMap:
-                        event.mapLink == null ? null : () => _openMapLink(event.mapLink!),
+                    onOpenMap: event.mapLink == null
+                        ? null
+                        : () => _openMapLink(event.mapLink!),
                   );
                 }),
               ],
@@ -216,6 +244,12 @@ class _TimelineTile extends StatelessWidget {
   const _TimelineTile({
     required this.event,
     required this.isLast,
+    required this.translate,
+    required this.localeTag,
+    required this.patientSeenBadgeLabel,
+    required this.openMapLabel,
+    required this.confirmingLabel,
+    required this.confirmReadLabel,
     required this.isConfirming,
     this.onConfirmTransfer,
     this.onOpenMap,
@@ -223,6 +257,12 @@ class _TimelineTile extends StatelessWidget {
 
   final _TimelineEvent event;
   final bool isLast;
+  final _Translate translate;
+  final String localeTag;
+  final String patientSeenBadgeLabel;
+  final String openMapLabel;
+  final String confirmingLabel;
+  final String confirmReadLabel;
   final bool isConfirming;
   final VoidCallback? onConfirmTransfer;
   final VoidCallback? onOpenMap;
@@ -274,7 +314,8 @@ class _TimelineTile extends StatelessWidget {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    DateFormat('dd MMM yyyy - HH:mm', 'pt_BR').format(event.dateTime),
+                    DateFormat('dd MMM yyyy - HH:mm', localeTag)
+                        .format(event.dateTime),
                     style: const TextStyle(color: Colors.black54),
                   ),
                   if (event.routeText.isNotEmpty) ...[
@@ -295,13 +336,13 @@ class _TimelineTile extends StatelessWidget {
                       runSpacing: 8,
                       children: [
                         GKBadge(
-                          label: _statusLabel(event.status!),
+                          label: _statusLabel(event.status!, translate),
                           background: _statusBackground(event.status!),
                           foreground: _statusForeground(event.status!),
                         ),
                         if (event.confirmedByPatient)
-                          const GKBadge(
-                            label: 'VISTO PELO PACIENTE',
+                          GKBadge(
+                            label: patientSeenBadgeLabel,
                             background: Color(0xFFD1FAE5),
                             foreground: Color(0xFF047857),
                           ),
@@ -313,10 +354,11 @@ class _TimelineTile extends StatelessWidget {
                     TextButton.icon(
                       onPressed: onOpenMap,
                       icon: const Icon(Icons.map_outlined, size: 18),
-                      label: const Text('Abrir no Google Maps'),
+                      label: Text(openMapLabel),
                     ),
                   ],
-                  if (event.transfer?.canConfirmRead == true && onConfirmTransfer != null) ...[
+                  if (event.transfer?.canConfirmRead == true &&
+                      onConfirmTransfer != null) ...[
                     const SizedBox(height: 10),
                     SizedBox(
                       width: double.infinity,
@@ -333,7 +375,7 @@ class _TimelineTile extends StatelessWidget {
                               )
                             : const Icon(Icons.check_circle_outline_rounded),
                         label: Text(
-                          isConfirming ? 'Confirmando...' : 'Confirmar que viu',
+                          isConfirming ? confirmingLabel : confirmReadLabel,
                         ),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: GKColors.secondary,
@@ -378,7 +420,10 @@ class _TimelineEvent {
   final TransferItem? transfer;
 }
 
-List<_TimelineEvent> _buildTimelineEvents(TravelPlanModel plan) {
+List<_TimelineEvent> _buildTimelineEvents(
+  TravelPlanModel plan,
+  _Translate t,
+) {
   final events = <_TimelineEvent>[];
 
   if (plan.arrivalFlight != null) {
@@ -387,7 +432,8 @@ List<_TimelineEvent> _buildTimelineEvents(TravelPlanModel plan) {
       _TimelineEvent(
         id: 'arrival-${flight.id}',
         icon: Icons.flight_takeoff_rounded,
-        title: 'Voo de Chegada ${flight.flightNumber}'.trim(),
+        title:
+            '${t('travel_plan_arrival_flight')} ${flight.flightNumber}'.trim(),
         dateTime: flight.dateTime,
         routeText: flight.airport,
         observations: flight.observations,
@@ -409,7 +455,7 @@ List<_TimelineEvent> _buildTimelineEvents(TravelPlanModel plan) {
       _TimelineEvent(
         id: 'hotel-checkin-${hotel.id}',
         icon: Icons.bed_rounded,
-        title: 'Check-in no Hotel ${hotel.hotelName}'.trim(),
+        title: '${t('travel_plan_hotel_checkin')} ${hotel.hotelName}'.trim(),
         dateTime: hotel.checkinDateTime,
         routeText: hotel.address,
         observations: hotel.observations,
@@ -425,8 +471,9 @@ List<_TimelineEvent> _buildTimelineEvents(TravelPlanModel plan) {
     String? mapLink;
     if (_containsHotelOrClinic(transfer.origin) ||
         _containsHotelOrClinic(transfer.destination)) {
-      final query =
-          transfer.destination.trim().isNotEmpty ? transfer.destination : transfer.origin;
+      final query = transfer.destination.trim().isNotEmpty
+          ? transfer.destination
+          : transfer.origin;
       mapLink = _buildMapSearchLink(query);
     }
 
@@ -452,7 +499,8 @@ List<_TimelineEvent> _buildTimelineEvents(TravelPlanModel plan) {
       _TimelineEvent(
         id: 'departure-${flight.id}',
         icon: Icons.flight_land_rounded,
-        title: 'Voo de Regresso ${flight.flightNumber}'.trim(),
+        title: '${t('travel_plan_departure_flight')} ${flight.flightNumber}'
+            .trim(),
         dateTime: flight.dateTime,
         routeText: flight.airport,
         observations: flight.observations,
@@ -473,33 +521,43 @@ List<_TimelineEvent> _buildTimelineEvents(TravelPlanModel plan) {
   return events;
 }
 
-String _buildTravelRangeSubtitle(TravelPlanModel plan) {
+String _buildTravelRangeSubtitle(
+  TravelPlanModel plan,
+  _Translate t,
+  String localeTag,
+) {
   final start = plan.tripStartDate;
   final end = plan.tripEndDate;
   if (start == null && end == null) {
-    return 'A clinica esta organizando seus detalhes de viagem.';
+    return t('travel_plan_arranging_details');
   }
 
-  final formatter = DateFormat('dd MMM yyyy', 'pt_BR');
+  final formatter = DateFormat('dd MMM yyyy', localeTag);
   if (start != null && end != null) {
     return '${formatter.format(start)} a ${formatter.format(end)}';
   }
   if (start != null) {
-    return 'Inicio previsto em ${formatter.format(start)}';
+    return _replaceParams(
+      t('travel_plan_start_expected'),
+      {'date': formatter.format(start)},
+    );
   }
-  return 'Termino previsto em ${formatter.format(end!)}';
+  return _replaceParams(
+    t('travel_plan_end_expected'),
+    {'date': formatter.format(end!)},
+  );
 }
 
-String _statusLabel(String status) {
+String _statusLabel(String status, _Translate t) {
   switch (status) {
     case 'scheduled':
-      return 'Agendado';
+      return t('travel_status_scheduled');
     case 'confirmed':
-      return 'Confirmado';
+      return t('travel_status_confirmed');
     case 'completed':
-      return 'Concluido';
+      return t('travel_status_completed');
     case 'cancelled':
-      return 'Cancelado';
+      return t('travel_status_cancelled');
     default:
       return status;
   }
@@ -540,7 +598,7 @@ bool _containsHotelOrClinic(String value) {
   return normalized.contains('hotel') ||
       normalized.contains('clinic') ||
       normalized.contains('clinica') ||
-      normalized.contains('clinica');
+      normalized.contains('clínica');
 }
 
 String _buildMapSearchLink(String query) {

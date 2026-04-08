@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../../../core/settings/app_preferences.dart';
+import '../../../core/settings/app_translations.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/gk_badge.dart';
@@ -27,10 +29,12 @@ class _UrgentTicketComposerSheet extends StatefulWidget {
   const _UrgentTicketComposerSheet({
     required this.currentDay,
     required this.totalDays,
+    required this.language,
   });
 
   final int currentDay;
   final int totalDays;
+  final String language;
 
   @override
   State<_UrgentTicketComposerSheet> createState() =>
@@ -42,6 +46,16 @@ class _UrgentTicketComposerSheetState
   final TextEditingController _messageController = TextEditingController();
   final ImagePicker _picker = ImagePicker();
   String? _selectedImagePath;
+
+  String t(String key) => appTr(key: key, language: widget.language);
+
+  String tWithParams(String key, Map<String, String> values) {
+    var result = t(key);
+    for (final entry in values.entries) {
+      result = result.replaceAll('{${entry.key}}', entry.value);
+    }
+    return result;
+  }
 
   @override
   void dispose() {
@@ -65,9 +79,7 @@ class _UrgentTicketComposerSheetState
     if (message.isEmpty) {
       final messenger = ScaffoldMessenger.maybeOf(context);
       messenger?.showSnackBar(
-        const SnackBar(
-          content: Text('Descreva a dúvida urgente para enviar.'),
-        ),
+        SnackBar(content: Text(t('postop_urgent_describe_required'))),
       );
       return;
     }
@@ -93,8 +105,8 @@ class _UrgentTicketComposerSheetState
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Dúvida urgente',
+          Text(
+            t('postop_urgent_question'),
             style: TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.w700,
@@ -102,7 +114,13 @@ class _UrgentTicketComposerSheetState
           ),
           const SizedBox(height: 8),
           Text(
-            'Jornada: Dia ${widget.currentDay} de ${widget.totalDays}',
+            tWithParams(
+              'postop_journey_day_of',
+              {
+                'day': widget.currentDay.toString(),
+                'total': widget.totalDays.toString(),
+              },
+            ),
             style: const TextStyle(color: GKColors.neutral),
           ),
           const SizedBox(height: 12),
@@ -110,9 +128,9 @@ class _UrgentTicketComposerSheetState
             controller: _messageController,
             minLines: 3,
             maxLines: 5,
-            decoration: const InputDecoration(
-              labelText: 'Mensagem',
-              hintText: 'Descreva com detalhes o que você está sentindo.',
+            decoration: InputDecoration(
+              labelText: t('postop_message_label'),
+              hintText: t('postop_message_hint'),
               alignLabelWithHint: true,
             ),
           ),
@@ -120,13 +138,13 @@ class _UrgentTicketComposerSheetState
           OutlinedButton.icon(
             onPressed: _pickImage,
             icon: const Icon(Icons.image_outlined),
-            label: const Text('Anexar imagem (opcional)'),
+            label: Text(t('postop_attach_image_optional')),
           ),
           if ((_selectedImagePath ?? '').isNotEmpty)
-            const Padding(
+            Padding(
               padding: EdgeInsets.only(top: 6),
               child: Text(
-                'Imagem selecionada.',
+                t('postop_image_selected'),
                 style: TextStyle(
                   color: GKColors.neutral,
                   fontSize: 12,
@@ -139,13 +157,13 @@ class _UrgentTicketComposerSheetState
               Expanded(
                 child: OutlinedButton(
                   onPressed: () => Navigator.of(context).pop(),
-                  child: const Text('Cancelar'),
+                  child: Text(t('cancel')),
                 ),
               ),
               const SizedBox(width: 10),
               Expanded(
                 child: GKButton(
-                  label: 'Enviar',
+                  label: t('send'),
                   onPressed: _submit,
                 ),
               ),
@@ -175,6 +193,19 @@ class _PostOpScreenState extends ConsumerState<PostOpScreen> {
   bool _showRiskAlert = false;
   String? _syncedSnapshot;
   DateTime? _lastUrgentTicketSentAt;
+
+  String _t(String key) {
+    final language = ref.read(appPreferencesControllerProvider).language;
+    return appTr(key: key, language: language);
+  }
+
+  String _tWithParams(String key, Map<String, String> values) {
+    var result = _t(key);
+    for (final entry in values.entries) {
+      result = result.replaceAll('{${entry.key}}', entry.value);
+    }
+    return result;
+  }
 
   @override
   void dispose() {
@@ -237,14 +268,14 @@ class _PostOpScreenState extends ConsumerState<PostOpScreen> {
       setState(() => _showRiskAlert = showRisk);
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Check-in enviado com sucesso.')),
+        SnackBar(content: Text(_t('postop_checkin_success'))),
       );
       if (showRisk) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
+          SnackBar(
             backgroundColor: Color(0xFF8A4B00),
             content: Text(
-              '⚠️ Sua resposta indica possível atenção clínica. A clínica foi notificada.',
+              _t('postop_risk_alert'),
             ),
           ),
         );
@@ -259,9 +290,7 @@ class _PostOpScreenState extends ConsumerState<PostOpScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            detail.isNotEmpty
-                ? detail
-                : 'Não foi possível enviar o check-in agora.',
+            detail.isNotEmpty ? detail : _t('postop_checkin_error'),
           ),
         ),
       );
@@ -270,8 +299,7 @@ class _PostOpScreenState extends ConsumerState<PostOpScreen> {
         return;
       }
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content: Text('Não foi possível enviar o check-in agora.')),
+        SnackBar(content: Text(_t('postop_checkin_error'))),
       );
     } finally {
       if (mounted) {
@@ -299,7 +327,7 @@ class _PostOpScreenState extends ConsumerState<PostOpScreen> {
         return;
       }
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Falha ao atualizar checklist.')),
+        SnackBar(content: Text(_t('postop_checklist_update_error'))),
       );
     } finally {
       if (mounted) {
@@ -333,7 +361,7 @@ class _PostOpScreenState extends ConsumerState<PostOpScreen> {
         return;
       }
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Foto enviada com sucesso.')),
+        SnackBar(content: Text(_t('postop_photo_upload_success'))),
       );
     } on DioException catch (error) {
       if (!mounted) {
@@ -343,7 +371,7 @@ class _PostOpScreenState extends ConsumerState<PostOpScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            detail.isNotEmpty ? detail : 'Não foi possível enviar a foto.',
+            detail.isNotEmpty ? detail : _t('postop_photo_upload_error'),
           ),
         ),
       );
@@ -352,7 +380,7 @@ class _PostOpScreenState extends ConsumerState<PostOpScreen> {
         return;
       }
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Não foi possível enviar a foto.')),
+        SnackBar(content: Text(_t('postop_photo_upload_error'))),
       );
     } finally {
       if (mounted) {
@@ -410,6 +438,7 @@ class _PostOpScreenState extends ConsumerState<PostOpScreen> {
   }
 
   Future<void> _openUrgentTicketModal(PostOpJourney journey) async {
+    final language = ref.read(appPreferencesControllerProvider).language;
     final draft = await showModalBottomSheet<_UrgentTicketDraft>(
       context: context,
       isScrollControlled: true,
@@ -417,6 +446,7 @@ class _PostOpScreenState extends ConsumerState<PostOpScreen> {
       builder: (_) => _UrgentTicketComposerSheet(
         currentDay: journey.currentDay,
         totalDays: journey.totalDays,
+        language: language,
       ),
     );
 
@@ -428,7 +458,7 @@ class _PostOpScreenState extends ConsumerState<PostOpScreen> {
     if (_lastUrgentTicketSentAt != null &&
         now.difference(_lastUrgentTicketSentAt!) < const Duration(minutes: 2)) {
       _showPostOpSnack(
-        'Você enviou uma dúvida há pouco. Aguarde um instante para enviar outra.',
+        _t('postop_urgent_rate_limit'),
       );
       return;
     }
@@ -442,22 +472,20 @@ class _PostOpScreenState extends ConsumerState<PostOpScreen> {
         return;
       }
       _lastUrgentTicketSentAt = DateTime.now();
-      _showPostOpSnack('Dúvida urgente enviada para a clínica.');
+      _showPostOpSnack(_t('postop_urgent_sent_success'));
     } on DioException catch (error) {
       if (!mounted) {
         return;
       }
       final detail = _extractErrorDetail(error);
       _showPostOpSnack(
-        detail.isNotEmpty
-            ? detail
-            : 'Não foi possível enviar a dúvida urgente agora.',
+        detail.isNotEmpty ? detail : _t('postop_urgent_send_error'),
       );
     } catch (_) {
       if (!mounted) {
         return;
       }
-      _showPostOpSnack('Não foi possível enviar a dúvida urgente agora.');
+      _showPostOpSnack(_t('postop_urgent_send_error'));
     }
   }
 
@@ -485,11 +513,11 @@ class _PostOpScreenState extends ConsumerState<PostOpScreen> {
   String _mapStatusLabel(String status) {
     switch (status) {
       case 'completed':
-        return 'Concluída';
+        return _t('postop_status_completed');
       case 'cancelled':
-        return 'Cancelada';
+        return _t('postop_status_cancelled');
       default:
-        return 'Em andamento';
+        return _t('postop_status_in_progress');
     }
   }
 
@@ -520,11 +548,11 @@ class _PostOpScreenState extends ConsumerState<PostOpScreen> {
       case 'ok':
         return 'OK';
       case 'enviado':
-        return 'Enviado';
+        return _t('postop_history_sent');
       case 'pendente':
-        return 'Pendente';
+        return _t('postop_history_pending');
       case 'hoje':
-        return 'Hoje';
+        return _t('postop_history_today');
       default:
         return status;
     }
@@ -534,10 +562,12 @@ class _PostOpScreenState extends ConsumerState<PostOpScreen> {
   Widget build(BuildContext context) {
     final state = ref.watch(postOpControllerProvider);
     final activeJourney = state.asData?.value;
+    final language = ref.watch(appPreferencesControllerProvider).language;
+    String t(String key) => appTr(key: key, language: language);
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Sua Recuperação'),
+        title: Text(t('postop_title')),
         actions: [
           IconButton(
             onPressed: () => ref.read(postOpControllerProvider.notifier).load(),
@@ -550,9 +580,9 @@ class _PostOpScreenState extends ConsumerState<PostOpScreen> {
           final journey = activeJourney;
           if (journey == null) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
+              SnackBar(
                 content: Text(
-                  'Disponível quando houver uma jornada pós-operatória ativa.',
+                  t('postop_available_when_active'),
                 ),
               ),
             );
@@ -563,7 +593,7 @@ class _PostOpScreenState extends ConsumerState<PostOpScreen> {
         backgroundColor: GKColors.accent,
         foregroundColor: Colors.white,
         icon: const Icon(Icons.emergency),
-        label: const Text('Dúvida urgente'),
+        label: Text(t('postop_urgent_question')),
       ),
       body: state.when(
         loading: () => ListView.separated(
@@ -572,13 +602,13 @@ class _PostOpScreenState extends ConsumerState<PostOpScreen> {
           separatorBuilder: (_, __) => const SizedBox(height: 10),
           itemBuilder: (_, __) => const GKLoadingShimmer(height: 120),
         ),
-        error: (error, _) =>
-            Center(child: Text('Erro ao carregar pós-op: $error')),
+        error: (error, _) => Center(
+          child: Text('${t('postop_load_error_prefix')} $error'),
+        ),
         data: (journey) {
           if (journey == null) {
-            return const Center(
-              child:
-                  Text('Você ainda não possui jornada pós-operatória ativa.'),
+            return Center(
+              child: Text(t('postop_no_active_journey')),
             );
           }
 
@@ -594,8 +624,8 @@ class _PostOpScreenState extends ConsumerState<PostOpScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
-                        'Sua recuperação',
+                      Text(
+                        t('postop_recovery_card_title'),
                         style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.w700,
@@ -603,7 +633,13 @@ class _PostOpScreenState extends ConsumerState<PostOpScreen> {
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        'Dia ${journey.currentDay} de ${journey.totalDays}',
+                        _tWithParams(
+                          'postop_day_of_total',
+                          {
+                            'day': journey.currentDay.toString(),
+                            'total': journey.totalDays.toString(),
+                          },
+                        ),
                         style: const TextStyle(
                           color: GKColors.neutral,
                           fontWeight: FontWeight.w600,
@@ -623,15 +659,15 @@ class _PostOpScreenState extends ConsumerState<PostOpScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
-                        'Como você está hoje?',
+                      Text(
+                        t('postop_how_are_you_today'),
                         style: TextStyle(
                             fontSize: 16, fontWeight: FontWeight.w700),
                       ),
                       const SizedBox(height: 12),
                       Row(
                         children: [
-                          const Text('Dor'),
+                          Text(t('postop_pain')),
                           const Spacer(),
                           Text(
                             _painLevel.round().toString(),
@@ -654,7 +690,7 @@ class _PostOpScreenState extends ConsumerState<PostOpScreen> {
                       ),
                       SwitchListTile(
                         contentPadding: EdgeInsets.zero,
-                        title: const Text('Teve febre hoje?'),
+                        title: Text(t('postop_had_fever_today')),
                         value: _hasFever,
                         onChanged: journey.checkinSubmittedToday
                             ? null
@@ -668,8 +704,8 @@ class _PostOpScreenState extends ConsumerState<PostOpScreen> {
                         enabled: !journey.checkinSubmittedToday,
                         cursorColor: GKColors.primary,
                         style: const TextStyle(color: GKColors.darkBackground),
-                        decoration: const InputDecoration(
-                          labelText: 'Observações',
+                        decoration: InputDecoration(
+                          labelText: t('postop_notes'),
                           alignLabelWithHint: true,
                         ),
                       ),
@@ -683,8 +719,8 @@ class _PostOpScreenState extends ConsumerState<PostOpScreen> {
                             color: const Color(0xFFE9F7ED),
                             borderRadius: BorderRadius.circular(10),
                           ),
-                          child: const Text(
-                            'Check-in de hoje já enviado. Volte amanhã para um novo registro.',
+                          child: Text(
+                            t('postop_checkin_sent_today_info'),
                             style: TextStyle(color: GKColors.secondary),
                           ),
                         ),
@@ -697,15 +733,15 @@ class _PostOpScreenState extends ConsumerState<PostOpScreen> {
                             color: const Color(0xFFFFEDD5),
                             borderRadius: BorderRadius.circular(10),
                           ),
-                          child: const Text(
-                            '⚠️ Sua resposta indica possível atenção clínica. A clínica foi notificada.',
+                          child: Text(
+                            t('postop_risk_alert'),
                             style: TextStyle(color: Color(0xFF9A3412)),
                           ),
                         ),
                       GKButton(
                         label: journey.checkinSubmittedToday
-                            ? 'Check-in enviado hoje'
-                            : 'Enviar check-in',
+                            ? t('postop_checkin_sent_today_button')
+                            : t('postop_send_checkin_button'),
                         onPressed: journey.checkinSubmittedToday
                             ? null
                             : () => _submitCheckin(journey),
@@ -719,16 +755,16 @@ class _PostOpScreenState extends ConsumerState<PostOpScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
-                        'Checklist de cuidados',
+                      Text(
+                        t('postop_care_checklist_title'),
                         style: TextStyle(
                             fontSize: 16, fontWeight: FontWeight.w700),
                       ),
                       const SizedBox(height: 8),
                       if (todayChecklist.isEmpty)
-                        const Padding(
+                        Padding(
                           padding: EdgeInsets.only(top: 4),
-                          child: Text('Nenhuma tarefa para o dia de hoje.'),
+                          child: Text(t('postop_no_tasks_today')),
                         )
                       else
                         ...todayChecklist.map((item) {
@@ -769,8 +805,8 @@ class _PostOpScreenState extends ConsumerState<PostOpScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
-                        'Fotos da recuperação',
+                      Text(
+                        t('postop_recovery_photos'),
                         style: TextStyle(
                             fontSize: 16, fontWeight: FontWeight.w700),
                       ),
@@ -787,11 +823,11 @@ class _PostOpScreenState extends ConsumerState<PostOpScreen> {
                                     CircularProgressIndicator(strokeWidth: 2),
                               )
                             : const Icon(Icons.add_a_photo_outlined),
-                        label: const Text('Enviar foto'),
+                        label: Text(t('postop_upload_photo')),
                       ),
                       const SizedBox(height: 8),
                       if (journey.photos.isEmpty)
-                        const Text('Nenhuma foto enviada ainda.')
+                        Text(t('postop_no_photos_yet'))
                       else
                         GridView.builder(
                           shrinkWrap: true,
@@ -826,14 +862,14 @@ class _PostOpScreenState extends ConsumerState<PostOpScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
-                        'Histórico',
+                      Text(
+                        t('postop_history_title'),
                         style: TextStyle(
                             fontSize: 16, fontWeight: FontWeight.w700),
                       ),
                       const SizedBox(height: 8),
                       if (journey.history.isEmpty)
-                        const Text('Sem histórico por enquanto.')
+                        Text(t('postop_no_history_yet'))
                       else
                         ...journey.history.map((item) => ListTile(
                               contentPadding: EdgeInsets.zero,
@@ -863,12 +899,12 @@ class _PostOpScreenState extends ConsumerState<PostOpScreen> {
                 ),
                 const SizedBox(height: 12),
                 Text(
-                  'Início: ${formatDate(journey.startDate ?? journey.surgeryDate)}',
+                  '${t('postop_start_label')}: ${formatDate(journey.startDate ?? journey.surgeryDate)}',
                   style: const TextStyle(color: GKColors.neutral),
                 ),
                 if (journey.endDate != null)
                   Text(
-                    'Previsão de término: ${formatDate(journey.endDate!)}',
+                    '${t('postop_end_forecast_label')}: ${formatDate(journey.endDate!)}',
                     style: const TextStyle(color: GKColors.neutral),
                   ),
               ],

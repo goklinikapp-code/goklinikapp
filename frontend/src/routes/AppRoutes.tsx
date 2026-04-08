@@ -178,7 +178,7 @@ export function AppRoutes() {
         <Route
           path="/travel-plans"
           element={
-            <RoleRoute allow={["clinic_master", "secretary"]}>
+            <RoleRoute allow={["clinic_master", "secretary"]} permission="travel_plans">
               <TravelPlansPage />
             </RoleRoute>
           }
@@ -186,7 +186,7 @@ export function AppRoutes() {
         <Route
           path="/chat-center"
           element={
-            <RoleRoute allow={["clinic_master", "secretary"]}>
+            <RoleRoute allow={["clinic_master", "secretary"]} permission="chat_center">
               <ChatCenterPage />
             </RoleRoute>
           }
@@ -194,7 +194,7 @@ export function AppRoutes() {
         <Route
           path="/pre-operatory"
           element={
-            <RoleRoute allow={["clinic_master"]} permission="patients">
+            <RoleRoute allow={["clinic_master", "surgeon", "nurse"]} permission="pre_operatory">
               <PreOperatoryPage />
             </RoleRoute>
           }
@@ -202,7 +202,7 @@ export function AppRoutes() {
         <Route
           path="/post-operatory"
           element={
-            <RoleRoute allow={["clinic_master", "surgeon"]} permission="patients">
+            <RoleRoute allow={["clinic_master", "surgeon", "nurse"]} permission="post_operatory">
               <PostOperatoryPage />
             </RoleRoute>
           }

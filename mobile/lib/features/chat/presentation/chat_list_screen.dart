@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/settings/app_preferences.dart';
+import '../../../core/settings/app_translations.dart';
 import '../../../core/widgets/gk_badge.dart';
 import '../../../core/widgets/gk_button.dart';
 import '../../../core/widgets/gk_card.dart';
@@ -19,6 +21,11 @@ class ChatListScreen extends ConsumerStatefulWidget {
 
 class _ChatListScreenState extends ConsumerState<ChatListScreen> {
   Timer? _pollTimer;
+
+  String _t(String key) {
+    final language = ref.read(appPreferencesControllerProvider).language;
+    return appTr(key: key, language: language);
+  }
 
   @override
   void initState() {
@@ -44,7 +51,9 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) {
+        final language = ref.read(appPreferencesControllerProvider).language;
         return _UrgentQuestionSheet(
+          language: language,
           onSubmit: (question) async {
             await ref
                 .read(urgentMedicalRequestsProvider.notifier)
@@ -55,11 +64,7 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
     );
     if (!mounted || wasSent != true) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text(
-          'Mensagem enviada com sucesso. A equipe médica responderá em breve.',
-        ),
-      ),
+      SnackBar(content: Text(_t('chat_doctor_sent_success'))),
     );
   }
 
@@ -67,10 +72,12 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final urgentState = ref.watch(urgentMedicalRequestsProvider);
+    final language = ref.watch(appPreferencesControllerProvider).language;
+    String t(String key) => appTr(key: key, language: language);
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Chat com a Clínica'),
+        title: Text(t('chat_list_title')),
         actions: [
           IconButton(
             onPressed: () {
@@ -86,18 +93,18 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
         children: [
           GKCard(
             color: colorScheme.primary,
-            child: const Column(
+            child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 GKBadge(
-                  label: 'ATENDIMENTO PREMIUM',
+                  label: t('chat_premium_badge'),
                   background: Colors.white24,
                   foreground: Colors.white,
                 ),
-                SizedBox(height: 10),
+                const SizedBox(height: 10),
                 Text(
-                  'Cuidado sob medida para sua recuperação',
-                  style: TextStyle(
+                  t('chat_premium_headline'),
+                  style: const TextStyle(
                     color: Colors.white,
                     fontSize: 18,
                     fontWeight: FontWeight.w700,
@@ -112,19 +119,19 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Conversar com a equipe da clínica',
+                  t('chat_team_title'),
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.w700,
                       ),
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Tire dúvidas sobre seu atendimento, consultas, pós-operatório e orientações gerais.',
+                  t('chat_team_description'),
                   style: TextStyle(color: colorScheme.onSurfaceVariant),
                 ),
                 const SizedBox(height: 12),
                 GKButton(
-                  label: 'Conversar com a equipe',
+                  label: t('chat_team_button'),
                   icon: const Icon(Icons.chat_bubble_outline),
                   onPressed: () => context.push('/chat/room/$aiChatRoomId'),
                 ),
@@ -137,35 +144,30 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Mensagem para o médico',
+                  t('chat_doctor_title'),
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.w700,
                       ),
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Você envia sua dúvida e o médico responderá assim que possível.',
+                  t('chat_doctor_description'),
                   style: TextStyle(color: colorScheme.onSurfaceVariant),
                 ),
                 const SizedBox(height: 12),
                 GKButton(
-                  label: 'Enviar mensagem ao médico',
+                  label: t('chat_doctor_button'),
                   variant: GKButtonVariant.secondary,
                   icon: const Icon(Icons.medical_information_outlined),
                   onPressed: _openUrgentQuestionForm,
                 ),
                 const SizedBox(height: 14),
                 urgentState.when(
-                  loading: () =>
-                      const Text('Carregando suas mensagens enviadas...'),
-                  error: (_, __) => const Text(
-                    'Não foi possível carregar seu histórico de mensagens agora.',
-                  ),
+                  loading: () => Text(t('chat_urgent_loading')),
+                  error: (_, __) => Text(t('chat_urgent_load_error')),
                   data: (items) {
                     if (items.isEmpty) {
-                      return const Text(
-                        'Você ainda não enviou nenhuma mensagem para o médico.',
-                      );
+                      return Text(t('chat_urgent_empty'));
                     }
                     final latest = items.take(3).toList();
                     return Column(
@@ -205,8 +207,9 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
                                   ),
                                   const SizedBox(width: 8),
                                   GKBadge(
-                                    label:
-                                        answered ? 'Respondida' : 'Aguardando',
+                                    label: answered
+                                        ? t('chat_answered')
+                                        : t('chat_waiting'),
                                     background: chipBg,
                                     foreground: chipFg,
                                   ),
@@ -242,9 +245,11 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
 class _UrgentQuestionSheet extends StatefulWidget {
   const _UrgentQuestionSheet({
     required this.onSubmit,
+    required this.language,
   });
 
   final Future<void> Function(String question) onSubmit;
+  final String language;
 
   @override
   State<_UrgentQuestionSheet> createState() => _UrgentQuestionSheetState();
@@ -253,6 +258,8 @@ class _UrgentQuestionSheet extends StatefulWidget {
 class _UrgentQuestionSheetState extends State<_UrgentQuestionSheet> {
   final _controller = TextEditingController();
   bool _sending = false;
+
+  String t(String key) => appTr(key: key, language: widget.language);
 
   @override
   void dispose() {
@@ -264,9 +271,7 @@ class _UrgentQuestionSheetState extends State<_UrgentQuestionSheet> {
     final question = _controller.text.trim();
     if (question.length < 5) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Digite pelo menos 5 caracteres na sua dúvida.'),
-        ),
+        SnackBar(content: Text(t('chat_urgent_min_chars'))),
       );
       return;
     }
@@ -279,9 +284,7 @@ class _UrgentQuestionSheetState extends State<_UrgentQuestionSheet> {
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Não foi possível enviar agora. Tente novamente.'),
-        ),
+        SnackBar(content: Text(t('chat_send_error'))),
       );
     } finally {
       if (mounted) {
@@ -310,14 +313,14 @@ class _UrgentQuestionSheetState extends State<_UrgentQuestionSheet> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Enviar mensagem para o médico',
+              t('chat_urgent_sheet_title'),
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w700,
                   ),
             ),
             const SizedBox(height: 8),
             Text(
-              'Sua mensagem será enviada para a equipe médica e respondida de forma assíncrona.',
+              t('chat_urgent_sheet_description'),
               style: TextStyle(
                   color: Theme.of(context).colorScheme.onSurfaceVariant),
             ),
@@ -326,8 +329,8 @@ class _UrgentQuestionSheetState extends State<_UrgentQuestionSheet> {
               controller: _controller,
               maxLines: 5,
               minLines: 4,
-              decoration: const InputDecoration(
-                hintText: 'Descreva sua dúvida com detalhes...',
+              decoration: InputDecoration(
+                hintText: t('chat_urgent_sheet_hint'),
               ),
             ),
             const SizedBox(height: 12),
@@ -335,7 +338,7 @@ class _UrgentQuestionSheetState extends State<_UrgentQuestionSheet> {
               children: [
                 Expanded(
                   child: GKButton(
-                    label: 'Cancelar',
+                    label: t('cancel'),
                     variant: GKButtonVariant.secondary,
                     onPressed: _sending
                         ? null
@@ -345,7 +348,7 @@ class _UrgentQuestionSheetState extends State<_UrgentQuestionSheet> {
                 const SizedBox(width: 8),
                 Expanded(
                   child: GKButton(
-                    label: _sending ? 'Enviando...' : 'Enviar',
+                    label: _sending ? t('chat_sending') : t('send'),
                     onPressed: _sending ? null : _submit,
                   ),
                 ),

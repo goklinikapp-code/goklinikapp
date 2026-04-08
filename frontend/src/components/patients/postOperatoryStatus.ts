@@ -3,14 +3,19 @@ import type {
   PostOperatoryAdminItem,
   PostOperatoryCheckinRecord,
 } from '@/types'
+import type { TranslationKey } from '@/i18n/system'
 
 type JourneyStatus = PostOperatoryAdminItem['status']
 type ClinicalStatus = PostOperatoryAdminItem['clinical_status']
+type Translator = (key: TranslationKey) => string
 
-export function postOperatoryJourneyStatusLabel(status: JourneyStatus | undefined) {
-  if (status === 'completed') return 'Concluído'
-  if (status === 'cancelled') return 'Cancelado'
-  return 'Em andamento'
+export function postOperatoryJourneyStatusLabel(
+  status: JourneyStatus | undefined,
+  t?: Translator,
+) {
+  if (status === 'completed') return t ? t('postop_status_completed') : 'Concluído'
+  if (status === 'cancelled') return t ? t('postop_status_cancelled') : 'Cancelado'
+  return t ? t('postop_status_active') : 'Em andamento'
 }
 
 export function postOperatoryJourneyStatusClass(status: JourneyStatus | undefined) {
@@ -19,10 +24,13 @@ export function postOperatoryJourneyStatusClass(status: JourneyStatus | undefine
   return 'bg-primary/15 text-primary'
 }
 
-export function postOperatoryClinicalStatusLabel(status: ClinicalStatus | undefined) {
-  if (status === 'risk') return 'Em risco'
-  if (status === 'delayed') return 'Atrasado'
-  return 'OK'
+export function postOperatoryClinicalStatusLabel(
+  status: ClinicalStatus | undefined,
+  t?: Translator,
+) {
+  if (status === 'risk') return t ? t('postop_clinical_status_risk') : 'Em risco'
+  if (status === 'delayed') return t ? t('postop_clinical_status_delayed') : 'Atrasado'
+  return t ? t('postop_clinical_status_ok') : 'OK'
 }
 
 export function postOperatoryClinicalStatusClass(status: ClinicalStatus | undefined) {
@@ -45,11 +53,11 @@ export function hasCheckinToday(item: PostOperatoryAdminItem): boolean {
   )
 }
 
-export function postOperatoryDetailSummary(detail: PostOperatoryAdminDetail) {
+export function postOperatoryDetailSummary(detail: PostOperatoryAdminDetail, t?: Translator) {
   return {
-    journeyStatus: postOperatoryJourneyStatusLabel(detail.status),
+    journeyStatus: postOperatoryJourneyStatusLabel(detail.status, t),
     journeyClass: postOperatoryJourneyStatusClass(detail.status),
-    clinicalStatus: postOperatoryClinicalStatusLabel(detail.clinical_status),
+    clinicalStatus: postOperatoryClinicalStatusLabel(detail.clinical_status, t),
     clinicalClass: postOperatoryClinicalStatusClass(detail.clinical_status),
   }
 }
@@ -61,33 +69,50 @@ export function getLatestCheckin(detail: PostOperatoryAdminDetail): PostOperator
   return detail.checkins[0]
 }
 
-export function postOperatoryClinicalReason(detail: PostOperatoryAdminDetail): string {
+export function postOperatoryClinicalReason(detail: PostOperatoryAdminDetail, t?: Translator): string {
   const latest = getLatestCheckin(detail)
 
   if (detail.clinical_status === 'risk') {
     const hasPainAlert = Boolean(latest && latest.pain_level >= 8)
     const hasFeverAlert = Boolean(latest && latest.has_fever)
-    if (hasPainAlert && hasFeverAlert) return 'Dor elevada e febre no último check-in'
-    if (hasPainAlert) return 'Dor elevada no último check-in'
-    if (hasFeverAlert) return 'Febre no último check-in'
-    return 'Sinais clínicos de atenção foram identificados'
+    if (hasPainAlert && hasFeverAlert) {
+      return t
+        ? t('postop_reason_risk_pain_fever')
+        : 'Dor elevada e febre no último check-in'
+    }
+    if (hasPainAlert) {
+      return t ? t('postop_reason_risk_pain') : 'Dor elevada no último check-in'
+    }
+    if (hasFeverAlert) {
+      return t ? t('postop_reason_risk_fever') : 'Febre no último check-in'
+    }
+    return t
+      ? t('postop_reason_risk_generic')
+      : 'Sinais clínicos de atenção foram identificados'
   }
 
   if (detail.clinical_status === 'delayed') {
     const days = Math.max(detail.days_without_checkin || 0, 1)
-    if (days === 1) return 'Paciente sem check-in hoje'
-    return `Paciente sem check-in há ${days} dias`
+    if (days === 1) return t ? t('postop_reason_delayed_today') : 'Paciente sem check-in hoje'
+    if (!t) return `Paciente sem check-in há ${days} dias`
+    return t('postop_reason_delayed_days').replace('{days}', String(days))
   }
 
-  return 'Paciente com check-in em dia e sem sinais críticos no último registro'
+  return t
+    ? t('postop_reason_ok')
+    : 'Paciente com check-in em dia e sem sinais críticos no último registro'
 }
 
-export function postOperatorySuggestedAction(detail: PostOperatoryAdminDetail): string {
+export function postOperatorySuggestedAction(detail: PostOperatoryAdminDetail, t?: Translator): string {
   if (detail.clinical_status === 'risk') {
-    return 'Contato imediato recomendado para avaliação clínica'
+    return t
+      ? t('postop_suggested_action_risk')
+      : 'Contato imediato recomendado para avaliação clínica'
   }
   if (detail.clinical_status === 'delayed') {
-    return 'Entrar em contato com o paciente para verificar ausência de check-in'
+    return t
+      ? t('postop_suggested_action_delayed')
+      : 'Entrar em contato com o paciente para verificar ausência de check-in'
   }
-  return 'Nenhuma ação necessária no momento'
+  return t ? t('postop_suggested_action_ok') : 'Nenhuma ação necessária no momento'
 }

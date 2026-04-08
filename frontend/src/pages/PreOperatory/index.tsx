@@ -20,6 +20,9 @@ import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { Select } from '@/components/ui/Select'
 import { TextArea } from '@/components/ui/TextArea'
+import { t as translate, type TranslationKey } from '@/i18n/system'
+import { useAuthStore } from '@/stores/authStore'
+import { usePreferencesStore } from '@/stores/preferencesStore'
 import { formatDate } from '@/utils/format'
 
 type StatusFilter = 'active' | PreOperatoryStatus
@@ -64,6 +67,9 @@ function extractApiErrorMessage(error: unknown, fallback: string) {
 
 export default function PreOperatoryPage() {
   const queryClient = useQueryClient()
+  const currentUser = useAuthStore((state) => state.user)
+  const language = usePreferencesStore((state) => state.language)
+  const t = (key: TranslationKey) => translate(language, key)
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('active')
   const [selectedRecordId, setSelectedRecordId] = useState<string | null>(null)
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -93,6 +99,7 @@ export default function PreOperatoryPage() {
       null,
     [listQuery.data, selectedRecordId],
   )
+  const canManagePreOperatory = currentUser?.role === 'clinic_master'
 
   useEffect(() => {
     if (!isModalOpen || !selectedRecord) return
@@ -133,13 +140,13 @@ export default function PreOperatoryPage() {
       await queryClient.invalidateQueries({
         queryKey: ['pre-operatory-admin-list'],
       })
-      toast.success('Pré-operatório atualizado com sucesso.')
+      toast.success(t('preop_update_success'))
       closeModal()
     } catch (error) {
       toast.error(
         extractApiErrorMessage(
           error,
-          'Não foi possível atualizar o pré-operatório.',
+          t('preop_update_error'),
         ),
       )
     } finally {
@@ -149,28 +156,28 @@ export default function PreOperatoryPage() {
 
   const requireDoctor = () => {
     if (selectedDoctorId) return true
-    toast.error('Selecione um médico para esta ação.')
+    toast.error(t('preop_select_doctor_error'))
     return false
   }
 
   return (
     <div className="space-y-5">
       <SectionHeader
-        title="Pré-operatório"
-        subtitle="Analise os formulários enviados pelos pacientes e decida o próximo passo clínico."
+        title={t('preop_title')}
+        subtitle={t('preop_subtitle')}
         actions={
           <Button
             type="button"
             variant="secondary"
             onClick={() => void listQuery.refetch()}
             disabled={listQuery.isLoading || listQuery.isFetching}
-          >
-            <RefreshCw
-              className={`h-4 w-4 ${
-                listQuery.isLoading || listQuery.isFetching ? 'animate-spin' : ''
-              }`}
-            />
-            Atualizar
+            >
+              <RefreshCw
+                className={`h-4 w-4 ${
+                  listQuery.isLoading || listQuery.isFetching ? 'animate-spin' : ''
+                }`}
+              />
+            {t('preop_refresh')}
           </Button>
         }
       />
@@ -181,14 +188,14 @@ export default function PreOperatoryPage() {
             value={statusFilter}
             onChange={(event) => setStatusFilter(event.target.value as StatusFilter)}
           >
-            <option value="active">Pendentes e em análise</option>
-            <option value="pending">Pendente</option>
-            <option value="in_review">Em análise</option>
-            <option value="approved">Aprovado</option>
-            <option value="rejected">Reprovado</option>
+            <option value="active">{t('preop_filter_active')}</option>
+            <option value="pending">{t('preop_status_pending')}</option>
+            <option value="in_review">{t('preop_status_in_review')}</option>
+            <option value="approved">{t('preop_status_approved')}</option>
+            <option value="rejected">{t('preop_status_rejected')}</option>
           </Select>
           <div className="flex items-center text-sm text-slate-500">
-            {(listQuery.data || []).length} pré-operatório(s) encontrado(s)
+            {(listQuery.data || []).length} {t('preop_found_suffix')}
           </div>
         </div>
       </Card>
@@ -198,29 +205,29 @@ export default function PreOperatoryPage() {
           <table className="min-w-full divide-y divide-slate-100">
             <thead className="bg-slate-50">
               <tr>
-                <th className="px-4 py-3 text-left overline">PACIENTE</th>
-                <th className="px-4 py-3 text-left overline">STATUS</th>
-                <th className="px-4 py-3 text-left overline">DATA DE ENVIO</th>
-                <th className="px-4 py-3 text-right overline">AÇÃO</th>
+                <th className="px-4 py-3 text-left overline">{t('preop_col_patient')}</th>
+                <th className="px-4 py-3 text-left overline">{t('preop_col_status')}</th>
+                <th className="px-4 py-3 text-left overline">{t('preop_col_sent_at')}</th>
+                <th className="px-4 py-3 text-right overline">{t('preop_col_action')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 bg-white">
               {listQuery.isLoading ? (
                 <tr>
                   <td colSpan={4} className="px-4 py-10 text-center text-sm text-slate-500">
-                    Carregando pré-operatórios...
+                    {t('preop_loading_list')}
                   </td>
                 </tr>
               ) : listQuery.isError ? (
                 <tr>
                   <td colSpan={4} className="px-4 py-10 text-center text-sm text-slate-500">
-                    Não foi possível carregar os pré-operatórios.
+                    {t('preop_load_error')}
                   </td>
                 </tr>
               ) : (listQuery.data || []).length === 0 ? (
                 <tr>
                   <td colSpan={4} className="px-4 py-10 text-center text-sm text-slate-500">
-                    Nenhum pré-operatório encontrado com os filtros atuais.
+                    {t('preop_empty')}
                   </td>
                 </tr>
               ) : (
@@ -229,18 +236,18 @@ export default function PreOperatoryPage() {
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-3">
                         <Avatar
-                          name={item.patient_name || 'Paciente'}
+                          name={item.patient_name || t('preop_patient_fallback')}
                           src={item.patient_avatar_url || undefined}
                           className="h-8 w-8"
                         />
                         <span className="text-sm font-semibold text-night">
-                          {item.patient_name || 'Paciente'}
+                          {item.patient_name || t('preop_patient_fallback')}
                         </span>
                       </div>
                     </td>
                     <td className="px-4 py-3">
                       <Badge className={statusBadgeClass(item.status)}>
-                        {preOperatoryStatusLabel(item.status)}
+                        {preOperatoryStatusLabel(item.status, t)}
                       </Badge>
                     </td>
                     <td className="px-4 py-3 text-sm text-slate-600">
@@ -257,7 +264,7 @@ export default function PreOperatoryPage() {
                         }}
                       >
                         <Eye className="h-4 w-4" />
-                        Ver
+                        {t('preop_view')}
                       </Button>
                     </td>
                   </tr>
@@ -276,29 +283,29 @@ export default function PreOperatoryPage() {
         isError={Boolean(isModalOpen && listQuery.isError)}
         title={
           selectedRecord?.patient_name
-            ? `Pré-operatório • ${selectedRecord.patient_name}`
-            : 'Pré-operatório'
+            ? `${t('preop_modal_title')} • ${selectedRecord.patient_name}`
+            : t('preop_modal_title')
         }
-        actionArea={
+        actionArea={canManagePreOperatory ? (
           <div className="space-y-4">
             <div>
-              <p className="mb-2 text-sm font-semibold text-night">Observações da clínica</p>
+              <p className="mb-2 text-sm font-semibold text-night">{t('preop_clinic_observations')}</p>
               <TextArea
                 value={notes}
                 onChange={(event) => setNotes(event.target.value)}
-                placeholder="Adicione observações para o prontuário clínico"
+                placeholder={t('preop_clinic_notes_placeholder')}
                 rows={4}
               />
             </div>
 
             <div>
-              <p className="mb-2 text-sm font-semibold text-night">Atribuir médico</p>
+              <p className="mb-2 text-sm font-semibold text-night">{t('preop_assign_doctor')}</p>
               <Select
                 value={selectedDoctorId}
                 onChange={(event) => setSelectedDoctorId(event.target.value)}
                 disabled={doctorsQuery.isLoading}
               >
-                <option value="">Selecione um médico</option>
+                <option value="">{t('preop_select_doctor')}</option>
                 {(doctorsQuery.data || []).map((doctor) => (
                   <option key={doctor.id} value={doctor.id}>
                     {doctor.name}
@@ -319,7 +326,7 @@ export default function PreOperatoryPage() {
                   })
                 }
               >
-                {pendingAction === 'in_review' ? 'Salvando...' : 'Marcar como em análise'}
+                {pendingAction === 'in_review' ? t('preop_saving') : t('preop_mark_in_review')}
               </Button>
 
               <Button
@@ -332,7 +339,7 @@ export default function PreOperatoryPage() {
                   })
                 }
               >
-                {pendingAction === 'approve' ? 'Salvando...' : 'Aprovar'}
+                {pendingAction === 'approve' ? t('preop_saving') : t('preop_approve')}
               </Button>
 
               <Button
@@ -346,7 +353,7 @@ export default function PreOperatoryPage() {
                   })
                 }
               >
-                {pendingAction === 'reject' ? 'Salvando...' : 'Reprovar'}
+                {pendingAction === 'reject' ? t('preop_saving') : t('preop_reject')}
               </Button>
 
               <Button
@@ -361,7 +368,7 @@ export default function PreOperatoryPage() {
                   })
                 }}
               >
-                {pendingAction === 'assign' ? 'Salvando...' : 'Atribuir médico'}
+                {pendingAction === 'assign' ? t('preop_saving') : t('preop_assign')}
               </Button>
 
               <Button
@@ -378,12 +385,12 @@ export default function PreOperatoryPage() {
                 }}
               >
                 {pendingAction === 'approve_assign'
-                  ? 'Salvando...'
-                  : 'Aprovar e atribuir'}
+                  ? t('preop_saving')
+                  : t('preop_approve_assign')}
               </Button>
             </div>
           </div>
-        }
+        ) : null}
       />
     </div>
   )

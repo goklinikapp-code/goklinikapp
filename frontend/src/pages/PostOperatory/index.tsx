@@ -18,27 +18,20 @@ import { Avatar } from '@/components/ui/Avatar'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
+import { getLocaleForLanguage, t as translate, type TranslationKey } from '@/i18n/system'
+import { usePreferencesStore } from '@/stores/preferencesStore'
 import type { PostOperatoryAdminItem } from '@/types'
 import { cn } from '@/utils/cn'
 
 type ListFilter = 'all' | 'active' | 'alerts' | 'without_checkin' | 'completed'
 type ExtendedListFilter = ListFilter | 'urgent'
 
-const FILTERS: Array<{ key: ExtendedListFilter; label: string }> = [
-  { key: 'all', label: 'Todos' },
-  { key: 'active', label: 'Em andamento' },
-  { key: 'alerts', label: 'Com alerta' },
-  { key: 'urgent', label: 'Urgentes' },
-  { key: 'without_checkin', label: 'Sem check-in' },
-  { key: 'completed', label: 'Concluídos' },
-]
-
-function formatDateTime(value?: string | null) {
-  if (!value) return 'Sem check-in'
+function formatDateTime(value: string | null | undefined, locale: string, noCheckinLabel: string) {
+  if (!value) return noCheckinLabel
   const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return 'Sem check-in'
+  if (Number.isNaN(date.getTime())) return noCheckinLabel
 
-  return new Intl.DateTimeFormat('pt-BR', {
+  return new Intl.DateTimeFormat(locale, {
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',
@@ -61,6 +54,9 @@ function applyFilter(rows: PostOperatoryAdminItem[], filter: ExtendedListFilter)
 }
 
 export default function PostOperatoryPage() {
+  const language = usePreferencesStore((state) => state.language)
+  const t = (key: TranslationKey) => translate(language, key)
+  const locale = getLocaleForLanguage(language)
   const queryClient = useQueryClient()
   const [selectedFilter, setSelectedFilter] = useState<ExtendedListFilter>('all')
   const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null)
@@ -110,6 +106,16 @@ export default function PostOperatoryPage() {
   })
 
   const rows = listQuery.data || []
+
+  const filters: Array<{ key: ExtendedListFilter; label: string }> = [
+    { key: 'all', label: t('postop_filter_all') },
+    { key: 'active', label: t('postop_filter_active') },
+    { key: 'alerts', label: t('postop_filter_alerts') },
+    { key: 'urgent', label: t('postop_filter_urgent') },
+    { key: 'without_checkin', label: t('postop_filter_without_checkin') },
+    { key: 'completed', label: t('postop_filter_completed') },
+  ]
+
   const filteredRows = useMemo(
     () => applyFilter(rows, selectedFilter),
     [rows, selectedFilter],
@@ -134,8 +140,8 @@ export default function PostOperatoryPage() {
   return (
     <div className="space-y-5">
       <SectionHeader
-        title="Pós-operatório"
-        subtitle="Monitore pacientes em recuperação, identifique riscos e acompanhe a evolução clínica."
+        title={t('postop_title')}
+        subtitle={t('postop_subtitle')}
         actions={
           <Button
             type="button"
@@ -147,40 +153,40 @@ export default function PostOperatoryPage() {
                 void detailQuery.refetch()
               }
             }}
-          >
-            <RefreshCw
-              className={cn(
-                'h-4 w-4',
-                (listQuery.isLoading || listQuery.isFetching) && 'animate-spin',
-              )}
-            />
-            Atualizar
+            >
+              <RefreshCw
+                className={cn(
+                  'h-4 w-4',
+                  (listQuery.isLoading || listQuery.isFetching) && 'animate-spin',
+                )}
+              />
+            {t('postop_refresh')}
           </Button>
         }
       />
 
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         <Card className="space-y-2">
-          <p className="overline">Pacientes em pós-op</p>
+          <p className="overline">{t('postop_dashboard_active')}</p>
           <p className="text-2xl font-bold text-night">{dashboard.activeCount}</p>
         </Card>
         <Card className="space-y-2">
-          <p className="overline">Com alerta</p>
+          <p className="overline">{t('postop_dashboard_alerts')}</p>
           <p className="text-2xl font-bold text-danger">{dashboard.alertsCount}</p>
         </Card>
         <Card className="space-y-2">
-          <p className="overline">Sem check-in hoje</p>
+          <p className="overline">{t('postop_dashboard_without_checkin')}</p>
           <p className="text-2xl font-bold text-amber-600">{dashboard.noCheckinTodayCount}</p>
         </Card>
         <Card className="space-y-2">
-          <p className="overline">Concluídos</p>
+          <p className="overline">{t('postop_dashboard_completed')}</p>
           <p className="text-2xl font-bold text-success">{dashboard.completedCount}</p>
         </Card>
       </div>
 
       <Card>
         <div className="flex flex-wrap items-center gap-2">
-          {FILTERS.map((filter) => (
+          {filters.map((filter) => (
             <button
               key={filter.key}
               type="button"
@@ -196,7 +202,7 @@ export default function PostOperatoryPage() {
             </button>
           ))}
           <span className="ml-auto text-sm text-slate-500">
-            {filteredRows.length} paciente(s) encontrado(s)
+            {filteredRows.length} {t('postop_found_suffix')}
           </span>
         </div>
       </Card>
@@ -206,32 +212,32 @@ export default function PostOperatoryPage() {
           <table className="min-w-full divide-y divide-slate-100">
             <thead className="bg-slate-50">
               <tr>
-                <th className="px-4 py-3 text-left overline">PACIENTE</th>
-                <th className="px-4 py-3 text-left overline">STATUS</th>
-                <th className="px-4 py-3 text-left overline">DIA ATUAL</th>
-                <th className="px-4 py-3 text-left overline">ÚLTIMO CHECK-IN</th>
-                <th className="px-4 py-3 text-left overline">DOR</th>
-                <th className="px-4 py-3 text-left overline">STATUS CLÍNICO</th>
-                <th className="px-4 py-3 text-right overline">AÇÃO</th>
+                <th className="px-4 py-3 text-left overline">{t('postop_col_patient')}</th>
+                <th className="px-4 py-3 text-left overline">{t('postop_col_status')}</th>
+                <th className="px-4 py-3 text-left overline">{t('postop_col_current_day')}</th>
+                <th className="px-4 py-3 text-left overline">{t('postop_col_last_checkin')}</th>
+                <th className="px-4 py-3 text-left overline">{t('postop_col_pain')}</th>
+                <th className="px-4 py-3 text-left overline">{t('postop_col_clinical_status')}</th>
+                <th className="px-4 py-3 text-right overline">{t('postop_col_action')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 bg-white">
               {listQuery.isLoading ? (
                 <tr>
                   <td colSpan={7} className="px-4 py-10 text-center text-sm text-slate-500">
-                    Carregando pós-operatórios...
+                    {t('postop_loading_list')}
                   </td>
                 </tr>
               ) : listQuery.isError ? (
                 <tr>
                   <td colSpan={7} className="px-4 py-10 text-center text-sm text-slate-500">
-                    Não foi possível carregar os pós-operatórios.
+                    {t('postop_load_error')}
                   </td>
                 </tr>
               ) : filteredRows.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="px-4 py-10 text-center text-sm text-slate-500">
-                    Nenhum paciente encontrado com os filtros atuais.
+                    {t('postop_empty')}
                   </td>
                 </tr>
               ) : (
@@ -254,7 +260,7 @@ export default function PostOperatoryPage() {
                           <span className="text-sm font-semibold text-night">{item.patient_name}</span>
                           {item.has_open_urgent_ticket ? (
                             <Badge className="bg-danger/20 text-danger">
-                              Urgente {item.open_urgent_ticket_count ? `(${item.open_urgent_ticket_count})` : ''}
+                              {t('postop_urgent_label')} {item.open_urgent_ticket_count ? `(${item.open_urgent_ticket_count})` : ''}
                             </Badge>
                           ) : null}
                         </div>
@@ -262,21 +268,25 @@ export default function PostOperatoryPage() {
                     </td>
                     <td className="px-4 py-3">
                       <Badge className={item.status === 'completed' ? 'bg-success/15 text-success' : item.status === 'cancelled' ? 'bg-danger/15 text-danger' : 'bg-primary/15 text-primary'}>
-                        {item.status === 'completed' ? 'Concluído' : item.status === 'cancelled' ? 'Cancelado' : 'Em andamento'}
+                        {item.status === 'completed'
+                          ? t('postop_status_completed')
+                          : item.status === 'cancelled'
+                            ? t('postop_status_cancelled')
+                            : t('postop_status_active')}
                       </Badge>
                     </td>
                     <td className="px-4 py-3 text-sm text-slate-700">
                       {item.current_day}/{item.total_days}
                     </td>
                     <td className="px-4 py-3 text-sm text-slate-600">
-                      {formatDateTime(item.last_checkin_date)}
+                      {formatDateTime(item.last_checkin_date, locale, t('postop_no_checkin'))}
                     </td>
                     <td className="px-4 py-3 text-sm text-slate-700">
                       {item.last_pain_level != null ? item.last_pain_level : '-'}
                     </td>
                     <td className="px-4 py-3">
                       <Badge className={postOperatoryClinicalStatusClass(item.clinical_status)}>
-                        {postOperatoryClinicalStatusLabel(item.clinical_status)}
+                        {postOperatoryClinicalStatusLabel(item.clinical_status, t)}
                       </Badge>
                     </td>
                     <td className="px-4 py-3 text-right">
@@ -290,7 +300,7 @@ export default function PostOperatoryPage() {
                         }}
                       >
                         <Eye className="h-4 w-4" />
-                        Ver
+                        {t('postop_view')}
                       </Button>
                     </td>
                   </tr>
@@ -309,8 +319,8 @@ export default function PostOperatoryPage() {
         }}
         title={
           selectedRow?.patient_name
-            ? `Pós-operatório • ${selectedRow.patient_name}`
-            : 'Pós-operatório'
+            ? `${t('postop_modal_title')} • ${selectedRow.patient_name}`
+            : t('postop_modal_title')
         }
         record={detailQuery.data}
         isLoading={detailQuery.isLoading}

@@ -133,7 +133,11 @@ def _log_pre_operatory_event(
 
 
 def _is_clinic_admin(user: GoKlinikUser) -> bool:
-    return user.role == GoKlinikUser.RoleChoices.CLINIC_MASTER
+    return user.role in {
+        GoKlinikUser.RoleChoices.CLINIC_MASTER,
+        GoKlinikUser.RoleChoices.SURGEON,
+        GoKlinikUser.RoleChoices.NURSE,
+    }
 
 
 def _can_staff_view_patient_pre_operatory(user: GoKlinikUser, patient: GoKlinikUser) -> bool:
@@ -210,6 +214,11 @@ class PreOperatoryCreateAPIView(APIView):
             )
 
         queryset = _pre_operatory_queryset().filter(tenant_id=user.tenant_id)
+        if user.role == GoKlinikUser.RoleChoices.SURGEON:
+            assigned_patient_ids = DoctorPatientAssignment.objects.filter(
+                doctor_id=user.id
+            ).values_list("patient_id", flat=True)
+            queryset = queryset.filter(patient_id__in=assigned_patient_ids)
         if status_filter:
             queryset = queryset.filter(status=status_filter)
         else:

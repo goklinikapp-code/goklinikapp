@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/settings/app_preferences.dart';
+import '../../../core/settings/app_translations.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/gk_button.dart';
 import '../../../core/widgets/gk_card.dart';
@@ -15,9 +17,11 @@ class CareCenterScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(careCenterProvider(journeyId));
+    final language = ref.watch(appPreferencesControllerProvider).language;
+    String t(String key) => appTr(key: key, language: language);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Central de Cuidados')),
+      appBar: AppBar(title: Text(t('postop_care_center_title'))),
       body: state.when(
         loading: () => ListView.separated(
           padding: const EdgeInsets.all(16),
@@ -25,30 +29,40 @@ class CareCenterScreen extends ConsumerWidget {
           separatorBuilder: (_, __) => const SizedBox(height: 10),
           itemBuilder: (_, __) => const GKLoadingShimmer(height: 92),
         ),
-        error: (error, _) => Center(child: Text('Erro ao carregar cuidados: $error')),
+        error: (error, _) => Center(
+          child: Text('${t('postop_care_center_load_error_prefix')} $error'),
+        ),
         data: (data) {
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              Text('Central de Cuidados', style: Theme.of(context).textTheme.titleLarge),
+              Text(
+                t('postop_care_center_title'),
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
               const SizedBox(height: 6),
-              const Text('Conteúdo personalizado para sua recuperação pós-operatória.'),
+              Text(t('postop_care_center_subtitle')),
               const SizedBox(height: 12),
               GKCard(
                 color: const Color(0xFFE9F7ED),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Row(
+                    Row(
                       children: [
-                        Icon(Icons.local_hospital_rounded, color: GKColors.secondary),
-                        SizedBox(width: 10),
-                        Expanded(child: Text('DISPONÍVEL AGORA • Falar com Enfermagem')),
+                        const Icon(Icons.local_hospital_rounded,
+                            color: GKColors.secondary),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            t('postop_care_center_available_now_nursing'),
+                          ),
+                        ),
                       ],
                     ),
                     const SizedBox(height: 10),
                     GKButton(
-                      label: 'Iniciar conversa',
+                      label: t('postop_care_center_start_chat'),
                       onPressed: () {
                         Navigator.of(context).pop();
                       },
@@ -61,7 +75,10 @@ class CareCenterScreen extends ConsumerWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('Dúvidas frequentes', style: TextStyle(fontWeight: FontWeight.w700)),
+                    Text(
+                      t('postop_care_center_faq'),
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
                     const SizedBox(height: 8),
                     ...data.faqs.map(
                       (faq) => ExpansionTile(
@@ -83,14 +100,19 @@ class CareCenterScreen extends ConsumerWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('Medicamentos', style: TextStyle(fontWeight: FontWeight.w700)),
+                    Text(
+                      t('postop_care_center_medications'),
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
                     const SizedBox(height: 8),
                     ...data.medications.map(
                       (med) => ListTile(
                         contentPadding: EdgeInsets.zero,
-                        leading: const Icon(Icons.medication_outlined, color: GKColors.primary),
+                        leading: const Icon(Icons.medication_outlined,
+                            color: GKColors.primary),
                         title: Text(med['name'] ?? ''),
-                        subtitle: Text('${med['dosage'] ?? ''} • ${med['schedule'] ?? ''}'),
+                        subtitle: Text(
+                            '${med['dosage'] ?? ''} • ${med['schedule'] ?? ''}'),
                       ),
                     ),
                   ],
@@ -101,12 +123,16 @@ class CareCenterScreen extends ConsumerWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('Orientações gerais', style: TextStyle(fontWeight: FontWeight.w700)),
+                    Text(
+                      t('postop_care_center_general_guidance'),
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
                     const SizedBox(height: 8),
                     ...data.guidanceLinks.map(
                       (link) => ListTile(
                         contentPadding: EdgeInsets.zero,
-                        leading: const Icon(Icons.open_in_new, color: GKColors.primary),
+                        leading: const Icon(Icons.open_in_new,
+                            color: GKColors.primary),
                         title: Text(link),
                       ),
                     ),
@@ -117,7 +143,7 @@ class CareCenterScreen extends ConsumerWidget {
                         color: GKColors.tealIce,
                         borderRadius: BorderRadius.circular(10),
                       ),
-                      child: const Text('Estamos aqui 24h por dia para acompanhar sua recuperação.'),
+                      child: Text(t('postop_care_center_support_24h')),
                     ),
                   ],
                 ),
