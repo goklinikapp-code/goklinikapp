@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -22,6 +24,8 @@ final dioProvider = Provider<Dio>((ref) {
       receiveTimeout: const Duration(seconds: 20),
       sendTimeout: const Duration(seconds: 20),
       contentType: Headers.jsonContentType,
+      responseDecoder: (responseBytes, _, __) =>
+          _decodeResponseBytes(responseBytes),
     ),
   );
 
@@ -129,3 +133,13 @@ final dioProvider = Provider<Dio>((ref) {
 
   return dio;
 });
+
+String _decodeResponseBytes(List<int> responseBytes) {
+  try {
+    return utf8.decode(responseBytes);
+  } catch (_) {
+    // Fallback to single-byte decode and let model-level normalizers
+    // repair eventual mojibake patterns safely.
+    return latin1.decode(responseBytes, allowInvalid: true);
+  }
+}

@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import '../../../core/settings/app_preferences.dart';
+import '../../../core/settings/app_translations.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/gk_avatar.dart';
 import '../../../core/widgets/gk_badge.dart';
@@ -48,6 +50,9 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
   }
 
   Future<void> _openReplySheet(DoctorInboxMessage item) async {
+    final language = ref.read(appPreferencesControllerProvider).language;
+    String t(String key) => appTr(key: key, language: language);
+
     final saved = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
@@ -55,6 +60,7 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
       builder: (context) {
         return _DoctorReplySheet(
           message: item,
+          t: t,
           onSubmit: (answer) async {
             await ref.read(chatInboxProvider.notifier).reply(
                   requestId: item.id,
@@ -67,18 +73,20 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
 
     if (!mounted || saved != true) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Resposta enviada com sucesso.')),
+      SnackBar(content: Text(t('chat_doctor_sent_success'))),
     );
   }
 
   @override
   Widget build(BuildContext context) {
+    final language = ref.watch(appPreferencesControllerProvider).language;
+    String t(String key) => appTr(key: key, language: language);
     final inboxState = ref.watch(chatInboxProvider);
     final colorScheme = Theme.of(context).colorScheme;
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Caixa de Mensagens'),
+        title: Text(t('chat_inbox_title')),
         actions: [
           const NotificationBellAction(),
           IconButton(
@@ -99,16 +107,16 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
           child: Padding(
             padding: const EdgeInsets.all(24),
             child: Text(
-              'Nao foi possivel carregar a caixa de mensagens: $error',
+              '${t('chat_inbox_load_error_prefix')}: $error',
               textAlign: TextAlign.center,
             ),
           ),
         ),
         data: (items) {
           if (items.isEmpty) {
-            return const Center(
+            return Center(
               child: Text(
-                'Nenhuma mensagem recebida ate agora.',
+                t('chat_inbox_empty'),
               ),
             );
           }
@@ -125,19 +133,19 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
                   scrollDirection: Axis.horizontal,
                   padding: const EdgeInsets.symmetric(horizontal: 12),
                   children: [
-                    _chip('Todos', InboxFilterChip.all),
-                    _chip('Nao lidas', InboxFilterChip.unread),
-                    _chip('Respondidas', InboxFilterChip.answered),
-                    _chip('Fechadas', InboxFilterChip.closed),
+                    _chip(t('appointments_filter_all'), InboxFilterChip.all),
+                    _chip(t('chat_filter_unread'), InboxFilterChip.unread),
+                    _chip(t('chat_filter_answered'), InboxFilterChip.answered),
+                    _chip(t('chat_filter_closed'), InboxFilterChip.closed),
                   ],
                 ),
               ),
               const SizedBox(height: 8),
               Expanded(
                 child: filtered.isEmpty
-                    ? const Center(
+                    ? Center(
                         child: Text(
-                          'Nenhuma mensagem encontrada para este filtro.',
+                          t('chat_inbox_empty_filtered'),
                         ),
                       )
                     : ListView.separated(
@@ -147,7 +155,7 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
                         itemBuilder: (context, index) {
                           final item = filtered[index];
                           final status =
-                              _statusVisual(colorScheme, item.status);
+                              _statusVisual(colorScheme, item.status, t);
 
                           return GKCard(
                             child: Column(
@@ -211,7 +219,8 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
                                   item.question,
                                   maxLines: 2,
                                   overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
+                                  style: _emojiTextStyle(
+                                    context,
                                     fontSize: 14,
                                     fontWeight: FontWeight.w600,
                                   ),
@@ -232,9 +241,9 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
                                       crossAxisAlignment:
                                           CrossAxisAlignment.start,
                                       children: [
-                                        const Text(
-                                          'Resposta enviada',
-                                          style: TextStyle(
+                                        Text(
+                                          t('chat_answered'),
+                                          style: const TextStyle(
                                             fontSize: 11,
                                             color: Color(0xFF64748B),
                                             fontWeight: FontWeight.w600,
@@ -245,8 +254,9 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
                                           item.answer,
                                           maxLines: 2,
                                           overflow: TextOverflow.ellipsis,
-                                          style: const TextStyle(
-                                            color: Color(0xFF475569),
+                                          style: _emojiTextStyle(
+                                            context,
+                                            color: const Color(0xFF475569),
                                           ),
                                         ),
                                       ],
@@ -260,8 +270,8 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
                                     width: 170,
                                     child: GKButton(
                                       label: item.isAnswered
-                                          ? 'Ver detalhes'
-                                          : 'Responder',
+                                          ? t('chat_view_details')
+                                          : t('chat_reply'),
                                       variant: item.isAnswered
                                           ? GKButtonVariant.secondary
                                           : GKButtonVariant.primary,
@@ -318,10 +328,12 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
 class _DoctorReplySheet extends StatefulWidget {
   const _DoctorReplySheet({
     required this.message,
+    required this.t,
     required this.onSubmit,
   });
 
   final DoctorInboxMessage message;
+  final String Function(String key) t;
   final Future<void> Function(String answer) onSubmit;
 
   @override
@@ -350,8 +362,8 @@ class _DoctorReplySheetState extends State<_DoctorReplySheet> {
     final answer = _controller.text.trim();
     if (answer.length < 3) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Digite pelo menos 3 caracteres na resposta.'),
+        SnackBar(
+          content: Text(widget.t('chat_reply_min_chars')),
         ),
       );
       return;
@@ -365,8 +377,8 @@ class _DoctorReplySheetState extends State<_DoctorReplySheet> {
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Nao foi possivel enviar agora. Tente novamente.'),
+        SnackBar(
+          content: Text(widget.t('chat_send_error')),
         ),
       );
     } finally {
@@ -419,7 +431,10 @@ class _DoctorReplySheetState extends State<_DoctorReplySheet> {
                   color: colorScheme.outline.withValues(alpha: 0.3),
                 ),
               ),
-              child: Text(widget.message.question),
+              child: Text(
+                widget.message.question,
+                style: _emojiTextStyle(context),
+              ),
             ),
             const SizedBox(height: 12),
             if (widget.message.isAnswered && !_editing)
@@ -434,9 +449,9 @@ class _DoctorReplySheetState extends State<_DoctorReplySheet> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      'Resposta atual',
-                      style: TextStyle(
+                    Text(
+                      widget.t('chat_current_answer'),
+                      style: const TextStyle(
                         fontSize: 11,
                         color: Color(0xFF64748B),
                         fontWeight: FontWeight.w600,
@@ -445,15 +460,16 @@ class _DoctorReplySheetState extends State<_DoctorReplySheet> {
                     const SizedBox(height: 4),
                     Text(
                       widget.message.answer.trim().isEmpty
-                          ? 'Sem resposta registrada.'
+                          ? widget.t('chat_no_answer')
                           : widget.message.answer,
+                      style: _emojiTextStyle(context),
                     ),
                   ],
                 ),
               )
             else ...[
               Text(
-                'Responder',
+                widget.t('chat_reply'),
                 style: Theme.of(context).textTheme.titleSmall?.copyWith(
                       fontWeight: FontWeight.w700,
                     ),
@@ -463,8 +479,8 @@ class _DoctorReplySheetState extends State<_DoctorReplySheet> {
                 controller: _controller,
                 maxLines: 5,
                 minLines: 4,
-                decoration: const InputDecoration(
-                  hintText: 'Digite a resposta para o paciente...',
+                decoration: InputDecoration(
+                  hintText: widget.t('chat_reply_hint'),
                 ),
               ),
             ],
@@ -474,8 +490,8 @@ class _DoctorReplySheetState extends State<_DoctorReplySheet> {
                 Expanded(
                   child: GKButton(
                     label: (widget.message.isAnswered && !_editing)
-                        ? 'Fechar'
-                        : 'Cancelar',
+                        ? widget.t('chat_close')
+                        : widget.t('cancel'),
                     variant: GKButtonVariant.secondary,
                     onPressed: _sending
                         ? null
@@ -486,8 +502,10 @@ class _DoctorReplySheetState extends State<_DoctorReplySheet> {
                 Expanded(
                   child: GKButton(
                     label: widget.message.isAnswered && !_editing
-                        ? 'Editar resposta'
-                        : (_sending ? 'Enviando...' : 'Salvar'),
+                        ? widget.t('chat_edit_answer')
+                        : (_sending
+                            ? widget.t('chat_sending')
+                            : widget.t('save')),
                     onPressed: _sending
                         ? null
                         : () {
@@ -508,24 +526,51 @@ class _DoctorReplySheetState extends State<_DoctorReplySheet> {
   }
 }
 
-_StatusVisual _statusVisual(ColorScheme colorScheme, String status) {
+TextStyle _emojiTextStyle(
+  BuildContext context, {
+  double? fontSize,
+  FontWeight? fontWeight,
+  Color? color,
+}) {
+  final base = Theme.of(context).textTheme.bodyMedium ?? const TextStyle();
+  final fallback = <String>[
+    ...?base.fontFamilyFallback,
+    'AppleColorEmoji',
+    'Apple Color Emoji',
+    'Segoe UI Emoji',
+    'Noto Color Emoji',
+  ];
+
+  return base.copyWith(
+    fontSize: fontSize ?? base.fontSize,
+    fontWeight: fontWeight ?? base.fontWeight,
+    color: color ?? base.color,
+    fontFamilyFallback: fallback.toSet().toList(),
+  );
+}
+
+_StatusVisual _statusVisual(
+  ColorScheme colorScheme,
+  String status,
+  String Function(String key) t,
+) {
   switch (status) {
     case 'answered':
       return _StatusVisual(
-        label: 'Respondida',
+        label: t('chat_filter_answered'),
         background: colorScheme.secondary.withValues(alpha: 0.2),
         foreground: colorScheme.secondary,
       );
     case 'closed':
       return _StatusVisual(
-        label: 'Fechada',
+        label: t('chat_filter_closed'),
         background: colorScheme.outline.withValues(alpha: 0.2),
         foreground: colorScheme.onSurfaceVariant,
       );
     case 'open':
     default:
       return _StatusVisual(
-        label: 'Aguardando',
+        label: t('appointments_status_pending'),
         background: colorScheme.tertiary.withValues(alpha: 0.2),
         foreground: colorScheme.tertiary,
       );

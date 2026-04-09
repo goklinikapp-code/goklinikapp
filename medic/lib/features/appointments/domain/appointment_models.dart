@@ -11,6 +11,7 @@ class AppointmentItem {
     required this.professionalAvatarUrl,
     required this.specialtyId,
     required this.specialtyName,
+    required this.clinicLocation,
     required this.status,
     required this.type,
     required this.date,
@@ -27,6 +28,7 @@ class AppointmentItem {
   final String professionalAvatarUrl;
   final String specialtyId;
   final String specialtyName;
+  final String clinicLocation;
   final String status;
   final String type;
   final DateTime date;
@@ -97,6 +99,7 @@ class AppointmentItem {
       ),
       specialtyId: (json['specialty'] ?? '').toString(),
       specialtyName: (json['specialty_name'] ?? '').toString(),
+      clinicLocation: (json['clinic_location'] ?? '').toString(),
       status: (json['status'] ?? 'pending').toString(),
       type: (json['appointment_type'] ?? 'first_visit').toString(),
       date: dateRaw,
@@ -116,5 +119,94 @@ class AvailableSlotsResponse {
         .map((item) => item.toString())
         .toList();
     return AvailableSlotsResponse(slots: slots);
+  }
+}
+
+class ProfessionalAvailabilityRule {
+  const ProfessionalAvailabilityRule({
+    required this.id,
+    required this.dayOfWeek,
+    required this.startTime,
+    required this.endTime,
+    required this.isActive,
+  });
+
+  final String id;
+  final int dayOfWeek;
+  final String startTime;
+  final String endTime;
+  final bool isActive;
+
+  factory ProfessionalAvailabilityRule.fromJson(Map<String, dynamic> json) {
+    return ProfessionalAvailabilityRule(
+      id: (json['id'] ?? '').toString(),
+      dayOfWeek: int.tryParse((json['day_of_week'] ?? 0).toString()) ?? 0,
+      startTime: (json['start_time'] ?? '').toString(),
+      endTime: (json['end_time'] ?? '').toString(),
+      isActive: json['is_active'] != false,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'day_of_week': dayOfWeek,
+      'start_time': startTime,
+      'end_time': endTime,
+      'is_active': isActive,
+    };
+  }
+}
+
+class ProfessionalAvailabilityResponse {
+  const ProfessionalAvailabilityResponse({
+    required this.professionalId,
+    required this.professionalName,
+    required this.rules,
+  });
+
+  final String professionalId;
+  final String professionalName;
+  final List<ProfessionalAvailabilityRule> rules;
+
+  factory ProfessionalAvailabilityResponse.fromJson(Map<String, dynamic> json) {
+    final rawRules = (json['rules'] as List<dynamic>? ?? const []);
+    return ProfessionalAvailabilityResponse(
+      professionalId: (json['professional_id'] ?? '').toString(),
+      professionalName: (json['professional_name'] ?? '').toString(),
+      rules: rawRules
+          .whereType<Map<String, dynamic>>()
+          .map(ProfessionalAvailabilityRule.fromJson)
+          .toList(),
+    );
+  }
+}
+
+class BlockedPeriodItem {
+  const BlockedPeriodItem({
+    required this.id,
+    required this.professionalId,
+    required this.professionalName,
+    required this.startDateTime,
+    required this.endDateTime,
+    required this.reason,
+  });
+
+  final String id;
+  final String professionalId;
+  final String professionalName;
+  final DateTime? startDateTime;
+  final DateTime? endDateTime;
+  final String reason;
+
+  factory BlockedPeriodItem.fromJson(Map<String, dynamic> json) {
+    return BlockedPeriodItem(
+      id: (json['id'] ?? '').toString(),
+      professionalId: (json['professional'] ?? '').toString(),
+      professionalName: (json['professional_name'] ?? '').toString(),
+      startDateTime:
+          DateTime.tryParse((json['start_datetime'] ?? '').toString()),
+      endDateTime: DateTime.tryParse((json['end_datetime'] ?? '').toString()),
+      reason: (json['reason'] ?? '').toString(),
+    );
   }
 }

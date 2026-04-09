@@ -76,6 +76,9 @@ export default function PreOperatoryPage() {
   const [notes, setNotes] = useState('')
   const [selectedDoctorId, setSelectedDoctorId] = useState('')
   const [pendingAction, setPendingAction] = useState<ActionKind | null>(null)
+  const isClinicMaster = currentUser?.role === 'clinic_master'
+  const isSurgeon = currentUser?.role === 'surgeon'
+  const canReviewPreOperatory = isClinicMaster || isSurgeon
 
   const listQuery = useQuery({
     queryKey: ['pre-operatory-admin-list', statusFilter],
@@ -90,7 +93,7 @@ export default function PreOperatoryPage() {
   const doctorsQuery = useQuery({
     queryKey: ['pre-operatory-admin-doctors'],
     queryFn: getDoctors,
-    enabled: isModalOpen,
+    enabled: isModalOpen && isClinicMaster,
   })
 
   const selectedRecord = useMemo(
@@ -99,8 +102,6 @@ export default function PreOperatoryPage() {
       null,
     [listQuery.data, selectedRecordId],
   )
-  const canManagePreOperatory = currentUser?.role === 'clinic_master'
-
   useEffect(() => {
     if (!isModalOpen || !selectedRecord) return
     setNotes(selectedRecord.notes || '')
@@ -286,7 +287,7 @@ export default function PreOperatoryPage() {
             ? `${t('preop_modal_title')} • ${selectedRecord.patient_name}`
             : t('preop_modal_title')
         }
-        actionArea={canManagePreOperatory ? (
+        actionArea={canReviewPreOperatory ? (
           <div className="space-y-4">
             <div>
               <p className="mb-2 text-sm font-semibold text-night">{t('preop_clinic_observations')}</p>
@@ -298,36 +299,40 @@ export default function PreOperatoryPage() {
               />
             </div>
 
-            <div>
-              <p className="mb-2 text-sm font-semibold text-night">{t('preop_assign_doctor')}</p>
-              <Select
-                value={selectedDoctorId}
-                onChange={(event) => setSelectedDoctorId(event.target.value)}
-                disabled={doctorsQuery.isLoading}
-              >
-                <option value="">{t('preop_select_doctor')}</option>
-                {(doctorsQuery.data || []).map((doctor) => (
-                  <option key={doctor.id} value={doctor.id}>
-                    {doctor.name}
-                  </option>
-                ))}
-              </Select>
-            </div>
+            {isClinicMaster ? (
+              <div>
+                <p className="mb-2 text-sm font-semibold text-night">{t('preop_assign_doctor')}</p>
+                <Select
+                  value={selectedDoctorId}
+                  onChange={(event) => setSelectedDoctorId(event.target.value)}
+                  disabled={doctorsQuery.isLoading}
+                >
+                  <option value="">{t('preop_select_doctor')}</option>
+                  {(doctorsQuery.data || []).map((doctor) => (
+                    <option key={doctor.id} value={doctor.id}>
+                      {doctor.name}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+            ) : null}
 
             <div className="grid gap-2 md:grid-cols-2">
-              <Button
-                type="button"
-                variant="secondary"
-                disabled={Boolean(pendingAction)}
-                onClick={() =>
-                  void executeAction('in_review', {
-                    status: 'in_review',
-                    notes,
-                  })
-                }
-              >
-                {pendingAction === 'in_review' ? t('preop_saving') : t('preop_mark_in_review')}
-              </Button>
+              {isClinicMaster ? (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={Boolean(pendingAction)}
+                  onClick={() =>
+                    void executeAction('in_review', {
+                      status: 'in_review',
+                      notes,
+                    })
+                  }
+                >
+                  {pendingAction === 'in_review' ? t('preop_saving') : t('preop_mark_in_review')}
+                </Button>
+              ) : null}
 
               <Button
                 type="button"
@@ -356,38 +361,42 @@ export default function PreOperatoryPage() {
                 {pendingAction === 'reject' ? t('preop_saving') : t('preop_reject')}
               </Button>
 
-              <Button
-                type="button"
-                variant="secondary"
-                disabled={Boolean(pendingAction)}
-                onClick={() => {
-                  if (!requireDoctor()) return
-                  void executeAction('assign', {
-                    notes,
-                    assigned_doctor: selectedDoctorId,
-                  })
-                }}
-              >
-                {pendingAction === 'assign' ? t('preop_saving') : t('preop_assign')}
-              </Button>
+              {isClinicMaster ? (
+                <>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    disabled={Boolean(pendingAction)}
+                    onClick={() => {
+                      if (!requireDoctor()) return
+                      void executeAction('assign', {
+                        notes,
+                        assigned_doctor: selectedDoctorId,
+                      })
+                    }}
+                  >
+                    {pendingAction === 'assign' ? t('preop_saving') : t('preop_assign')}
+                  </Button>
 
-              <Button
-                type="button"
-                className="md:col-span-2"
-                disabled={Boolean(pendingAction)}
-                onClick={() => {
-                  if (!requireDoctor()) return
-                  void executeAction('approve_assign', {
-                    status: 'approved',
-                    notes,
-                    assigned_doctor: selectedDoctorId,
-                  })
-                }}
-              >
-                {pendingAction === 'approve_assign'
-                  ? t('preop_saving')
-                  : t('preop_approve_assign')}
-              </Button>
+                  <Button
+                    type="button"
+                    className="md:col-span-2"
+                    disabled={Boolean(pendingAction)}
+                    onClick={() => {
+                      if (!requireDoctor()) return
+                      void executeAction('approve_assign', {
+                        status: 'approved',
+                        notes,
+                        assigned_doctor: selectedDoctorId,
+                      })
+                    }}
+                  >
+                    {pendingAction === 'approve_assign'
+                      ? t('preop_saving')
+                      : t('preop_approve_assign')}
+                  </Button>
+                </>
+              ) : null}
             </div>
           </div>
         ) : null}

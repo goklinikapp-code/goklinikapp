@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 from rest_framework import permissions, status
 from rest_framework.response import Response
@@ -163,6 +164,19 @@ def _can_staff_view_patient_pre_operatory(user: GoKlinikUser, patient: GoKlinikU
     return False
 
 
+def _is_pre_operatory_assigned_to_surgeon(
+    *,
+    surgeon: GoKlinikUser,
+    pre_operatory: PreOperatory,
+) -> bool:
+    if str(pre_operatory.assigned_doctor_id or "") == str(surgeon.id):
+        return True
+    return DoctorPatientAssignment.objects.filter(
+        doctor_id=surgeon.id,
+        patient_id=pre_operatory.patient_id,
+    ).exists()
+
+
 def _can_manage_pre_operatory_file(user: GoKlinikUser, pre_operatory: PreOperatory) -> bool:
     if user.role == GoKlinikUser.RoleChoices.PATIENT:
         return str(user.id) == str(pre_operatory.patient_id)
@@ -218,7 +232,10 @@ class PreOperatoryCreateAPIView(APIView):
             assigned_patient_ids = DoctorPatientAssignment.objects.filter(
                 doctor_id=user.id
             ).values_list("patient_id", flat=True)
-            queryset = queryset.filter(patient_id__in=assigned_patient_ids)
+            queryset = queryset.filter(
+                Q(assigned_doctor_id=user.id)
+                | Q(patient_id__in=assigned_patient_ids)
+            ).distinct()
         if status_filter:
             queryset = queryset.filter(status=status_filter)
         else:
@@ -500,19 +517,32 @@ class PreOperatoryDetailAPIView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        pre_operatory = (
-            _pre_operatory_queryset()
-            .filter(
-                id=pre_operatory_id,
-                tenant_id=user.tenant_id,
-            )
-            .first()
+        pre_operatory_queryset = _pre_operatory_queryset().filter(
+            id=pre_operatory_id,
+            tenant_id=user.tenant_id,
         )
+        if user.role == GoKlinikUser.RoleChoices.SURGEON:
+            assigned_patient_ids = DoctorPatientAssignment.objects.filter(
+                doctor_id=user.id
+            ).values_list("patient_id", flat=True)
+            pre_operatory_queryset = pre_operatory_queryset.filter(
+                Q(assigned_doctor_id=user.id)
+                | Q(patient_id__in=assigned_patient_ids)
+            )
+        pre_operatory = pre_operatory_queryset.first()
         if not pre_operatory:
             return Response(
                 {"detail": "Pre-operatory not found."},
                 status=status.HTTP_404_NOT_FOUND,
             )
+        if (
+            user.role == GoKlinikUser.RoleChoices.SURGEON
+            and not _is_pre_operatory_assigned_to_surgeon(
+                surgeon=user,
+                pre_operatory=pre_operatory,
+            )
+        ):
+            return Response(status=status.HTTP_403_FORBIDDEN)
 
         serializer = PreOperatoryAdminUpdateSerializer(
             data=request.data,
@@ -520,6 +550,24 @@ class PreOperatoryDetailAPIView(APIView):
         )
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
+        if user.role == GoKlinikUser.RoleChoices.SURGEON:
+            if "assigned_doctor" in data:
+                return Response(
+                    {"detail": "Surgeons cannot assign doctors in pre-operatory triage."},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+            if (
+                "status" in data
+                and data["status"]
+                not in {
+                    PreOperatory.StatusChoices.APPROVED,
+                    PreOperatory.StatusChoices.REJECTED,
+                }
+            ):
+                return Response(
+                    {"detail": "Surgeons can only approve or reject pre-operatory triage."},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
         previous_status = pre_operatory.status
         previous_assigned_doctor_id = pre_operatory.assigned_doctor_id
         previous_notes = pre_operatory.notes

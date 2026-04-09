@@ -23,6 +23,14 @@ abstract class PatientsRepository {
   Future<List<MedicalDocumentItem>> getPatientDocuments(String patientId);
 
   Future<PatientPreOperatoryRecord?> getPatientPreOperatory(String patientId);
+  Future<List<PatientPreOperatoryRecord>> getMyPreOperatoryRecords({
+    PreOperatoryStatus? status,
+  });
+  Future<PatientPreOperatoryRecord> updatePreOperatoryRecord({
+    required String preOperatoryId,
+    PreOperatoryStatus? status,
+    String? notes,
+  });
   Future<PatientPostOperatoryRecord?> getPatientPostOperatory(String patientId);
 
   Future<List<ProntuarioMedicationItem>> getPatientProntuarioMedications(

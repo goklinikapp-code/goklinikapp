@@ -9,6 +9,7 @@ import { SaaSClinicInviteAcceptPage } from "@/pages/Auth/SaaSClinicInviteAccept"
 import AppDownloadsPage from "@/pages/AppDownloads";
 import TutorialsPage from "@/pages/Tutorials";
 import DashboardPage from "@/pages/Dashboard";
+import SurgeonDashboardPage from "@/pages/SurgeonDashboard";
 import SaaSDashboardPage from "@/pages/SaaSDashboard";
 import SaaSClientsPage from "@/pages/SaaSClients";
 import SaaSSellersPage from "@/pages/SaaSSellers";
@@ -58,6 +59,9 @@ function RoleBasedDashboard() {
   const user = useAuthStore((state) => state.user);
   if (user?.role === "super_admin") {
     return <SaaSDashboardPage />;
+  }
+  if (user?.role === "surgeon") {
+    return <SurgeonDashboardPage />;
   }
   return <DashboardPage />;
 }

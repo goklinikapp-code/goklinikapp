@@ -4,6 +4,8 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:table_calendar/table_calendar.dart';
 
+import '../../../core/settings/app_preferences.dart';
+import '../../../core/settings/app_translations.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/gk_avatar.dart';
@@ -39,17 +41,26 @@ class _AppointmentsScreenState extends ConsumerState<AppointmentsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final language = ref.watch(appPreferencesControllerProvider).language;
+    String t(String key) => appTr(key: key, language: language);
     final appointmentsState = ref.watch(appointmentsControllerProvider);
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Agenda'),
+        title: Text(t('appointments_nav_title')),
         actions: [
           const NotificationBellAction(),
           IconButton(
             onPressed: () => setState(() => _calendarView = !_calendarView),
             icon: Icon(_calendarView ? Icons.view_list : Icons.calendar_month),
-            tooltip: _calendarView ? 'Modo lista' : 'Modo calendario',
+            tooltip: _calendarView
+                ? t('appointments_mode_list')
+                : t('appointments_mode_calendar'),
+          ),
+          IconButton(
+            onPressed: () => context.push('/schedule/availability'),
+            icon: const Icon(Icons.event_available_outlined),
+            tooltip: t('doctor_availability_title'),
           ),
           IconButton(
             onPressed: () =>
@@ -65,8 +76,8 @@ class _AppointmentsScreenState extends ConsumerState<AppointmentsScreen> {
           separatorBuilder: (_, __) => const SizedBox(height: 10),
           itemBuilder: (_, __) => const GKLoadingShimmer(height: 88),
         ),
-        error: (error, _) =>
-            Center(child: Text('Erro ao carregar agenda: $error')),
+        error: (error, _) => Center(
+            child: Text('${t('appointments_load_error_prefix')}: $error')),
         data: (appointments) {
           final filteredAppointments = appointments
               .where((item) => _matchesStatusFilter(item, _statusFilter))
@@ -81,23 +92,38 @@ class _AppointmentsScreenState extends ConsumerState<AppointmentsScreen> {
                   scrollDirection: Axis.horizontal,
                   padding: const EdgeInsets.symmetric(horizontal: 12),
                   children: [
-                    _chip('Todos', AppointmentStatusFilterChip.all),
-                    _chip('Aguardando', AppointmentStatusFilterChip.pending),
-                    _chip('Confirmado', AppointmentStatusFilterChip.confirmed),
+                    _chip(t('appointments_filter_all'),
+                        AppointmentStatusFilterChip.all),
+                    _chip(t('appointments_status_pending'),
+                        AppointmentStatusFilterChip.pending),
                     _chip(
-                        'Em andamento', AppointmentStatusFilterChip.inProgress),
-                    _chip('Concluido', AppointmentStatusFilterChip.completed),
-                    _chip('Cancelado', AppointmentStatusFilterChip.cancelled),
+                      t('appointments_status_confirmed'),
+                      AppointmentStatusFilterChip.confirmed,
+                    ),
                     _chip(
-                        'Reagendado', AppointmentStatusFilterChip.rescheduled),
+                      t('appointments_status_in_progress'),
+                      AppointmentStatusFilterChip.inProgress,
+                    ),
+                    _chip(
+                      t('appointments_status_completed'),
+                      AppointmentStatusFilterChip.completed,
+                    ),
+                    _chip(
+                      t('appointments_status_cancelled'),
+                      AppointmentStatusFilterChip.cancelled,
+                    ),
+                    _chip(
+                      t('appointments_status_rescheduled'),
+                      AppointmentStatusFilterChip.rescheduled,
+                    ),
                   ],
                 ),
               ),
               const SizedBox(height: 8),
               Expanded(
                 child: _calendarView
-                    ? _calendarMode(filteredAppointments)
-                    : _listMode(filteredAppointments),
+                    ? _calendarMode(filteredAppointments, language, t)
+                    : _listMode(filteredAppointments, t),
               ),
             ],
           );
@@ -106,9 +132,12 @@ class _AppointmentsScreenState extends ConsumerState<AppointmentsScreen> {
     );
   }
 
-  Widget _listMode(List<AppointmentItem> appointments) {
+  Widget _listMode(
+    List<AppointmentItem> appointments,
+    String Function(String key) t,
+  ) {
     if (appointments.isEmpty) {
-      return const Center(child: Text('Sem agendamentos para este filtro.'));
+      return Center(child: Text(t('appointments_empty_filtered')));
     }
 
     return ListView.builder(
@@ -116,12 +145,16 @@ class _AppointmentsScreenState extends ConsumerState<AppointmentsScreen> {
       itemCount: appointments.length,
       itemBuilder: (context, index) {
         final item = appointments[index];
-        return _appointmentCard(item);
+        return _appointmentCard(item, t);
       },
     );
   }
 
-  Widget _calendarMode(List<AppointmentItem> appointments) {
+  Widget _calendarMode(
+    List<AppointmentItem> appointments,
+    String language,
+    String Function(String key) t,
+  ) {
     final events = <DateTime, List<AppointmentItem>>{};
     for (final appointment in appointments) {
       final day = DateTime(
@@ -145,7 +178,7 @@ class _AppointmentsScreenState extends ConsumerState<AppointmentsScreen> {
         GKCard(
           padding: const EdgeInsets.all(10),
           child: TableCalendar<AppointmentItem>(
-            locale: 'pt_BR',
+            locale: localeFromLanguage(language),
             firstDay: DateTime.now().subtract(const Duration(days: 365)),
             lastDay: DateTime.now().add(const Duration(days: 365)),
             focusedDay: _focusedDay,
@@ -186,52 +219,55 @@ class _AppointmentsScreenState extends ConsumerState<AppointmentsScreen> {
         ),
         const SizedBox(height: 12),
         Text(
-          'Agendamentos de ${DateFormat('dd/MM/yyyy').format(_selectedDay)}',
+          '${t('appointments_for_date')} ${DateFormat('dd/MM/yyyy').format(_selectedDay)}',
           style: const TextStyle(fontWeight: FontWeight.w700),
         ),
         const SizedBox(height: 8),
         if (selectedItems.isEmpty)
-          const GKCard(child: Text('Nenhum agendamento para este dia.'))
+          GKCard(child: Text(t('appointments_empty_day')))
         else
-          ...selectedItems.map(_appointmentCard),
+          ...selectedItems.map((item) => _appointmentCard(item, t)),
       ],
     );
   }
 
-  Widget _appointmentCard(AppointmentItem item) {
+  Widget _appointmentCard(
+    AppointmentItem item,
+    String Function(String key) t,
+  ) {
     final badge = switch (item.status) {
-      'completed' => const (
-          label: 'Concluido',
+      'completed' => (
+          label: t('appointments_status_completed'),
           background: Color(0xFFDCFCE7),
           foreground: Color(0xFF166534),
         ),
-      'confirmed' => const (
-          label: 'Confirmado',
+      'confirmed' => (
+          label: t('appointments_status_confirmed'),
           background: Color(0xFFDCFCE7),
           foreground: Color(0xFF166534),
         ),
-      'in_progress' => const (
-          label: 'Em andamento',
+      'in_progress' => (
+          label: t('appointments_status_in_progress'),
           background: Color(0xFFE8F4F8),
           foreground: GKColors.primary,
         ),
-      'pending' => const (
-          label: 'Aguardando',
+      'pending' => (
+          label: t('appointments_status_pending'),
           background: Color(0xFFFFF3CD),
           foreground: Color(0xFF92400E),
         ),
-      'cancelled' => const (
-          label: 'Cancelado',
+      'cancelled' => (
+          label: t('appointments_status_cancelled'),
           background: Color(0xFFFEE2E2),
           foreground: Color(0xFFB91C1C),
         ),
-      'rescheduled' => const (
-          label: 'Reagendado',
+      'rescheduled' => (
+          label: t('appointments_status_rescheduled'),
           background: Color(0xFFEDE9FE),
           foreground: Color(0xFF5B21B6),
         ),
-      _ => const (
-          label: 'Em andamento',
+      _ => (
+          label: t('appointments_status_in_progress'),
           background: Color(0xFFE8F4F8),
           foreground: GKColors.primary,
         ),
@@ -244,7 +280,9 @@ class _AppointmentsScreenState extends ConsumerState<AppointmentsScreen> {
         child: Row(
           children: [
             GKAvatar(
-              name: item.patientName.isEmpty ? 'Paciente' : item.patientName,
+              name: item.patientName.isEmpty
+                  ? t('patient_default')
+                  : item.patientName,
               imageUrl: item.patientAvatarUrl.isNotEmpty
                   ? item.patientAvatarUrl
                   : (item.professionalAvatarUrl.isNotEmpty
@@ -258,14 +296,14 @@ class _AppointmentsScreenState extends ConsumerState<AppointmentsScreen> {
                 children: [
                   Text(
                     item.patientName.isEmpty
-                        ? 'Paciente sem nome'
+                        ? t('preop_patient_without_name')
                         : item.patientName,
                     style: const TextStyle(fontWeight: FontWeight.w700),
                   ),
                   const SizedBox(height: 4),
                   Text(
                     item.specialtyName.isEmpty
-                        ? _appointmentTypeLabel(item.type)
+                        ? _appointmentTypeLabel(item.type, t)
                         : item.specialtyName,
                     style: const TextStyle(color: GKColors.neutral),
                   ),
@@ -288,22 +326,25 @@ class _AppointmentsScreenState extends ConsumerState<AppointmentsScreen> {
     );
   }
 
-  String _appointmentTypeLabel(String rawType) {
+  String _appointmentTypeLabel(
+    String rawType,
+    String Function(String key) t,
+  ) {
     switch (rawType) {
       case 'first_visit':
-        return 'Primeira Consulta';
+        return t('appointments_type_first_visit');
       case 'return':
-        return 'Retorno';
+        return t('appointments_type_return');
       case 'surgery':
-        return 'Cirurgia';
+        return t('appointments_type_surgery');
       case 'post_op_7d':
-        return 'Pos-op 7 dias';
+        return t('appointments_type_post_op_7d');
       case 'post_op_30d':
-        return 'Pos-op 30 dias';
+        return t('appointments_type_post_op_30d');
       case 'post_op_90d':
-        return 'Pos-op 90 dias';
+        return t('appointments_type_post_op_90d');
       default:
-        return rawType;
+        return t('appointments_type_unknown');
     }
   }
 
@@ -331,6 +372,8 @@ class _AppointmentsScreenState extends ConsumerState<AppointmentsScreen> {
 
   Widget _chip(String label, AppointmentStatusFilterChip value) {
     final active = _statusFilter == value;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final onSurface = Theme.of(context).colorScheme.onSurface;
     return Padding(
       padding: const EdgeInsets.only(right: 8),
       child: ChoiceChip(
@@ -338,9 +381,9 @@ class _AppointmentsScreenState extends ConsumerState<AppointmentsScreen> {
         selected: active,
         onSelected: (_) => setState(() => _statusFilter = value),
         selectedColor: GKColors.primary,
-        backgroundColor: Colors.white,
+        backgroundColor: isDark ? Theme.of(context).cardColor : Colors.white,
         labelStyle: TextStyle(
-          color: active ? Colors.white : GKColors.darkBackground,
+          color: active ? Colors.white : onSurface,
           fontWeight: FontWeight.w600,
           fontSize: 12,
         ),

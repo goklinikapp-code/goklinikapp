@@ -31,6 +31,7 @@ class PreOperatoryRecord {
   const PreOperatoryRecord({
     required this.id,
     required this.status,
+    required this.notes,
     required this.allergies,
     required this.medications,
     required this.previousSurgeries,
@@ -46,6 +47,7 @@ class PreOperatoryRecord {
 
   final String id;
   final String status;
+  final String notes;
   final String allergies;
   final String medications;
   final String previousSurgeries;
@@ -85,6 +87,7 @@ class PreOperatoryRecord {
     return PreOperatoryRecord(
       id: (json['id'] ?? '').toString(),
       status: (json['status'] ?? 'pending').toString(),
+      notes: (json['notes'] ?? '').toString(),
       allergies: (json['allergies'] ?? '').toString(),
       medications: (json['medications'] ?? '').toString(),
       previousSurgeries: (json['previous_surgeries'] ?? '').toString(),

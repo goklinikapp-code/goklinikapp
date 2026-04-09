@@ -200,7 +200,8 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
                                       item.question,
                                       maxLines: 2,
                                       overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(
+                                      style: _emojiTextStyle(
+                                        context,
                                         fontWeight: FontWeight.w600,
                                       ),
                                     ),
@@ -222,8 +223,10 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
                                   item.answer,
                                   maxLines: 2,
                                   overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                      color: colorScheme.onSurfaceVariant),
+                                  style: _emojiTextStyle(
+                                    context,
+                                    color: colorScheme.onSurfaceVariant,
+                                  ),
                                 ),
                               ],
                             ],
@@ -240,6 +243,29 @@ class _ChatListScreenState extends ConsumerState<ChatListScreen> {
       ),
     );
   }
+}
+
+TextStyle _emojiTextStyle(
+  BuildContext context, {
+  double? fontSize,
+  FontWeight? fontWeight,
+  Color? color,
+}) {
+  final base = Theme.of(context).textTheme.bodyMedium ?? const TextStyle();
+  final fallback = <String>[
+    ...?base.fontFamilyFallback,
+    'AppleColorEmoji',
+    'Apple Color Emoji',
+    'Segoe UI Emoji',
+    'Noto Color Emoji',
+  ];
+
+  return base.copyWith(
+    fontSize: fontSize ?? base.fontSize,
+    fontWeight: fontWeight ?? base.fontWeight,
+    color: color ?? base.color,
+    fontFamilyFallback: fallback.toSet().toList(),
+  );
 }
 
 class _UrgentQuestionSheet extends StatefulWidget {

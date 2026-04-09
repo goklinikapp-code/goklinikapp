@@ -1,4 +1,5 @@
 import '../../../core/utils/api_media_url.dart';
+import '../../../core/utils/text_normalizer.dart';
 
 class DoctorInboxMessage {
   const DoctorInboxMessage({
@@ -48,16 +49,16 @@ class DoctorInboxMessage {
     return DoctorInboxMessage(
       id: (json['id'] ?? '').toString(),
       status: (json['status'] ?? 'open').toString(),
-      question: (json['question'] ?? '').toString(),
-      answer: (json['answer'] ?? '').toString(),
-      patientName: (json['patient_name'] ?? '').toString(),
-      patientEmail: (json['patient_email'] ?? '').toString(),
+      question: normalizeApiText(json['question']),
+      answer: normalizeApiText(json['answer']),
+      patientName: normalizeApiText(json['patient_name']),
+      patientEmail: normalizeApiText(json['patient_email']),
       patientAvatarUrl: resolveApiMediaUrl(
         (json['patient_avatar_url'] ?? '').toString(),
       ),
       assignedProfessionalName:
-          (json['assigned_professional_name'] ?? '').toString(),
-      answeredByName: (json['answered_by_name'] ?? '').toString(),
+          normalizeApiText(json['assigned_professional_name']),
+      answeredByName: normalizeApiText(json['answered_by_name']),
       createdAt: DateTime.tryParse((json['created_at'] ?? '').toString()) ??
           DateTime.now(),
       updatedAt: DateTime.tryParse((json['updated_at'] ?? '').toString()) ??

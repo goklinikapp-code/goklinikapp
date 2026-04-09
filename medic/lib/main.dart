@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 
 import 'core/network/push_notification_service.dart';
 import 'core/router/app_router.dart';
+import 'core/settings/app_preferences.dart';
 import 'core/theme/app_theme.dart';
 import 'features/auth/presentation/auth_controller.dart';
 import 'features/branding/presentation/tenant_branding_controller.dart';
@@ -34,7 +35,7 @@ Future<void> _initIntl() async {
   for (final locale in locales) {
     await initializeDateFormatting(locale);
   }
-  Intl.defaultLocale = 'pt_BR';
+  Intl.defaultLocale = 'en_US';
 }
 
 Future<void> _initFirebase() async {
@@ -61,6 +62,7 @@ class _GoKlinikMedicAppState extends ConsumerState<GoKlinikMedicApp>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await ref.read(appPreferencesControllerProvider.notifier).initialize();
       await ref.read(pushNotificationServiceProvider).initialize();
     });
     _authSubscription = ref.listenManual<AuthViewState>(
@@ -91,11 +93,13 @@ class _GoKlinikMedicAppState extends ConsumerState<GoKlinikMedicApp>
   @override
   Widget build(BuildContext context) {
     final router = ref.watch(appRouterProvider);
+    final preferences = ref.watch(appPreferencesControllerProvider);
     final tenantBranding = ref.watch(tenantBrandingProvider);
 
     return MaterialApp.router(
       title: 'GoKlinik Medic',
       debugShowCheckedModeBanner: false,
+      locale: Locale(preferences.language),
       theme: AppTheme.light(
         primaryColor: tenantBranding.primaryColor,
         secondaryColor: tenantBranding.secondaryColor,
@@ -106,7 +110,7 @@ class _GoKlinikMedicAppState extends ConsumerState<GoKlinikMedicApp>
         secondaryColor: tenantBranding.secondaryColor,
         accentColor: tenantBranding.accentColor,
       ),
-      themeMode: ThemeMode.light,
+      themeMode: preferences.darkMode ? ThemeMode.dark : ThemeMode.light,
       routerConfig: router,
     );
   }

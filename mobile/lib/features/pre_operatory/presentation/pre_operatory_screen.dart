@@ -553,9 +553,12 @@ class _PreOperatoryScreenState extends ConsumerState<PreOperatoryScreen> {
           final canEditExistingRecord =
               hasRecord && _isRecordEditableByPatient(record.status);
           final canEdit = !hasRecord || (canEditExistingRecord && _isEditMode);
-          final hasValidHeight = (_parseLocalizedNumber(_heightController.text) ?? 0) > 0;
-          final hasValidWeight = (_parseLocalizedNumber(_weightController.text) ?? 0) > 0;
-          final canSubmit = canEdit && !_isSubmitting && hasValidHeight && hasValidWeight;
+          final hasValidHeight =
+              (_parseLocalizedNumber(_heightController.text) ?? 0) > 0;
+          final hasValidWeight =
+              (_parseLocalizedNumber(_weightController.text) ?? 0) > 0;
+          final canSubmit =
+              canEdit && !_isSubmitting && hasValidHeight && hasValidWeight;
 
           return ListView(
             padding: const EdgeInsets.all(16),
@@ -805,6 +808,27 @@ class _PreOperatoryScreenState extends ConsumerState<PreOperatoryScreen> {
                 ),
                 const SizedBox(height: 10),
                 _buildDocumentList(record.documents),
+                const SizedBox(height: 10),
+                GKCard(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Observações da clínica',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        record.notes.trim().isEmpty
+                            ? 'Sem observações da clínica.'
+                            : record.notes.trim(),
+                        style: const TextStyle(color: GKColors.neutral),
+                      ),
+                    ],
+                  ),
+                ),
                 const SizedBox(height: 16),
                 Text(
                   'Status atual: ${_statusLabel(record.status)}',

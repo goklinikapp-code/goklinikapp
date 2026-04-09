@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../../core/settings/app_translations.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/gk_badge.dart';
 import '../../../core/widgets/gk_card.dart';
@@ -16,21 +17,22 @@ class PreOperatoryView extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final preOperatoryState = ref.watch(patientPreOperatoryProvider(patientId));
+    String t(String key) => _t(context, key);
 
     return preOperatoryState.when(
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (error, _) => Center(
-        child: Text('Erro ao carregar pre-operatorio: $error'),
+        child: Text('${t('preop_load_error_prefix')}: $error'),
       ),
       data: (record) {
         if (record == null) {
-          return const Center(
-            child: Text('Nenhum pre-operatorio enviado pelo paciente.'),
+          return Center(
+            child: Text(t('preop_patient_empty')),
           );
         }
 
-        final statusVisual = _statusVisual(record.status);
-        final statusMessage = _statusMessage(record.status);
+        final statusVisual = _statusVisual(record.status, t);
+        final statusMessage = _statusMessage(record.status, t);
 
         return ListView(
           padding: const EdgeInsets.all(16),
@@ -43,7 +45,7 @@ class PreOperatoryView extends ConsumerWidget {
                     children: [
                       Expanded(
                         child: Text(
-                          'Pre-operatorio',
+                          t('preop_title'),
                           style: Theme.of(context).textTheme.titleMedium,
                         ),
                       ),
@@ -65,70 +67,80 @@ class PreOperatoryView extends ConsumerWidget {
               ),
             ),
             const SizedBox(height: 10),
-            _ClinicalDataCard(record: record),
+            _ClinicalDataCard(record: record, t: t),
             const SizedBox(height: 10),
-            _PhysicalDataCard(record: record),
+            _PhysicalDataCard(record: record, t: t),
             const SizedBox(height: 10),
-            _HabitsCard(record: record),
+            _HabitsCard(record: record, t: t),
             const SizedBox(height: 10),
-            _PhotosCard(photos: record.photos),
+            _PhotosCard(photos: record.photos, t: t),
             const SizedBox(height: 10),
-            _DocumentsCard(documents: record.documents),
+            _DocumentsCard(documents: record.documents, t: t),
             const SizedBox(height: 10),
-            _NotesCard(notes: record.notes),
+            _NotesCard(notes: record.notes, t: t),
           ],
         );
       },
     );
   }
 
-  _StatusVisual _statusVisual(PreOperatoryStatus status) {
+  _StatusVisual _statusVisual(
+    PreOperatoryStatus status,
+    String Function(String key) t,
+  ) {
     switch (status) {
       case PreOperatoryStatus.pending:
-        return const _StatusVisual(
-          label: 'Pendente',
+        return _StatusVisual(
+          label: t('preop_status_pending'),
           background: Color(0xFFE2E8F0),
           foreground: Color(0xFF334155),
         );
       case PreOperatoryStatus.inReview:
-        return const _StatusVisual(
-          label: 'Em analise',
+        return _StatusVisual(
+          label: t('preop_status_in_review'),
           background: Color(0xFFFFF3CD),
           foreground: Color(0xFFB45309),
         );
       case PreOperatoryStatus.approved:
-        return const _StatusVisual(
-          label: 'Aprovado',
+        return _StatusVisual(
+          label: t('preop_status_approved'),
           background: Color(0xFFDCFCE7),
           foreground: Color(0xFF166534),
         );
       case PreOperatoryStatus.rejected:
-        return const _StatusVisual(
-          label: 'Reprovado',
+        return _StatusVisual(
+          label: t('preop_status_rejected'),
           background: Color(0xFFFEE2E2),
           foreground: Color(0xFFB91C1C),
         );
     }
   }
 
-  String? _statusMessage(PreOperatoryStatus status) {
+  String? _statusMessage(
+    PreOperatoryStatus status,
+    String Function(String key) t,
+  ) {
     switch (status) {
       case PreOperatoryStatus.pending:
-        return 'Aguardando analise da clinica';
+        return t('preop_status_message_pending');
       case PreOperatoryStatus.inReview:
-        return 'Em analise pela clinica';
+        return t('preop_status_message_in_review');
       case PreOperatoryStatus.approved:
         return null;
       case PreOperatoryStatus.rejected:
-        return 'Pre-operatorio nao aprovado';
+        return t('preop_status_message_rejected');
     }
   }
 }
 
 class _ClinicalDataCard extends StatelessWidget {
-  const _ClinicalDataCard({required this.record});
+  const _ClinicalDataCard({
+    required this.record,
+    required this.t,
+  });
 
   final PatientPreOperatoryRecord record;
+  final String Function(String key) t;
 
   @override
   Widget build(BuildContext context) {
@@ -136,15 +148,15 @@ class _ClinicalDataCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Dados clinicos',
+          Text(
+            t('preop_clinical_data_title'),
             style: TextStyle(fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 10),
-          _valueRow('Alergias', record.allergies),
-          _valueRow('Medicamentos em uso', record.medications),
-          _valueRow('Cirurgias anteriores', record.previousSurgeries),
-          _valueRow('Doencas', record.diseases),
+          _valueRow(t('preop_allergies'), record.allergies),
+          _valueRow(t('preop_medications_in_use'), record.medications),
+          _valueRow(t('preop_previous_surgeries'), record.previousSurgeries),
+          _valueRow(t('preop_diseases'), record.diseases),
         ],
       ),
     );
@@ -152,9 +164,13 @@ class _ClinicalDataCard extends StatelessWidget {
 }
 
 class _PhysicalDataCard extends StatelessWidget {
-  const _PhysicalDataCard({required this.record});
+  const _PhysicalDataCard({
+    required this.record,
+    required this.t,
+  });
 
   final PatientPreOperatoryRecord record;
+  final String Function(String key) t;
 
   @override
   Widget build(BuildContext context) {
@@ -162,13 +178,13 @@ class _PhysicalDataCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Dados fisicos',
+          Text(
+            t('preop_physical_data_title'),
             style: TextStyle(fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 10),
-          _valueRow('Altura', _formatHeight(record.height)),
-          _valueRow('Peso', _formatWeight(record.weight)),
+          _valueRow(t('preop_height'), _formatHeight(record.height)),
+          _valueRow(t('preop_weight'), _formatWeight(record.weight)),
         ],
       ),
     );
@@ -186,9 +202,13 @@ class _PhysicalDataCard extends StatelessWidget {
 }
 
 class _HabitsCard extends StatelessWidget {
-  const _HabitsCard({required this.record});
+  const _HabitsCard({
+    required this.record,
+    required this.t,
+  });
 
   final PatientPreOperatoryRecord record;
+  final String Function(String key) t;
 
   @override
   Widget build(BuildContext context) {
@@ -196,13 +216,13 @@ class _HabitsCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Habitos',
+          Text(
+            t('preop_habits_title'),
             style: TextStyle(fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 10),
-          _switchRow('Fuma', record.smokes),
-          _switchRow('Consome alcool', record.drinksAlcohol),
+          _switchRow(t('preop_smokes'), record.smokes),
+          _switchRow(t('preop_drinks_alcohol'), record.drinksAlcohol),
         ],
       ),
     );
@@ -227,9 +247,13 @@ class _HabitsCard extends StatelessWidget {
 }
 
 class _PhotosCard extends StatelessWidget {
-  const _PhotosCard({required this.photos});
+  const _PhotosCard({
+    required this.photos,
+    required this.t,
+  });
 
   final List<PreOperatoryAttachmentItem> photos;
+  final String Function(String key) t;
 
   @override
   Widget build(BuildContext context) {
@@ -237,14 +261,14 @@ class _PhotosCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Fotos enviadas',
+          Text(
+            t('preop_photos_sent'),
             style: TextStyle(fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 10),
           if (photos.isEmpty)
-            const Text(
-              'Nenhuma foto enviada',
+            Text(
+              t('preop_no_photos_sent'),
               style: TextStyle(color: GKColors.neutral),
             )
           else
@@ -324,9 +348,13 @@ class _PhotosCard extends StatelessWidget {
 }
 
 class _DocumentsCard extends StatelessWidget {
-  const _DocumentsCard({required this.documents});
+  const _DocumentsCard({
+    required this.documents,
+    required this.t,
+  });
 
   final List<PreOperatoryAttachmentItem> documents;
+  final String Function(String key) t;
 
   @override
   Widget build(BuildContext context) {
@@ -334,14 +362,14 @@ class _DocumentsCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Documentos',
+          Text(
+            t('preop_documents_title'),
             style: TextStyle(fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 10),
           if (documents.isEmpty)
-            const Text(
-              'Nenhum documento enviado',
+            Text(
+              t('preop_no_documents_sent'),
               style: TextStyle(color: GKColors.neutral),
             )
           else
@@ -383,9 +411,13 @@ class _DocumentsCard extends StatelessWidget {
 }
 
 class _NotesCard extends StatelessWidget {
-  const _NotesCard({required this.notes});
+  const _NotesCard({
+    required this.notes,
+    required this.t,
+  });
 
   final String notes;
+  final String Function(String key) t;
 
   @override
   Widget build(BuildContext context) {
@@ -393,13 +425,13 @@ class _NotesCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Observacoes da clinica',
+          Text(
+            t('preop_clinic_notes_label'),
             style: TextStyle(fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 10),
           Text(
-            notes.trim().isEmpty ? 'Sem observacoes da clinica.' : notes,
+            notes.trim().isEmpty ? t('preop_no_clinic_notes') : notes,
             style: const TextStyle(color: GKColors.neutral),
           ),
         ],
@@ -442,4 +474,9 @@ class _StatusVisual {
   final String label;
   final Color background;
   final Color foreground;
+}
+
+String _t(BuildContext context, String key) {
+  final language = Localizations.localeOf(context).languageCode;
+  return appTr(key: key, language: language);
 }

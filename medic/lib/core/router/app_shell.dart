@@ -13,9 +13,10 @@ class AppShell extends StatelessWidget {
   final Widget child;
 
   int get _index {
-    if (location.startsWith('/schedule')) return 1;
-    if (location.startsWith('/chat')) return 2;
-    if (location.startsWith('/profile')) return 3;
+    if (location.startsWith('/pre-operatory')) return 1;
+    if (location.startsWith('/schedule')) return 2;
+    if (location.startsWith('/chat')) return 3;
+    if (location.startsWith('/profile')) return 4;
     return 0;
   }
 

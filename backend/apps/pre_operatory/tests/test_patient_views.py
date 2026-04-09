@@ -125,6 +125,26 @@ class PreOperatoryPatientViewsTestCase(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["id"], str(pending.id))
 
+    def test_me_exposes_clinic_notes_to_patient_app(self):
+        pre_operatory = PreOperatory.objects.create(
+            patient=self.patient,
+            tenant=self.tenant,
+            status=PreOperatory.StatusChoices.REJECTED,
+            notes="Ajustar exames laboratoriais e reenviar.",
+            height=1.72,
+            weight=72,
+        )
+
+        self.client.force_authenticate(self.patient)
+        response = self.client.get(reverse("api-pre-operatory-me"))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["id"], str(pre_operatory.id))
+        self.assertEqual(
+            response.data["notes"],
+            "Ajustar exames laboratoriais e reenviar.",
+        )
+
     def test_create_new_cycle_is_blocked_until_postop_is_completed(self):
         PreOperatory.objects.create(
             patient=self.patient,

@@ -2,6 +2,42 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+const _emojiFontFallback = <String>[
+  'AppleColorEmoji',
+  'Apple Color Emoji',
+  'Segoe UI Emoji',
+  'Noto Color Emoji',
+];
+
+TextStyle? _withEmojiFallback(TextStyle? style) {
+  if (style == null) return null;
+  final merged = <String>[
+    ...?style.fontFamilyFallback,
+    ..._emojiFontFallback,
+  ];
+  return style.copyWith(fontFamilyFallback: merged.toSet().toList());
+}
+
+TextTheme _applyEmojiFallback(TextTheme textTheme) {
+  return textTheme.copyWith(
+    displayLarge: _withEmojiFallback(textTheme.displayLarge),
+    displayMedium: _withEmojiFallback(textTheme.displayMedium),
+    displaySmall: _withEmojiFallback(textTheme.displaySmall),
+    headlineLarge: _withEmojiFallback(textTheme.headlineLarge),
+    headlineMedium: _withEmojiFallback(textTheme.headlineMedium),
+    headlineSmall: _withEmojiFallback(textTheme.headlineSmall),
+    titleLarge: _withEmojiFallback(textTheme.titleLarge),
+    titleMedium: _withEmojiFallback(textTheme.titleMedium),
+    titleSmall: _withEmojiFallback(textTheme.titleSmall),
+    bodyLarge: _withEmojiFallback(textTheme.bodyLarge),
+    bodyMedium: _withEmojiFallback(textTheme.bodyMedium),
+    bodySmall: _withEmojiFallback(textTheme.bodySmall),
+    labelLarge: _withEmojiFallback(textTheme.labelLarge),
+    labelMedium: _withEmojiFallback(textTheme.labelMedium),
+    labelSmall: _withEmojiFallback(textTheme.labelSmall),
+  );
+}
+
 class GKColors {
   static const primary = Color(0xFF0D5C73);
   static const secondary = Color(0xFF4A7C59);
@@ -16,7 +52,7 @@ class GKColors {
 
 class AppTheme {
   static TextTheme _textTheme(TextTheme base) {
-    return GoogleFonts.interTextTheme(base).copyWith(
+    final textTheme = GoogleFonts.interTextTheme(base).copyWith(
       displayLarge:
           GoogleFonts.inter(fontSize: 28, fontWeight: FontWeight.w700),
       titleLarge: GoogleFonts.inter(fontSize: 20, fontWeight: FontWeight.w600),
@@ -29,6 +65,7 @@ class AppTheme {
         letterSpacing: 1.1,
       ),
     );
+    return _applyEmojiFallback(textTheme);
   }
 
   static ThemeData light({

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import '../../../core/settings/app_translations.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/gk_avatar.dart';
@@ -16,10 +17,11 @@ class MedicalRecordScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    String t(String key) => _t(context, key);
     final state = ref.watch(myMedicalRecordProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Prontuário Digital')),
+      appBar: AppBar(title: Text(t('medical_record_title'))),
       body: state.when(
         loading: () => ListView(
           padding: const EdgeInsets.all(16),
@@ -31,13 +33,17 @@ class MedicalRecordScreen extends ConsumerWidget {
             GKLoadingShimmer(height: 180),
           ],
         ),
-        error: (error, _) =>
-            Center(child: Text('Erro ao carregar prontuário: $error')),
+        error: (error, _) => Center(
+          child: Text('${t('medical_record_load_error_prefix')}: $error'),
+        ),
         data: (record) {
           final allergyList = _splitText(record.allergies);
           final procedure = record.procedureHistory.isNotEmpty
               ? record.procedureHistory.first
               : null;
+          final healthPlanName = record.previousSurgeries.isEmpty
+              ? t('medical_record_insurance_private')
+              : t('medical_record_insurance_active');
 
           return DefaultTabController(
             length: 3,
@@ -56,10 +62,16 @@ class MedicalRecordScreen extends ConsumerWidget {
                                 style: Theme.of(context).textTheme.titleLarge),
                             const SizedBox(height: 4),
                             Text(
-                                'Número fiscal: ******** • Nascimento: ${record.dateOfBirth}'),
+                              t('medical_record_tax_birth')
+                                  .replaceAll('{tax_id}', '********')
+                                  .replaceAll(
+                                      '{birth_date}', record.dateOfBirth),
+                            ),
                             const SizedBox(height: 4),
                             Text(
-                                'Plano de saúde: ${record.previousSurgeries.isEmpty ? 'Particular' : 'Ativo'}'),
+                              t('medical_record_insurance_line')
+                                  .replaceAll('{plan}', healthPlanName),
+                            ),
                           ],
                         ),
                       ),
@@ -69,20 +81,20 @@ class MedicalRecordScreen extends ConsumerWidget {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text('ALERTA CRÍTICO',
+                            Text(t('medical_record_critical_alert'),
                                 style: TextStyle(
                                     fontWeight: FontWeight.w700,
                                     color: GKColors.danger)),
                             const SizedBox(height: 6),
-                            const Text('Alergias e Condições'),
+                            Text(t('medical_record_allergies_conditions')),
                             const SizedBox(height: 8),
                             Wrap(
                               spacing: 6,
                               runSpacing: 6,
                               children: allergyList.isEmpty
-                                  ? const [
+                                  ? [
                                       GKBadge(
-                                          label: 'Nenhuma alergia registrada',
+                                          label: t('medical_record_no_allergy'),
                                           background: Color(0xFFFCA5A5),
                                           foreground: Colors.white)
                                     ]
@@ -102,7 +114,7 @@ class MedicalRecordScreen extends ConsumerWidget {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text('ÚLTIMO PROCEDIMENTO',
+                            Text(t('medical_record_last_procedure'),
                                 style: TextStyle(
                                     color: Colors.white70,
                                     fontSize: 11,
@@ -111,7 +123,7 @@ class MedicalRecordScreen extends ConsumerWidget {
                             Text(
                               procedure?.specialtyName.isNotEmpty == true
                                   ? procedure!.specialtyName
-                                  : 'Sem procedimento concluído',
+                                  : t('medical_record_no_completed_procedure'),
                               style: const TextStyle(
                                   color: Colors.white,
                                   fontSize: 18,
@@ -132,37 +144,52 @@ class MedicalRecordScreen extends ConsumerWidget {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text('ACESSO RÁPIDO',
+                            Text(t('medical_record_quick_access'),
                                 style: TextStyle(fontWeight: FontWeight.w700)),
                             const SizedBox(height: 8),
-                            _quickAccessItem(Icons.medication_outlined,
-                                'Medicações em Uso', record.currentMedications),
                             _quickAccessItem(
-                                Icons.history_edu_outlined,
-                                'Histórico de Procedimentos',
-                                '${record.procedureHistory.length} itens'),
+                              icon: Icons.medication_outlined,
+                              title: t('medical_record_current_medications'),
+                              subtitle: record.currentMedications,
+                              noInfoText: t('medical_record_no_info'),
+                            ),
                             _quickAccessItem(
-                                Icons.description_outlined,
-                                'Documentos Digitais',
-                                '${record.documents.length} arquivos'),
+                              icon: Icons.history_edu_outlined,
+                              title: t('medical_record_procedure_history'),
+                              subtitle: t('medical_record_items_count')
+                                  .replaceAll('{count}',
+                                      '${record.procedureHistory.length}'),
+                              noInfoText: t('medical_record_no_info'),
+                            ),
+                            _quickAccessItem(
+                              icon: Icons.description_outlined,
+                              title: t('medical_record_digital_documents'),
+                              subtitle: t('medical_record_files_count')
+                                  .replaceAll(
+                                      '{count}', '${record.documents.length}'),
+                              noInfoText: t('medical_record_no_info'),
+                            ),
                           ],
                         ),
                       ),
                       const SizedBox(height: 10),
-                      const TabBar(
+                      TabBar(
                         tabs: [
-                          Tab(text: 'Histórico'),
-                          Tab(text: 'Documentos'),
-                          Tab(text: 'Medicações'),
+                          Tab(text: t('medical_record_tab_history')),
+                          Tab(text: t('medical_record_tab_documents')),
+                          Tab(text: t('medical_record_tab_medications')),
                         ],
                       ),
                       SizedBox(
                         height: 420,
                         child: TabBarView(
                           children: [
-                            _HistoryTab(items: record.procedureHistory),
-                            _DocumentsTab(items: record.documents),
-                            _MedicationsTab(text: record.currentMedications),
+                            _HistoryTab(items: record.procedureHistory, t: t),
+                            _DocumentsTab(items: record.documents, t: t),
+                            _MedicationsTab(
+                              text: record.currentMedications,
+                              t: t,
+                            ),
                           ],
                         ),
                       ),
@@ -185,26 +212,37 @@ class MedicalRecordScreen extends ConsumerWidget {
         .toList();
   }
 
-  Widget _quickAccessItem(IconData icon, String title, String subtitle) {
+  Widget _quickAccessItem({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required String noInfoText,
+  }) {
     return ListTile(
       contentPadding: EdgeInsets.zero,
       leading: Icon(icon, color: GKColors.primary),
       title: Text(title),
-      subtitle: Text(subtitle.isEmpty ? 'Sem informações' : subtitle),
+      subtitle: Text(subtitle.isEmpty ? noInfoText : subtitle),
       trailing: const Icon(Icons.chevron_right),
     );
   }
 }
 
 class _HistoryTab extends StatelessWidget {
-  const _HistoryTab({required this.items});
+  const _HistoryTab({
+    required this.items,
+    required this.t,
+  });
 
   final List<ProcedureHistoryItem> items;
+  final String Function(String key) t;
 
   @override
   Widget build(BuildContext context) {
     if (items.isEmpty) {
-      return const Center(child: Text('Sem procedimentos concluídos.'));
+      return Center(
+        child: Text(t('medical_record_no_completed_procedures')),
+      );
     }
 
     return ListView.builder(
@@ -224,14 +262,18 @@ class _HistoryTab extends StatelessWidget {
 }
 
 class _DocumentsTab extends StatelessWidget {
-  const _DocumentsTab({required this.items});
+  const _DocumentsTab({
+    required this.items,
+    required this.t,
+  });
 
   final List<MedicalDocumentItem> items;
+  final String Function(String key) t;
 
   @override
   Widget build(BuildContext context) {
     if (items.isEmpty) {
-      return const Center(child: Text('Nenhum documento disponível.'));
+      return Center(child: Text(t('medical_record_no_documents')));
     }
 
     return ListView.builder(
@@ -243,13 +285,19 @@ class _DocumentsTab extends StatelessWidget {
               color: GKColors.primary),
           title: Text(item.title),
           subtitle: Text(item.validUntil != null
-              ? 'Validade: ${formatDate(item.validUntil!)}'
+              ? t('medical_record_valid_until')
+                  .replaceAll('{date}', formatDate(item.validUntil!))
               : DateFormat('dd/MM/yyyy').format(item.createdAt)),
           trailing: IconButton(
             icon: const Icon(Icons.download_outlined),
             onPressed: () {
               ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('Link do documento: ${item.fileUrl}')),
+                SnackBar(
+                  content: Text(
+                    t('medical_record_document_link_prefix')
+                        .replaceAll('{url}', item.fileUrl),
+                  ),
+                ),
               );
             },
           ),
@@ -260,9 +308,13 @@ class _DocumentsTab extends StatelessWidget {
 }
 
 class _MedicationsTab extends StatelessWidget {
-  const _MedicationsTab({required this.text});
+  const _MedicationsTab({
+    required this.text,
+    required this.t,
+  });
 
   final String text;
+  final String Function(String key) t;
 
   @override
   Widget build(BuildContext context) {
@@ -273,7 +325,7 @@ class _MedicationsTab extends StatelessWidget {
         .toList();
 
     if (chunks.isEmpty) {
-      return const Center(child: Text('Sem medicações em uso registradas.'));
+      return Center(child: Text(t('medical_record_no_medications')));
     }
 
     return ListView.builder(
@@ -287,4 +339,9 @@ class _MedicationsTab extends StatelessWidget {
       },
     );
   }
+}
+
+String _t(BuildContext context, String key) {
+  final language = Localizations.localeOf(context).languageCode;
+  return appTr(key: key, language: language);
 }

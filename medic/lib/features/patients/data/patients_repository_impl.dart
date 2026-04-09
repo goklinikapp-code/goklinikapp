@@ -152,6 +152,42 @@ class PatientsRepositoryImpl implements PatientsRepository {
   }
 
   @override
+  Future<List<PatientPreOperatoryRecord>> getMyPreOperatoryRecords({
+    PreOperatoryStatus? status,
+  }) async {
+    final response = await _dio.get<dynamic>(
+      ApiEndpoints.preOperatory,
+      queryParameters: {
+        if (status != null) 'status': preOperatoryStatusApiValue(status),
+      },
+    );
+    final list = _extractList(response.data);
+    return list.map(PatientPreOperatoryRecord.fromJson).toList();
+  }
+
+  @override
+  Future<PatientPreOperatoryRecord> updatePreOperatoryRecord({
+    required String preOperatoryId,
+    PreOperatoryStatus? status,
+    String? notes,
+  }) async {
+    final payload = <String, dynamic>{};
+    if (status != null) {
+      payload['status'] = preOperatoryStatusApiValue(status);
+    }
+    if (notes != null) {
+      payload['notes'] = notes.trim();
+    }
+
+    final response = await _dio.put<dynamic>(
+      ApiEndpoints.preOperatoryDetail(preOperatoryId),
+      data: payload,
+    );
+    final map = _extractMap(response.data) ?? <String, dynamic>{};
+    return PatientPreOperatoryRecord.fromJson(map);
+  }
+
+  @override
   Future<PatientPostOperatoryRecord?> getPatientPostOperatory(
       String patientId) async {
     try {

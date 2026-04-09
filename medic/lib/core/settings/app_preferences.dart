@@ -11,12 +11,12 @@ const supportedLanguages = <String>['tr', 'ru', 'en', 'de', 'es', 'pt'];
 const supportedCurrencies = <String>['EUR', 'USD', 'CHF', 'TRY'];
 
 const languageLabels = <String, String>{
-  'tr': 'Turkce',
+  'tr': 'Türkçe',
   'ru': 'Russkiy',
   'en': 'English',
   'de': 'Deutsch',
-  'es': 'Espanol',
-  'pt': 'Portugues',
+  'es': 'Español',
+  'pt': 'Português',
 };
 
 const currencyLabels = <String, String>{
@@ -74,6 +74,7 @@ class AppPreferencesState {
     required this.currency,
     required this.languageMode,
     required this.currencyMode,
+    required this.darkMode,
     required this.initialized,
   });
 
@@ -81,6 +82,7 @@ class AppPreferencesState {
   final String currency;
   final String languageMode;
   final String currencyMode;
+  final bool darkMode;
   final bool initialized;
 
   AppPreferencesState copyWith({
@@ -88,6 +90,7 @@ class AppPreferencesState {
     String? currency,
     String? languageMode,
     String? currencyMode,
+    bool? darkMode,
     bool? initialized,
   }) {
     return AppPreferencesState(
@@ -95,6 +98,7 @@ class AppPreferencesState {
       currency: currency ?? this.currency,
       languageMode: languageMode ?? this.languageMode,
       currencyMode: currencyMode ?? this.currencyMode,
+      darkMode: darkMode ?? this.darkMode,
       initialized: initialized ?? this.initialized,
     );
   }
@@ -110,6 +114,7 @@ class AppPreferencesController extends StateNotifier<AppPreferencesState> {
             currency: 'USD',
             languageMode: 'auto',
             currencyMode: 'auto',
+            darkMode: false,
             initialized: false,
           ),
         ) {
@@ -120,13 +125,17 @@ class AppPreferencesController extends StateNotifier<AppPreferencesState> {
   static const _currencyKey = 'gk_currency';
   static const _languageModeKey = 'gk_language_mode';
   static const _currencyModeKey = 'gk_currency_mode';
+  static const _darkModeKey = 'gk_dark_mode';
 
   Future<void> initialize() async {
     final prefs = await SharedPreferences.getInstance();
     final storedLanguage = normalizeLanguage(prefs.getString(_languageKey));
     final storedCurrency = normalizeCurrency(prefs.getString(_currencyKey));
-    final storedLanguageMode = prefs.getString(_languageModeKey) == 'manual' ? 'manual' : 'auto';
-    final storedCurrencyMode = prefs.getString(_currencyModeKey) == 'manual' ? 'manual' : 'auto';
+    final storedLanguageMode =
+        prefs.getString(_languageModeKey) == 'manual' ? 'manual' : 'auto';
+    final storedCurrencyMode =
+        prefs.getString(_currencyModeKey) == 'manual' ? 'manual' : 'auto';
+    final storedDarkMode = prefs.getBool(_darkModeKey) ?? false;
 
     final resolvedLanguage = storedLanguageMode == 'manual'
         ? storedLanguage
@@ -135,12 +144,14 @@ class AppPreferencesController extends StateNotifier<AppPreferencesState> {
         ? storedCurrency
         : defaultCurrencyForLanguage(resolvedLanguage);
 
-    await _applyIntlConfiguration(language: resolvedLanguage, currency: resolvedCurrency);
+    await _applyIntlConfiguration(
+        language: resolvedLanguage, currency: resolvedCurrency);
     state = state.copyWith(
       language: resolvedLanguage,
       currency: resolvedCurrency,
       languageMode: storedLanguageMode,
       currencyMode: storedCurrencyMode,
+      darkMode: storedDarkMode,
       initialized: true,
     );
   }
@@ -151,7 +162,8 @@ class AppPreferencesController extends StateNotifier<AppPreferencesState> {
         ? normalizeCurrency(state.currency)
         : defaultCurrencyForLanguage(normalizedLanguage);
 
-    await _applyIntlConfiguration(language: normalizedLanguage, currency: resolvedCurrency);
+    await _applyIntlConfiguration(
+        language: normalizedLanguage, currency: resolvedCurrency);
     state = state.copyWith(
       language: normalizedLanguage,
       currency: resolvedCurrency,
@@ -163,7 +175,8 @@ class AppPreferencesController extends StateNotifier<AppPreferencesState> {
 
   Future<void> setCurrency(String currency) async {
     final normalizedCurrency = normalizeCurrency(currency);
-    await _applyIntlConfiguration(language: state.language, currency: normalizedCurrency);
+    await _applyIntlConfiguration(
+        language: state.language, currency: normalizedCurrency);
     state = state.copyWith(
       currency: normalizedCurrency,
       currencyMode: 'manual',
@@ -177,7 +190,8 @@ class AppPreferencesController extends StateNotifier<AppPreferencesState> {
     final resolvedCurrency = state.currencyMode == 'manual'
         ? normalizeCurrency(state.currency)
         : defaultCurrencyForLanguage(resolvedLanguage);
-    await _applyIntlConfiguration(language: resolvedLanguage, currency: resolvedCurrency);
+    await _applyIntlConfiguration(
+        language: resolvedLanguage, currency: resolvedCurrency);
     state = state.copyWith(
       language: resolvedLanguage,
       currency: resolvedCurrency,
@@ -189,12 +203,18 @@ class AppPreferencesController extends StateNotifier<AppPreferencesState> {
 
   Future<void> useAutomaticCurrency() async {
     final resolvedCurrency = defaultCurrencyForLanguage(state.language);
-    await _applyIntlConfiguration(language: state.language, currency: resolvedCurrency);
+    await _applyIntlConfiguration(
+        language: state.language, currency: resolvedCurrency);
     state = state.copyWith(
       currency: resolvedCurrency,
       currencyMode: 'auto',
       initialized: true,
     );
+    await _persist();
+  }
+
+  Future<void> setDarkMode(bool enabled) async {
+    state = state.copyWith(darkMode: enabled, initialized: true);
     await _persist();
   }
 
@@ -214,6 +234,7 @@ class AppPreferencesController extends StateNotifier<AppPreferencesState> {
     await prefs.setString(_currencyKey, state.currency);
     await prefs.setString(_languageModeKey, state.languageMode);
     await prefs.setString(_currencyModeKey, state.currencyMode);
+    await prefs.setBool(_darkModeKey, state.darkMode);
   }
 }
 
@@ -221,4 +242,3 @@ final appPreferencesControllerProvider =
     StateNotifierProvider<AppPreferencesController, AppPreferencesState>((ref) {
   return AppPreferencesController();
 });
-

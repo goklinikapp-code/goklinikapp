@@ -16,7 +16,7 @@ const languageLabels = <String, String>{
   'en': 'English',
   'de': 'Deutsch',
   'es': 'Espanol',
-  'pt': 'Portugues',
+  'pt': 'Português',
 };
 
 const currencyLabels = <String, String>{

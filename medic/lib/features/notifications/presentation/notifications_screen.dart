@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import '../../../core/settings/app_preferences.dart';
+import '../../../core/settings/app_translations.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/gk_badge.dart';
 import '../../../core/widgets/gk_button.dart';
@@ -16,20 +18,24 @@ class NotificationsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(notificationsControllerProvider);
+    final language = ref.watch(appPreferencesControllerProvider).language;
+    String t(String key) => appTr(key: key, language: language);
 
     final today = state.items.where((n) => _isToday(n.createdAt)).toList();
     final older = state.items.where((n) => !_isToday(n.createdAt)).toList();
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Notificações'),
+        title: Text(t('notifications_title')),
         actions: [
           TextButton(
             onPressed: () => ref
                 .read(notificationsControllerProvider.notifier)
                 .markAllAsRead(),
-            child: const Text('Marcar tudo',
-                style: TextStyle(color: GKColors.primary)),
+            child: Text(
+              t('notifications_mark_all'),
+              style: const TextStyle(color: GKColors.primary),
+            ),
           ),
         ],
       ),
@@ -38,10 +44,13 @@ class NotificationsScreen extends ConsumerWidget {
         children: [
           Row(
             children: [
-              Text('Hoje', style: Theme.of(context).textTheme.titleLarge),
+              Text(
+                t('notifications_today'),
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
               const SizedBox(width: 8),
               GKBadge(
-                label: '${today.length} novas',
+                label: '${today.length} ${t('notifications_new_count_suffix')}',
                 background: GKColors.primary,
                 foreground: Colors.white,
               ),
@@ -57,17 +66,30 @@ class NotificationsScreen extends ConsumerWidget {
               ),
             )
           else if (today.isEmpty)
-            const GKCard(child: Text('Nenhuma notificação nova hoje.'))
+            GKCard(child: Text(t('notifications_today_empty')))
           else
-            ...today.map((item) => _NotificationCard(item: item)),
+            ...today.map(
+              (item) => _NotificationCard(
+                item: item,
+                t: t,
+              ),
+            ),
           const SizedBox(height: 12),
-          Text('Anteriores', style: Theme.of(context).textTheme.titleLarge),
+          Text(
+            t('notifications_older'),
+            style: Theme.of(context).textTheme.titleLarge,
+          ),
           const SizedBox(height: 8),
           if (older.isEmpty)
-            const GKCard(child: Text('Sem notificações anteriores.'))
+            GKCard(child: Text(t('notifications_older_empty')))
           else
-            ...older
-                .map((item) => _NotificationCard(item: item, compact: true)),
+            ...older.map(
+              (item) => _NotificationCard(
+                item: item,
+                compact: true,
+                t: t,
+              ),
+            ),
         ],
       ),
     );
@@ -80,9 +102,14 @@ class NotificationsScreen extends ConsumerWidget {
 }
 
 class _NotificationCard extends ConsumerWidget {
-  const _NotificationCard({required this.item, this.compact = false});
+  const _NotificationCard({
+    required this.item,
+    required this.t,
+    this.compact = false,
+  });
 
   final GKNotification item;
+  final String Function(String key) t;
   final bool compact;
 
   @override
@@ -129,7 +156,7 @@ class _NotificationCard extends ConsumerWidget {
               children: [
                 Expanded(
                   child: GKButton(
-                    label: 'Confirmar presença',
+                    label: t('appointments_confirm_attendance'),
                     onPressed: () async {
                       await ref
                           .read(notificationsControllerProvider.notifier)
@@ -140,7 +167,7 @@ class _NotificationCard extends ConsumerWidget {
                 const SizedBox(width: 8),
                 Expanded(
                   child: GKButton(
-                    label: 'Remarcar',
+                    label: t('reschedule'),
                     variant: GKButtonVariant.secondary,
                     onPressed: () async {
                       await ref
@@ -154,7 +181,7 @@ class _NotificationCard extends ConsumerWidget {
           ] else if (!compact && item.type == 'postop_alert') ...[
             const SizedBox(height: 10),
             GKButton(
-              label: 'Ver checklist',
+              label: t('notifications_view_checklist'),
               variant: GKButtonVariant.secondary,
               onPressed: () async {
                 await ref

@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:local_auth/local_auth.dart';
 
 import '../../../core/network/auth_storage.dart';
+import '../../../core/settings/app_translations.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/gk_button.dart';
 
@@ -11,7 +12,8 @@ class BiometricPromptScreen extends ConsumerStatefulWidget {
   const BiometricPromptScreen({super.key});
 
   @override
-  ConsumerState<BiometricPromptScreen> createState() => _BiometricPromptScreenState();
+  ConsumerState<BiometricPromptScreen> createState() =>
+      _BiometricPromptScreenState();
 }
 
 class _BiometricPromptScreenState extends ConsumerState<BiometricPromptScreen> {
@@ -25,11 +27,14 @@ class _BiometricPromptScreenState extends ConsumerState<BiometricPromptScreen> {
   }
 
   Future<void> _enableBiometrics() async {
+    final language = Localizations.localeOf(context).languageCode;
     setState(() => _loading = true);
     try {
       await _localAuth.authenticate(
-        localizedReason: 'Ative biometria para acesso rápido e seguro',
-        options: const AuthenticationOptions(biometricOnly: true, stickyAuth: true),
+        localizedReason:
+            appTr(key: 'biometric_auth_reason', language: language),
+        options:
+            const AuthenticationOptions(biometricOnly: true, stickyAuth: true),
       );
       await _finish();
     } catch (_) {
@@ -41,6 +46,7 @@ class _BiometricPromptScreenState extends ConsumerState<BiometricPromptScreen> {
 
   @override
   Widget build(BuildContext context) {
+    String t(String key) => _t(context, key);
     return Scaffold(
       backgroundColor: GKColors.background,
       body: Center(
@@ -57,36 +63,47 @@ class _BiometricPromptScreenState extends ConsumerState<BiometricPromptScreen> {
                 ),
                 child: Column(
                   children: [
-                    const Icon(Icons.fingerprint, size: 68, color: GKColors.primary),
+                    const Icon(Icons.fingerprint,
+                        size: 68, color: GKColors.primary),
                     const SizedBox(height: 16),
-                    Text('Acesso Rápido e Seguro', style: Theme.of(context).textTheme.titleLarge),
+                    Text(
+                      t('biometric_prompt_title'),
+                      style: Theme.of(context).textTheme.titleLarge,
+                    ),
                     const SizedBox(height: 10),
                     Text(
-                      'Ative biometria para entrar no app com mais praticidade e segurança.',
+                      t('biometric_prompt_subtitle'),
                       textAlign: TextAlign.center,
                       style: Theme.of(context).textTheme.bodyLarge,
                     ),
                     const SizedBox(height: 20),
                     GKButton(
-                      label: 'Ativar Biometria',
+                      label: t('biometric_prompt_enable'),
                       icon: const Icon(Icons.fingerprint, color: Colors.white),
                       onPressed: _enableBiometrics,
                       isLoading: _loading,
                     ),
-                    TextButton(onPressed: _finish, child: const Text('Agora não')),
+                    TextButton(
+                      onPressed: _finish,
+                      child: Text(t('biometric_prompt_not_now')),
+                    ),
                   ],
                 ),
               ),
               const SizedBox(height: 16),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 decoration: BoxDecoration(
                   color: GKColors.tealIce,
                   borderRadius: BorderRadius.circular(999),
                 ),
-                child: const Text(
-                  'PROTOCOLO DE SEGURANÇA ATIVO',
-                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: GKColors.primary),
+                child: Text(
+                  t('biometric_prompt_security_badge'),
+                  style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                      color: GKColors.primary),
                 ),
               ),
             ],
@@ -95,4 +112,9 @@ class _BiometricPromptScreenState extends ConsumerState<BiometricPromptScreen> {
       ),
     );
   }
+}
+
+String _t(BuildContext context, String key) {
+  final language = Localizations.localeOf(context).languageCode;
+  return appTr(key: key, language: language);
 }

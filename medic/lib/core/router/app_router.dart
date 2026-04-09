@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../features/appointments/presentation/appointments_screen.dart';
+import '../../features/appointments/presentation/doctor_availability_screen.dart';
 import '../../features/auth/presentation/auth_controller.dart';
 import '../../features/auth/presentation/login_screen.dart';
 import '../../features/auth/presentation/splash_screen.dart';
@@ -10,6 +11,7 @@ import '../../features/chat/presentation/chat_list_screen.dart';
 import '../../features/notifications/presentation/notifications_screen.dart';
 import '../../features/patients/presentation/patient_detail_screen.dart';
 import '../../features/patients/presentation/patients_screen.dart';
+import '../../features/pre_operatory/presentation/pre_operatory_screen.dart';
 import '../../features/profile/presentation/profile_screen.dart';
 import 'app_shell.dart';
 
@@ -48,6 +50,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/schedule',
             builder: (context, state) => const AppointmentsScreen(),
+          ),
+          GoRoute(
+            path: '/schedule/availability',
+            builder: (context, state) => const DoctorAvailabilityScreen(),
+          ),
+          GoRoute(
+            path: '/pre-operatory',
+            builder: (context, state) => const PreOperatoryScreen(),
           ),
           GoRoute(
             path: '/chat',

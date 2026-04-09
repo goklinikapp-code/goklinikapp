@@ -2,6 +2,42 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+const _emojiFontFallback = <String>[
+  'AppleColorEmoji',
+  'Apple Color Emoji',
+  'Segoe UI Emoji',
+  'Noto Color Emoji',
+];
+
+TextStyle? _withEmojiFallback(TextStyle? style) {
+  if (style == null) return null;
+  final merged = <String>[
+    ...?style.fontFamilyFallback,
+    ..._emojiFontFallback,
+  ];
+  return style.copyWith(fontFamilyFallback: merged.toSet().toList());
+}
+
+TextTheme _applyEmojiFallback(TextTheme textTheme) {
+  return textTheme.copyWith(
+    displayLarge: _withEmojiFallback(textTheme.displayLarge),
+    displayMedium: _withEmojiFallback(textTheme.displayMedium),
+    displaySmall: _withEmojiFallback(textTheme.displaySmall),
+    headlineLarge: _withEmojiFallback(textTheme.headlineLarge),
+    headlineMedium: _withEmojiFallback(textTheme.headlineMedium),
+    headlineSmall: _withEmojiFallback(textTheme.headlineSmall),
+    titleLarge: _withEmojiFallback(textTheme.titleLarge),
+    titleMedium: _withEmojiFallback(textTheme.titleMedium),
+    titleSmall: _withEmojiFallback(textTheme.titleSmall),
+    bodyLarge: _withEmojiFallback(textTheme.bodyLarge),
+    bodyMedium: _withEmojiFallback(textTheme.bodyMedium),
+    bodySmall: _withEmojiFallback(textTheme.bodySmall),
+    labelLarge: _withEmojiFallback(textTheme.labelLarge),
+    labelMedium: _withEmojiFallback(textTheme.labelMedium),
+    labelSmall: _withEmojiFallback(textTheme.labelSmall),
+  );
+}
+
 class GKColors {
   static const primary = Color(0xFF4A7C59);
   static const secondary = Color(0xFF1B5E73);
@@ -16,8 +52,9 @@ class GKColors {
 
 class AppTheme {
   static TextTheme _textTheme(TextTheme base) {
-    return GoogleFonts.interTextTheme(base).copyWith(
-      displayLarge: GoogleFonts.inter(fontSize: 28, fontWeight: FontWeight.w700),
+    final textTheme = GoogleFonts.interTextTheme(base).copyWith(
+      displayLarge:
+          GoogleFonts.inter(fontSize: 28, fontWeight: FontWeight.w700),
       titleLarge: GoogleFonts.inter(fontSize: 20, fontWeight: FontWeight.w600),
       bodyLarge: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w400),
       bodyMedium: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w400),
@@ -28,6 +65,7 @@ class AppTheme {
         letterSpacing: 1.1,
       ),
     );
+    return _applyEmojiFallback(textTheme);
   }
 
   static ThemeData light({
@@ -88,7 +126,8 @@ class AppTheme {
         labelStyle: const TextStyle(color: GKColors.neutral),
         hintStyle: const TextStyle(color: GKColors.neutral),
         floatingLabelStyle: TextStyle(color: primaryColor),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
           borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
@@ -124,14 +163,50 @@ class AppTheme {
     );
 
     return base.copyWith(
-      textTheme: _textTheme(base.textTheme),
+      textTheme: _textTheme(base.textTheme).apply(
+        bodyColor: const Color(0xFFE9EDF7),
+        displayColor: const Color(0xFFE9EDF7),
+      ),
       appBarTheme: const AppBarTheme(
         backgroundColor: GKColors.darkBackground,
+        foregroundColor: Color(0xFFE9EDF7),
         elevation: 0,
+        surfaceTintColor: Colors.transparent,
       ),
       cardColor: const Color(0xFF23293D),
-      navigationBarTheme: const NavigationBarThemeData(
+      navigationBarTheme: NavigationBarThemeData(
         backgroundColor: Color(0xFF101522),
+        indicatorColor: primaryColor.withValues(alpha: 0.28),
+        labelTextStyle: WidgetStateProperty.resolveWith((states) {
+          return TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            color: states.contains(WidgetState.selected)
+                ? const Color(0xFFE9EDF7)
+                : const Color(0xFFB4BED4),
+          );
+        }),
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: const Color(0xFF23293D),
+        labelStyle: const TextStyle(color: Color(0xFFB4BED4)),
+        hintStyle: const TextStyle(color: Color(0xFFB4BED4)),
+        floatingLabelStyle: TextStyle(color: primaryColor),
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: Color(0xFF33405D)),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: Color(0xFF33405D)),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(color: primaryColor, width: 1.5),
+        ),
       ),
     );
   }

@@ -19,6 +19,9 @@ class ApiEndpoints {
       '/api/patients/$patientId/assign-doctor/';
   static String preOperatoryByPatient(String patientId) =>
       '/api/pre-operatory/patient/$patientId/';
+  static const preOperatory = '/api/pre-operatory/';
+  static String preOperatoryDetail(String preOperatoryId) =>
+      '/api/pre-operatory/$preOperatoryId/';
 
   static const postOpMyJourney = '/api/post-op/my-journey/';
   static String postOperatoryByPatient(String patientId) =>
@@ -89,4 +92,8 @@ class ApiEndpoints {
   static const appointments = '/api/appointments/';
   static const appointmentsAvailableSlots =
       '/api/appointments/available-slots/';
+  static const appointmentsAvailabilityRules =
+      '/api/appointments/availability-rules/';
+  static const appointmentsBlockedPeriods =
+      '/api/appointments/blocked-periods/';
 }

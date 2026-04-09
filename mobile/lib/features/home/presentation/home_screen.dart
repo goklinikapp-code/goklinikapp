@@ -14,6 +14,8 @@ import '../../../core/utils/formatters.dart';
 import '../../auth/presentation/auth_controller.dart';
 import '../../branding/presentation/tenant_branding_controller.dart';
 import '../../notifications/presentation/notifications_controller.dart';
+import '../../post_op/domain/postop_models.dart';
+import '../../post_op/presentation/postop_controller.dart';
 import '../../travel_plans/presentation/travel_plan_controller.dart';
 import 'home_controller.dart';
 
@@ -25,6 +27,86 @@ String _formatCompactTime(String rawTime) {
   return cleaned;
 }
 
+String _withParams(String template, Map<String, String> values) {
+  var resolved = template;
+  for (final entry in values.entries) {
+    resolved = resolved.replaceAll('{${entry.key}}', entry.value);
+  }
+  return resolved;
+}
+
+class _PostOpHighlightContent {
+  const _PostOpHighlightContent({
+    required this.title,
+    required this.subtitle,
+    required this.gradient,
+  });
+
+  final String title;
+  final String subtitle;
+  final Gradient gradient;
+}
+
+_PostOpHighlightContent _resolvePostOpHighlight({
+  required AsyncValue<PostOpJourney?> state,
+  required String Function(String key) t,
+  required ColorScheme colorScheme,
+}) {
+  final defaultGradient = LinearGradient(
+    colors: [
+      colorScheme.secondary,
+      colorScheme.secondary.withValues(alpha: 0.82),
+    ],
+  );
+
+  return state.when(
+    loading: () => _PostOpHighlightContent(
+      title: t('postop_title'),
+      subtitle: t('postop_available_when_active'),
+      gradient: defaultGradient,
+    ),
+    error: (_, __) => _PostOpHighlightContent(
+      title: t('postop_title'),
+      subtitle: t('postop_available_when_active'),
+      gradient: defaultGradient,
+    ),
+    data: (journey) {
+      if (journey == null) {
+        return _PostOpHighlightContent(
+          title: t('postop_title'),
+          subtitle: t('postop_no_active_journey'),
+          gradient: defaultGradient,
+        );
+      }
+
+      final dayLabel = _withParams(
+        t('postop_day_of_total'),
+        {
+          'day': journey.currentDay.toString(),
+          'total': journey.totalDays.toString(),
+        },
+      );
+
+      if (journey.isActive) {
+        final subtitle = journey.checkinSubmittedToday
+            ? '$dayLabel • ${t('postop_checkin_sent_today_button')}'
+            : dayLabel;
+        return _PostOpHighlightContent(
+          title: t('postop_active'),
+          subtitle: subtitle,
+          gradient: defaultGradient,
+        );
+      }
+
+      return _PostOpHighlightContent(
+        title: t('postop_title'),
+        subtitle: dayLabel,
+        gradient: defaultGradient,
+      );
+    },
+  );
+}
+
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
 
@@ -33,15 +115,22 @@ class HomeScreen extends ConsumerWidget {
     final homeData = ref.watch(homeProvider);
     final notifications = ref.watch(notificationsControllerProvider);
     final travelPlanState = ref.watch(travelPlanProvider);
+    final postOpState = ref.watch(postOpControllerProvider);
     final tenantBranding = ref.watch(tenantBrandingProvider);
     final authState = ref.watch(authControllerProvider);
     final language = ref.watch(appPreferencesControllerProvider).language;
     String t(String key) => appTr(key: key, language: language);
     final colorScheme = Theme.of(context).colorScheme;
+    final postOpHighlight = _resolvePostOpHighlight(
+      state: postOpState,
+      t: t,
+      colorScheme: colorScheme,
+    );
 
     return RefreshIndicator(
       onRefresh: () async {
         ref.invalidate(homeProvider);
+        await ref.read(postOpControllerProvider.notifier).load();
         await ref.read(notificationsControllerProvider.notifier).load();
       },
       child: ListView(
@@ -178,14 +267,9 @@ class HomeScreen extends ConsumerWidget {
                         ],
                         const SizedBox(width: 12),
                         _HighlightCard(
-                          title: t('postop_active'),
-                          subtitle: t('postop_active_subtitle'),
-                          gradient: LinearGradient(
-                            colors: [
-                              colorScheme.secondary,
-                              colorScheme.secondary.withValues(alpha: 0.82),
-                            ],
-                          ),
+                          title: postOpHighlight.title,
+                          subtitle: postOpHighlight.subtitle,
+                          gradient: postOpHighlight.gradient,
                           badge: t('postop_badge'),
                           unitLabel: clinicName,
                         ),
@@ -223,10 +307,6 @@ class HomeScreen extends ConsumerWidget {
                   title: t('quick_pre_operatory'),
                   icon: Icons.assignment_turned_in_outlined,
                   onTap: () => context.push('/pre-operatory')),
-              _QuickAction(
-                  title: t('quick_postop'),
-                  icon: Icons.health_and_safety_outlined,
-                  onTap: () => context.go('/postop')),
               _QuickAction(
                   title: t('quick_my_medical_record'),
                   icon: Icons.folder_open_outlined,

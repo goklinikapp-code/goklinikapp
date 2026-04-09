@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/settings/app_translations.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/gk_badge.dart';
 import '../../../core/widgets/gk_card.dart';
@@ -8,10 +9,12 @@ class NotificationPreferencesScreen extends StatefulWidget {
   const NotificationPreferencesScreen({super.key});
 
   @override
-  State<NotificationPreferencesScreen> createState() => _NotificationPreferencesScreenState();
+  State<NotificationPreferencesScreen> createState() =>
+      _NotificationPreferencesScreenState();
 }
 
-class _NotificationPreferencesScreenState extends State<NotificationPreferencesScreen> {
+class _NotificationPreferencesScreenState
+    extends State<NotificationPreferencesScreen> {
   bool reminder = true;
   bool postop = true;
   bool offers = false;
@@ -19,39 +22,47 @@ class _NotificationPreferencesScreenState extends State<NotificationPreferencesS
 
   @override
   Widget build(BuildContext context) {
+    String t(String key) => _t(context, key);
     return Scaffold(
-      appBar: AppBar(title: const Text('Preferências de Notificação')),
+      appBar: AppBar(title: Text(t('notification_preferences'))),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          Text('Sua Central de Paz', style: Theme.of(context).textTheme.titleLarge),
+          Text(
+            t('notification_pref_heading'),
+            style: Theme.of(context).textTheme.titleLarge,
+          ),
           const SizedBox(height: 6),
-          const Text('Configure o que você deseja receber para manter sua rotina tranquila.'),
+          Text(t('notification_pref_subheading')),
           const SizedBox(height: 12),
           GKCard(
             child: Column(
               children: [
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
-                  title: const Text('Lembretes de consulta'),
-                  subtitle: const Text('Avisos de horário e confirmação de presença.'),
+                  title: Text(t('notification_pref_consultation_reminders')),
+                  subtitle: Text(t('notification_pref_consultation_desc')),
                   value: reminder,
                   onChanged: (v) => setState(() => reminder = v),
                 ),
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
-                  title: const Text('Acompanhamento pós-operatório'),
-                  subtitle: const Text('Checklist diário e alertas da recuperação.'),
+                  title: Text(t('notification_pref_postop_followup')),
+                  subtitle: Text(t('notification_pref_postop_desc')),
                   value: postop,
                   onChanged: (v) => setState(() => postop = v),
                 ),
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
-                  title: const Row(
+                  title: Row(
                     children: [
-                      Text('Promoções e ofertas'),
-                      SizedBox(width: 6),
-                      GKBadge(label: 'VIP', background: Color(0xFFFFF1CF), foreground: GKColors.accent),
+                      Text(t('news_offers')),
+                      const SizedBox(width: 6),
+                      GKBadge(
+                        label: t('vip_badge'),
+                        background: const Color(0xFFFFF1CF),
+                        foreground: GKColors.accent,
+                      ),
                     ],
                   ),
                   value: offers,
@@ -59,7 +70,7 @@ class _NotificationPreferencesScreenState extends State<NotificationPreferencesS
                 ),
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
-                  title: const Text('Newsletters da clínica'),
+                  title: Text(t('notification_pref_clinic_newsletters')),
                   value: newsletter,
                   onChanged: (v) => setState(() => newsletter = v),
                 ),
@@ -67,15 +78,20 @@ class _NotificationPreferencesScreenState extends State<NotificationPreferencesS
             ),
           ),
           const SizedBox(height: 12),
-          const GKCard(
+          GKCard(
             color: GKColors.primary,
             child: Text(
-              'Sua privacidade é prioridade. Todas as preferências e dados são protegidos por criptografia.',
-              style: TextStyle(color: Colors.white),
+              t('notification_pref_privacy_note'),
+              style: const TextStyle(color: Colors.white),
             ),
           ),
         ],
       ),
     );
   }
+}
+
+String _t(BuildContext context, String key) {
+  final language = Localizations.localeOf(context).languageCode;
+  return appTr(key: key, language: language);
 }

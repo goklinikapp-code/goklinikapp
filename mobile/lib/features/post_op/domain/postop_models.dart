@@ -1,4 +1,5 @@
 import '../../../core/utils/api_media_url.dart';
+import '../../../core/utils/text_normalizer.dart';
 
 class PostOpChecklistItem {
   const PostOpChecklistItem({
@@ -321,8 +322,8 @@ class UrgentMedicalRequest {
     return UrgentMedicalRequest(
       id: (json['id'] ?? '').toString(),
       status: (json['status'] ?? 'open').toString(),
-      question: (json['question'] ?? '').toString(),
-      answer: (json['answer'] ?? '').toString(),
+      question: normalizeApiText(json['question']),
+      answer: normalizeApiText(json['answer']),
       createdAt: DateTime.tryParse((json['created_at'] ?? '').toString()) ??
           DateTime.now(),
       answeredAt: DateTime.tryParse((json['answered_at'] ?? '').toString()),

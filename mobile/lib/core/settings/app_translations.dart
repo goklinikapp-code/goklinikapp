@@ -24,7 +24,7 @@ const _translations = <String, Map<String, String>>{
     'tr': 'Profili duzenle',
   },
   'notifications_title': {
-    'pt': 'Notificacoes',
+    'pt': 'Notificações',
     'en': 'Notifications',
     'es': 'Notificaciones',
     'de': 'Benachrichtigungen',
@@ -72,7 +72,7 @@ const _translations = <String, Map<String, String>>{
     'tr': 'Biyometri',
   },
   'access_history': {
-    'pt': 'Historico de acesso',
+    'pt': 'Histórico de acesso',
     'en': 'Access history',
     'es': 'Historial de acceso',
     'de': 'Zugriffsverlauf',
@@ -80,7 +80,7 @@ const _translations = <String, Map<String, String>>{
     'tr': 'Erisim gecmisi',
   },
   'app_settings_title': {
-    'pt': 'Configuracoes do App',
+    'pt': 'Configurações do App',
     'en': 'App Settings',
     'es': 'Configuracion de la App',
     'de': 'App-Einstellungen',
@@ -112,7 +112,7 @@ const _translations = <String, Map<String, String>>{
     'tr': 'Tipografi: Inter',
   },
   'notification_preferences': {
-    'pt': 'Preferencias de notificacao',
+    'pt': 'Preferências de notificação',
     'en': 'Notification preferences',
     'es': 'Preferencias de notificacion',
     'de': 'Benachrichtigungseinstellungen',
@@ -176,7 +176,7 @@ const _translations = <String, Map<String, String>>{
     'tr': 'Profil fotografi basariyla guncellendi.',
   },
   'profile_photo_upload_error': {
-    'pt': 'Nao foi possivel atualizar a foto de perfil agora.',
+    'pt': 'Não foi possível atualizar a foto de perfil agora.',
     'en': 'Could not update the profile photo right now.',
     'es': 'No fue posible actualizar la foto de perfil ahora.',
     'de': 'Profilbild konnte jetzt nicht aktualisiert werden.',
@@ -192,7 +192,7 @@ const _translations = <String, Map<String, String>>{
     'tr': 'Dili secin',
   },
   'use_device_language': {
-    'pt': 'Usar idioma automatico do celular',
+    'pt': 'Usar idioma automático do celular',
     'en': 'Use device automatic language',
     'es': 'Usar idioma automatico del dispositivo',
     'de': 'Automatische Geraetesprache verwenden',
@@ -200,7 +200,7 @@ const _translations = <String, Map<String, String>>{
     'tr': 'Cihazin otomatik dilini kullan',
   },
   'home_load_error': {
-    'pt': 'Nao foi possivel carregar a home.',
+    'pt': 'Não foi possível carregar a home.',
     'en': 'Could not load home.',
     'es': 'No fue posible cargar el inicio.',
     'de': 'Startseite konnte nicht geladen werden.',
@@ -216,7 +216,7 @@ const _translations = <String, Map<String, String>>{
     'tr': 'Tekrar hos geldin,',
   },
   'hello': {
-    'pt': 'Ola',
+    'pt': 'Olá',
     'en': 'Hello',
     'es': 'Hola',
     'de': 'Hallo',
@@ -224,7 +224,7 @@ const _translations = <String, Map<String, String>>{
     'tr': 'Merhaba',
   },
   'next_appointment': {
-    'pt': 'Proxima Consulta',
+    'pt': 'Próxima Consulta',
     'en': 'Next Appointment',
     'es': 'Proxima Consulta',
     'de': 'Naechster Termin',
@@ -264,7 +264,7 @@ const _translations = <String, Map<String, String>>{
     'tr': 'Gunluk kontrol listesi ve bakim hazir',
   },
   'postop_badge': {
-    'pt': 'POS-OP',
+    'pt': 'PÓS-OP',
     'en': 'POST-OP',
     'es': 'POST-OP',
     'de': 'POST-OP',
@@ -408,7 +408,7 @@ const _translations = <String, Map<String, String>>{
     'tr': 'Klinik Haberleri',
   },
   'news_item_1': {
-    'pt': 'Nova tecnologia para recuperacao pos-op',
+    'pt': 'Nova tecnologia para recuperação pós-op',
     'en': 'New technology for post-op recovery',
     'es': 'Nueva tecnologia para recuperacion post-op',
     'de': 'Neue Technologie fuer die Nachsorge',
@@ -416,7 +416,7 @@ const _translations = <String, Map<String, String>>{
     'tr': 'Post-op iyilesme icin yeni teknoloji',
   },
   'news_item_2': {
-    'pt': 'Campanha de outono com avaliacao gratuita',
+    'pt': 'Campanha de outono com avaliação gratuita',
     'en': 'Autumn campaign with free evaluation',
     'es': 'Campana de otono con evaluacion gratuita',
     'de': 'Herbstkampagne mit kostenloser Bewertung',
@@ -440,7 +440,7 @@ const _translations = <String, Map<String, String>>{
     'tr': 'Yeni randevu',
   },
   'appointments_upcoming': {
-    'pt': 'Proximos',
+    'pt': 'Próximos',
     'en': 'Upcoming',
     'es': 'Proximas',
     'de': 'Bevorstehend',
@@ -448,7 +448,7 @@ const _translations = <String, Map<String, String>>{
     'tr': 'Yaklasan',
   },
   'appointments_history': {
-    'pt': 'Historico',
+    'pt': 'Histórico',
     'en': 'History',
     'es': 'Historial',
     'de': 'Verlauf',
@@ -568,7 +568,7 @@ const _translations = <String, Map<String, String>>{
     'tr': 'Yeniden planlandi',
   },
   'health_tip_title': {
-    'pt': 'DICA DE SAUDE',
+    'pt': 'DICA DE SAÚDE',
     'en': 'HEALTH TIP',
     'es': 'CONSEJO DE SALUD',
     'de': 'GESUNDHEITSTIPP',
@@ -593,7 +593,7 @@ const _translations = <String, Map<String, String>>{
     'tr': 'HATIRLATMA',
   },
   'reminder_description': {
-    'pt': 'Chegue 15 minutos antes para check-in na recepcao.',
+    'pt': 'Chegue 15 minutos antes para check-in na recepção.',
     'en': 'Arrive 15 minutes early for front desk check-in.',
     'es': 'Llega 15 minutos antes para el check-in en recepcion.',
     'de': 'Bitte kommen Sie 15 Minuten frueher zum Check-in an der Rezeption.',
@@ -665,7 +665,7 @@ const _translations = <String, Map<String, String>>{
     'tr': 'Hasta',
   },
   'appointments_cancel_soon': {
-    'pt': 'Cancelamento sera habilitado em breve.',
+    'pt': 'Cancelamento será habilitado em breve.',
     'en': 'Cancellation will be available soon.',
     'es': 'La cancelacion estara disponible pronto.',
     'de': 'Die Stornierung wird in Kuerze verfuegbar sein.',
@@ -689,7 +689,7 @@ const _translations = <String, Map<String, String>>{
     'tr': 'Bu randevuyu iptal etmek istediginize emin misiniz?',
   },
   'appointments_cancel_confirm_hint': {
-    'pt': 'Depois voce pode agendar novamente quando quiser.',
+    'pt': 'Depois você pode agendar novamente quando quiser.',
     'en': 'You can schedule a new one again anytime.',
     'es': 'Despues puedes agendar otra cuando quieras.',
     'de': 'Sie koennen jederzeit einen neuen Termin buchen.',
@@ -729,7 +729,7 @@ const _translations = <String, Map<String, String>>{
     'tr': 'Randevu basariyla iptal edildi.',
   },
   'appointments_cancel_error': {
-    'pt': 'Nao foi possivel cancelar o agendamento agora.',
+    'pt': 'Não foi possível cancelar o agendamento agora.',
     'en': 'Could not cancel the appointment right now.',
     'es': 'No fue posible cancelar la cita ahora.',
     'de': 'Termin konnte momentan nicht storniert werden.',
@@ -761,7 +761,7 @@ const _translations = <String, Map<String, String>>{
     'tr': 'Yeniden planla',
   },
   'appointments_forbidden': {
-    'pt': 'Sua conta atual nao tem permissao para visualizar agendamentos.',
+    'pt': 'Sua conta atual não tem permissão para visualizar agendamentos.',
     'en': 'Your current account does not have permission to view appointments.',
     'es': 'Tu cuenta actual no tiene permiso para ver citas.',
     'de': 'Ihr aktuelles Konto hat keine Berechtigung, Termine anzuzeigen.',
@@ -1012,7 +1012,7 @@ const _translations = <String, Map<String, String>>{
     'tr': 'Travel Plan',
   },
   'travel_plan_load_error': {
-    'pt': 'Nao foi possivel carregar seu plano de viagem.',
+    'pt': 'Não foi possível carregar seu plano de viagem.',
     'en': 'Could not load your travel plan.',
     'es': 'Could not load your travel plan.',
     'de': 'Could not load your travel plan.',
@@ -1029,7 +1029,7 @@ const _translations = <String, Map<String, String>>{
   },
   'travel_plan_empty_description': {
     'pt':
-        'A clinica ainda nao cadastrou seu plano de viagem. Assim que estiver pronto, voce vera voos, hotel e transfers aqui.',
+        'A clínica ainda não cadastrou seu plano de viagem. Assim que estiver pronto, você verá voos, hotel e transfers aqui.',
     'en':
         'The clinic has not registered your travel plan yet. Once it is ready, you will see flights, hotel and transfers here.',
     'es':
@@ -1042,7 +1042,7 @@ const _translations = <String, Map<String, String>>{
         'The clinic has not registered your travel plan yet. Once it is ready, you will see flights, hotel and transfers here.',
   },
   'travel_plan_contact_clinic': {
-    'pt': 'Falar com a clinica',
+    'pt': 'Falar com a clínica',
     'en': 'Talk to the clinic',
     'es': 'Talk to the clinic',
     'de': 'Talk to the clinic',
@@ -1058,7 +1058,7 @@ const _translations = <String, Map<String, String>>{
     'tr': 'Transfer confirmed successfully.',
   },
   'travel_plan_transfer_confirm_error': {
-    'pt': 'Nao foi possivel confirmar este transfer.',
+    'pt': 'Não foi possível confirmar este transfer.',
     'en': 'Could not confirm this transfer.',
     'es': 'Could not confirm this transfer.',
     'de': 'Could not confirm this transfer.',
@@ -1122,7 +1122,7 @@ const _translations = <String, Map<String, String>>{
     'tr': 'Hotel Check-in',
   },
   'travel_plan_arranging_details': {
-    'pt': 'A clinica esta organizando seus detalhes de viagem.',
+    'pt': 'A clínica está organizando seus detalhes de viagem.',
     'en': 'The clinic is organizing your travel details.',
     'es': 'The clinic is organizing your travel details.',
     'de': 'The clinic is organizing your travel details.',
@@ -1130,7 +1130,7 @@ const _translations = <String, Map<String, String>>{
     'tr': 'The clinic is organizing your travel details.',
   },
   'travel_plan_start_expected': {
-    'pt': 'Inicio previsto em {date}',
+    'pt': 'Início previsto em {date}',
     'en': 'Expected start on {date}',
     'es': 'Expected start on {date}',
     'de': 'Expected start on {date}',
@@ -1138,7 +1138,7 @@ const _translations = <String, Map<String, String>>{
     'tr': 'Expected start on {date}',
   },
   'travel_plan_end_expected': {
-    'pt': 'Termino previsto em {date}',
+    'pt': 'Término previsto em {date}',
     'en': 'Expected end on {date}',
     'es': 'Expected end on {date}',
     'de': 'Expected end on {date}',
@@ -1162,7 +1162,7 @@ const _translations = <String, Map<String, String>>{
     'tr': 'Confirmed',
   },
   'travel_status_completed': {
-    'pt': 'Concluido',
+    'pt': 'Concluído',
     'en': 'Completed',
     'es': 'Completed',
     'de': 'Completed',
@@ -1178,7 +1178,7 @@ const _translations = <String, Map<String, String>>{
     'tr': 'Cancelled',
   },
   'postop_title': {
-    'pt': 'Sua Recuperacao',
+    'pt': 'Sua Recuperação',
     'en': 'Your Recovery',
     'es': 'Your Recovery',
     'de': 'Your Recovery',
@@ -1186,7 +1186,7 @@ const _translations = <String, Map<String, String>>{
     'tr': 'Your Recovery',
   },
   'postop_no_active_journey': {
-    'pt': 'Voce ainda nao possui jornada pos-operatoria ativa.',
+    'pt': 'Você ainda não possui jornada pós-operatória ativa.',
     'en': 'You do not have an active post-op journey yet.',
     'es': 'You do not have an active post-op journey yet.',
     'de': 'You do not have an active post-op journey yet.',
@@ -1194,7 +1194,7 @@ const _translations = <String, Map<String, String>>{
     'tr': 'You do not have an active post-op journey yet.',
   },
   'postop_available_when_active': {
-    'pt': 'Disponivel quando houver uma jornada pos-operatoria ativa.',
+    'pt': 'Disponível quando houver uma jornada pós-operatória ativa.',
     'en': 'Available when there is an active post-op journey.',
     'es': 'Available when there is an active post-op journey.',
     'de': 'Available when there is an active post-op journey.',
@@ -1202,7 +1202,7 @@ const _translations = <String, Map<String, String>>{
     'tr': 'Available when there is an active post-op journey.',
   },
   'postop_urgent_question': {
-    'pt': 'Duvida urgente',
+    'pt': 'Dúvida urgente',
     'en': 'Urgent question',
     'es': 'Urgent question',
     'de': 'Urgent question',
@@ -1210,7 +1210,7 @@ const _translations = <String, Map<String, String>>{
     'tr': 'Urgent question',
   },
   'postop_load_error_prefix': {
-    'pt': 'Erro ao carregar pos-op:',
+    'pt': 'Erro ao carregar pós-op:',
     'en': 'Error loading post-op:',
     'es': 'Error loading post-op:',
     'de': 'Error loading post-op:',
@@ -1226,7 +1226,7 @@ const _translations = <String, Map<String, String>>{
     'tr': 'Check-in sent successfully.',
   },
   'postop_checkin_error': {
-    'pt': 'Nao foi possivel enviar o check-in agora.',
+    'pt': 'Não foi possível enviar o check-in agora.',
     'en': 'Could not send the check-in right now.',
     'es': 'Could not send the check-in right now.',
     'de': 'Could not send the check-in right now.',
@@ -1235,7 +1235,7 @@ const _translations = <String, Map<String, String>>{
   },
   'postop_risk_alert': {
     'pt':
-        'Sua resposta indica possivel atencao clinica. A clinica foi notificada.',
+        'Sua resposta indica possível atenção clínica. A clínica foi notificada.',
     'en':
         'Your response indicates possible clinical attention. The clinic has been notified.',
     'es':
@@ -1264,7 +1264,7 @@ const _translations = <String, Map<String, String>>{
     'tr': 'Photo uploaded successfully.',
   },
   'postop_photo_upload_error': {
-    'pt': 'Nao foi possivel enviar a foto.',
+    'pt': 'Não foi possível enviar a foto.',
     'en': 'Could not upload the photo.',
     'es': 'Could not upload the photo.',
     'de': 'Could not upload the photo.',
@@ -1273,7 +1273,7 @@ const _translations = <String, Map<String, String>>{
   },
   'postop_urgent_rate_limit': {
     'pt':
-        'Voce enviou uma duvida ha pouco. Aguarde um instante para enviar outra.',
+        'Você enviou uma dúvida há pouco. Aguarde um instante para enviar outra.',
     'en':
         'You sent a question moments ago. Please wait a little before sending another.',
     'es':
@@ -1286,7 +1286,7 @@ const _translations = <String, Map<String, String>>{
         'You sent a question moments ago. Please wait a little before sending another.',
   },
   'postop_urgent_sent_success': {
-    'pt': 'Duvida urgente enviada para a clinica.',
+    'pt': 'Dúvida urgente enviada para a clínica.',
     'en': 'Urgent question sent to the clinic.',
     'es': 'Urgent question sent to the clinic.',
     'de': 'Urgent question sent to the clinic.',
@@ -1294,7 +1294,7 @@ const _translations = <String, Map<String, String>>{
     'tr': 'Urgent question sent to the clinic.',
   },
   'postop_urgent_send_error': {
-    'pt': 'Nao foi possivel enviar a duvida urgente agora.',
+    'pt': 'Não foi possível enviar a dúvida urgente agora.',
     'en': 'Could not send the urgent question right now.',
     'es': 'Could not send the urgent question right now.',
     'de': 'Could not send the urgent question right now.',
@@ -1302,7 +1302,7 @@ const _translations = <String, Map<String, String>>{
     'tr': 'Could not send the urgent question right now.',
   },
   'postop_status_completed': {
-    'pt': 'Concluida',
+    'pt': 'Concluída',
     'en': 'Completed',
     'es': 'Completed',
     'de': 'Completed',
@@ -1350,7 +1350,7 @@ const _translations = <String, Map<String, String>>{
     'tr': 'Today',
   },
   'postop_recovery_card_title': {
-    'pt': 'Sua recuperacao',
+    'pt': 'Sua recuperação',
     'en': 'Your recovery',
     'es': 'Your recovery',
     'de': 'Your recovery',
@@ -1366,7 +1366,7 @@ const _translations = <String, Map<String, String>>{
     'tr': 'Day {day} of {total}',
   },
   'postop_how_are_you_today': {
-    'pt': 'Como voce esta hoje?',
+    'pt': 'Como você está hoje?',
     'en': 'How are you feeling today?',
     'es': 'How are you feeling today?',
     'de': 'How are you feeling today?',
@@ -1390,7 +1390,7 @@ const _translations = <String, Map<String, String>>{
     'tr': 'Had fever today?',
   },
   'postop_notes': {
-    'pt': 'Observacoes',
+    'pt': 'Observações',
     'en': 'Notes',
     'es': 'Notes',
     'de': 'Notes',
@@ -1398,7 +1398,7 @@ const _translations = <String, Map<String, String>>{
     'tr': 'Notes',
   },
   'postop_checkin_sent_today_info': {
-    'pt': 'Check-in de hoje ja enviado. Volte amanha para um novo registro.',
+    'pt': 'Check-in de hoje já enviado. Volte amanhã para um novo registro.',
     'en': 'Today check-in already sent. Come back tomorrow for a new entry.',
     'es': 'Today check-in already sent. Come back tomorrow for a new entry.',
     'de': 'Today check-in already sent. Come back tomorrow for a new entry.',
@@ -1438,7 +1438,7 @@ const _translations = <String, Map<String, String>>{
     'tr': 'No tasks for today.',
   },
   'postop_recovery_photos': {
-    'pt': 'Fotos da recuperacao',
+    'pt': 'Fotos da recuperação',
     'en': 'Recovery photos',
     'es': 'Recovery photos',
     'de': 'Recovery photos',
@@ -1462,7 +1462,7 @@ const _translations = <String, Map<String, String>>{
     'tr': 'No photos uploaded yet.',
   },
   'postop_history_title': {
-    'pt': 'Historico',
+    'pt': 'Histórico',
     'en': 'History',
     'es': 'History',
     'de': 'History',
@@ -1470,7 +1470,7 @@ const _translations = <String, Map<String, String>>{
     'tr': 'History',
   },
   'postop_no_history_yet': {
-    'pt': 'Sem historico por enquanto.',
+    'pt': 'Sem histórico por enquanto.',
     'en': 'No history yet.',
     'es': 'No history yet.',
     'de': 'No history yet.',
@@ -1478,7 +1478,7 @@ const _translations = <String, Map<String, String>>{
     'tr': 'No history yet.',
   },
   'postop_start_label': {
-    'pt': 'Inicio',
+    'pt': 'Início',
     'en': 'Start',
     'es': 'Start',
     'de': 'Start',
@@ -1486,7 +1486,7 @@ const _translations = <String, Map<String, String>>{
     'tr': 'Start',
   },
   'postop_end_forecast_label': {
-    'pt': 'Previsao de termino',
+    'pt': 'Previsão de término',
     'en': 'Expected end',
     'es': 'Expected end',
     'de': 'Expected end',
@@ -1494,7 +1494,7 @@ const _translations = <String, Map<String, String>>{
     'tr': 'Expected end',
   },
   'postop_urgent_describe_required': {
-    'pt': 'Descreva a duvida urgente para enviar.',
+    'pt': 'Descreva a dúvida urgente para enviar.',
     'en': 'Describe the urgent question to send.',
     'es': 'Describe the urgent question to send.',
     'de': 'Describe the urgent question to send.',
@@ -1518,7 +1518,7 @@ const _translations = <String, Map<String, String>>{
     'tr': 'Message',
   },
   'postop_message_hint': {
-    'pt': 'Descreva com detalhes o que voce esta sentindo.',
+    'pt': 'Descreva com detalhes o que você está sentindo.',
     'en': 'Describe in detail what you are feeling.',
     'es': 'Describe in detail what you are feeling.',
     'de': 'Describe in detail what you are feeling.',
@@ -1566,7 +1566,7 @@ const _translations = <String, Map<String, String>>{
     'tr': 'Error loading care center:',
   },
   'postop_care_center_subtitle': {
-    'pt': 'Conteudo personalizado para sua recuperacao pos-operatoria.',
+    'pt': 'Conteúdo personalizado para sua recuperação pós-operatória.',
     'en': 'Personalized content for your post-op recovery.',
     'es': 'Personalized content for your post-op recovery.',
     'de': 'Personalized content for your post-op recovery.',
@@ -1574,7 +1574,7 @@ const _translations = <String, Map<String, String>>{
     'tr': 'Personalized content for your post-op recovery.',
   },
   'postop_care_center_available_now_nursing': {
-    'pt': 'DISPONIVEL AGORA • Falar com Enfermagem',
+    'pt': 'DISPONÍVEL AGORA • Falar com Enfermagem',
     'en': 'AVAILABLE NOW • Talk to Nursing',
     'es': 'AVAILABLE NOW • Talk to Nursing',
     'de': 'AVAILABLE NOW • Talk to Nursing',
@@ -1590,7 +1590,7 @@ const _translations = <String, Map<String, String>>{
     'tr': 'Start chat',
   },
   'postop_care_center_faq': {
-    'pt': 'Duvidas frequentes',
+    'pt': 'Dúvidas frequentes',
     'en': 'Frequently asked questions',
     'es': 'Frequently asked questions',
     'de': 'Frequently asked questions',
@@ -1606,7 +1606,7 @@ const _translations = <String, Map<String, String>>{
     'tr': 'Medications',
   },
   'postop_care_center_general_guidance': {
-    'pt': 'Orientacoes gerais',
+    'pt': 'Orientações gerais',
     'en': 'General guidance',
     'es': 'General guidance',
     'de': 'General guidance',
@@ -1614,7 +1614,7 @@ const _translations = <String, Map<String, String>>{
     'tr': 'General guidance',
   },
   'postop_care_center_support_24h': {
-    'pt': 'Estamos aqui 24h por dia para acompanhar sua recuperacao.',
+    'pt': 'Estamos aqui 24h por dia para acompanhar sua recuperação.',
     'en': 'We are here 24h a day to support your recovery.',
     'es': 'We are here 24h a day to support your recovery.',
     'de': 'We are here 24h a day to support your recovery.',
@@ -1622,7 +1622,7 @@ const _translations = <String, Map<String, String>>{
     'tr': 'We are here 24h a day to support your recovery.',
   },
   'chat_list_title': {
-    'pt': 'Chat com a Clinica',
+    'pt': 'Chat com a Clínica',
     'en': 'Chat with Clinic',
     'es': 'Chat with Clinic',
     'de': 'Chat with Clinic',
@@ -1638,7 +1638,7 @@ const _translations = <String, Map<String, String>>{
     'tr': 'PREMIUM CARE',
   },
   'chat_premium_headline': {
-    'pt': 'Cuidado sob medida para sua recuperacao',
+    'pt': 'Cuidado sob medida para sua recuperação',
     'en': 'Tailored care for your recovery',
     'es': 'Tailored care for your recovery',
     'de': 'Tailored care for your recovery',
@@ -1646,7 +1646,7 @@ const _translations = <String, Map<String, String>>{
     'tr': 'Tailored care for your recovery',
   },
   'chat_team_title': {
-    'pt': 'Conversar com a equipe da clinica',
+    'pt': 'Conversar com a equipe da clínica',
     'en': 'Talk to clinic team',
     'es': 'Talk to clinic team',
     'de': 'Talk to clinic team',
@@ -1655,7 +1655,7 @@ const _translations = <String, Map<String, String>>{
   },
   'chat_team_description': {
     'pt':
-        'Tire duvidas sobre seu atendimento, consultas, pos-operatorio e orientacoes gerais.',
+        'Tire dúvidas sobre seu atendimento, consultas, pós-operatório e orientações gerais.',
     'en':
         'Ask questions about your care, appointments, post-op and general guidance.',
     'es':
@@ -1676,7 +1676,7 @@ const _translations = <String, Map<String, String>>{
     'tr': 'Talk to team',
   },
   'chat_doctor_title': {
-    'pt': 'Mensagem para o medico',
+    'pt': 'Mensagem para o médico',
     'en': 'Message to doctor',
     'es': 'Message to doctor',
     'de': 'Message to doctor',
@@ -1684,7 +1684,7 @@ const _translations = <String, Map<String, String>>{
     'tr': 'Message to doctor',
   },
   'chat_doctor_description': {
-    'pt': 'Voce envia sua duvida e o medico respondera assim que possivel.',
+    'pt': 'Você envia sua dúvida e o médico responderá assim que possível.',
     'en': 'You send your question and doctor will reply as soon as possible.',
     'es': 'You send your question and doctor will reply as soon as possible.',
     'de': 'You send your question and doctor will reply as soon as possible.',
@@ -1692,7 +1692,7 @@ const _translations = <String, Map<String, String>>{
     'tr': 'You send your question and doctor will reply as soon as possible.',
   },
   'chat_doctor_button': {
-    'pt': 'Enviar mensagem ao medico',
+    'pt': 'Enviar mensagem ao médico',
     'en': 'Send message to doctor',
     'es': 'Send message to doctor',
     'de': 'Send message to doctor',
@@ -1708,7 +1708,7 @@ const _translations = <String, Map<String, String>>{
     'tr': 'Loading your sent messages...',
   },
   'chat_urgent_load_error': {
-    'pt': 'Nao foi possivel carregar seu historico de mensagens agora.',
+    'pt': 'Não foi possível carregar seu histórico de mensagens agora.',
     'en': 'Could not load your message history right now.',
     'es': 'Could not load your message history right now.',
     'de': 'Could not load your message history right now.',
@@ -1716,7 +1716,7 @@ const _translations = <String, Map<String, String>>{
     'tr': 'Could not load your message history right now.',
   },
   'chat_urgent_empty': {
-    'pt': 'Voce ainda nao enviou nenhuma mensagem para o medico.',
+    'pt': 'Você ainda não enviou nenhuma mensagem para o médico.',
     'en': 'You have not sent any message to doctor yet.',
     'es': 'You have not sent any message to doctor yet.',
     'de': 'You have not sent any message to doctor yet.',
@@ -1740,7 +1740,7 @@ const _translations = <String, Map<String, String>>{
     'tr': 'Waiting',
   },
   'chat_doctor_sent_success': {
-    'pt': 'Mensagem enviada com sucesso. A equipe medica respondera em breve.',
+    'pt': 'Mensagem enviada com sucesso. A equipe médica responderá em breve.',
     'en': 'Message sent successfully. Medical team will reply soon.',
     'es': 'Message sent successfully. Medical team will reply soon.',
     'de': 'Message sent successfully. Medical team will reply soon.',
@@ -1748,7 +1748,7 @@ const _translations = <String, Map<String, String>>{
     'tr': 'Message sent successfully. Medical team will reply soon.',
   },
   'chat_urgent_sheet_title': {
-    'pt': 'Enviar mensagem para o medico',
+    'pt': 'Enviar mensagem para o médico',
     'en': 'Send message to doctor',
     'es': 'Send message to doctor',
     'de': 'Send message to doctor',
@@ -1757,7 +1757,7 @@ const _translations = <String, Map<String, String>>{
   },
   'chat_urgent_sheet_description': {
     'pt':
-        'Sua mensagem sera enviada para a equipe medica e respondida de forma assincrona.',
+        'Sua mensagem será enviada para a equipe médica e respondida de forma assíncrona.',
     'en':
         'Your message will be sent to the medical team and answered asynchronously.',
     'es':
@@ -1770,7 +1770,7 @@ const _translations = <String, Map<String, String>>{
         'Your message will be sent to the medical team and answered asynchronously.',
   },
   'chat_urgent_sheet_hint': {
-    'pt': 'Descreva sua duvida com detalhes...',
+    'pt': 'Descreva sua dúvida com detalhes...',
     'en': 'Describe your question in detail...',
     'es': 'Describe your question in detail...',
     'de': 'Describe your question in detail...',
@@ -1778,7 +1778,7 @@ const _translations = <String, Map<String, String>>{
     'tr': 'Describe your question in detail...',
   },
   'chat_urgent_min_chars': {
-    'pt': 'Digite pelo menos 5 caracteres na sua duvida.',
+    'pt': 'Digite pelo menos 5 caracteres na sua dúvida.',
     'en': 'Type at least 5 characters in your question.',
     'es': 'Type at least 5 characters in your question.',
     'de': 'Type at least 5 characters in your question.',
@@ -1786,7 +1786,7 @@ const _translations = <String, Map<String, String>>{
     'tr': 'Type at least 5 characters in your question.',
   },
   'chat_send_error': {
-    'pt': 'Nao foi possivel enviar agora. Tente novamente.',
+    'pt': 'Não foi possível enviar agora. Tente novamente.',
     'en': 'Could not send now. Please try again.',
     'es': 'Could not send now. Please try again.',
     'de': 'Could not send now. Please try again.',
@@ -1802,7 +1802,7 @@ const _translations = <String, Map<String, String>>{
     'tr': 'Sending...',
   },
   'chat_room_send_error': {
-    'pt': 'Nao foi possivel enviar sua mensagem agora.',
+    'pt': 'Não foi possível enviar sua mensagem agora.',
     'en': 'Could not send your message right now.',
     'es': 'Could not send your message right now.',
     'de': 'Could not send your message right now.',
@@ -1818,7 +1818,7 @@ const _translations = <String, Map<String, String>>{
     'tr': 'In this channel, send text messages only.',
   },
   'chat_room_team_label': {
-    'pt': 'Equipe da Clinica',
+    'pt': 'Equipe da Clínica',
     'en': 'Clinic Team',
     'es': 'Clinic Team',
     'de': 'Clinic Team',
@@ -1890,7 +1890,7 @@ const _translations = <String, Map<String, String>>{
     'tr': 'Feeling pain',
   },
   'chat_quick_reply_medication': {
-    'pt': 'Duvida sobre remedio',
+    'pt': 'Dúvida sobre remédio',
     'en': 'Question about medicine',
     'es': 'Question about medicine',
     'de': 'Question about medicine',
@@ -1906,7 +1906,7 @@ const _translations = <String, Map<String, String>>{
     'tr': 'Can I drive?',
   },
   'chat_care_label': {
-    'pt': 'atendimento da clinica',
+    'pt': 'atendimento da clínica',
     'en': 'clinic care',
     'es': 'clinic care',
     'de': 'clinic care',
@@ -1922,7 +1922,7 @@ const _translations = <String, Map<String, String>>{
     'tr': 'care',
   },
   'chat_doctor_option_label': {
-    'pt': 'opcao de mensagem para o medico',
+    'pt': 'opção de mensagem para o médico',
     'en': 'doctor message option',
     'es': 'doctor message option',
     'de': 'doctor message option',

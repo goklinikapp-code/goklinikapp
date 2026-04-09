@@ -55,6 +55,10 @@ DEFAULT_ROLE_PERMISSIONS: dict[str, list[str]] = {
     GoKlinikUser.RoleChoices.PATIENT: [],
 }
 
+ROLE_REQUIRED_PERMISSIONS: dict[str, tuple[str, ...]] = {
+    GoKlinikUser.RoleChoices.SURGEON: ("pre_operatory",),
+}
+
 
 def normalize_access_permissions(values: Iterable[str] | None) -> list[str]:
     if not values:
@@ -67,6 +71,15 @@ def normalize_access_permissions(values: Iterable[str] | None) -> list[str]:
     return normalized
 
 
+def ensure_required_permissions_for_role(role: str, permissions: Iterable[str]) -> list[str]:
+    resolved = normalize_access_permissions(permissions)
+    required = ROLE_REQUIRED_PERMISSIONS.get(role, ())
+    for permission in required:
+        if permission not in resolved and permission in ACCESS_PERMISSION_KEYS:
+            resolved.append(permission)
+    return resolved
+
+
 def resolve_access_permissions_for_role(role: str, requested_values: Iterable[str] | None) -> list[str]:
     if role == GoKlinikUser.RoleChoices.CLINIC_MASTER:
         return list(ALL_ACCESS_PERMISSIONS)
@@ -75,5 +88,8 @@ def resolve_access_permissions_for_role(role: str, requested_values: Iterable[st
 
     normalized = normalize_access_permissions(requested_values)
     if normalized:
-        return normalized
-    return list(DEFAULT_ROLE_PERMISSIONS.get(role, []))
+        return ensure_required_permissions_for_role(role, normalized)
+    return ensure_required_permissions_for_role(
+        role,
+        DEFAULT_ROLE_PERMISSIONS.get(role, []),
+    )

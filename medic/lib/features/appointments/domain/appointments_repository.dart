@@ -17,4 +17,28 @@ abstract class AppointmentsRepository {
     required String appointmentType,
     required String notes,
   });
+
+  Future<ProfessionalAvailabilityResponse> getAvailabilityRules({
+    String? professionalId,
+  });
+
+  Future<ProfessionalAvailabilityResponse> updateAvailabilityRules({
+    String? professionalId,
+    required List<ProfessionalAvailabilityRule> rules,
+  });
+
+  Future<List<BlockedPeriodItem>> getBlockedPeriods({
+    String? professionalId,
+    String? dateFrom,
+    String? dateTo,
+  });
+
+  Future<BlockedPeriodItem> createBlockedPeriod({
+    String? professionalId,
+    required String startDateTime,
+    required String endDateTime,
+    required String reason,
+  });
+
+  Future<void> deleteBlockedPeriod({required String blockedPeriodId});
 }

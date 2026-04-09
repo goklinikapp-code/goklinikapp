@@ -1,4 +1,5 @@
 import { apiClient } from '@/lib/axios'
+import { normalizeNextPagePath } from '@/api/pagination'
 import type { PatientDetail, PatientRow } from '@/types'
 
 interface PaginatedResponse<T> {
@@ -30,12 +31,7 @@ export async function getPatients(): Promise<PatientRow[]> {
       continue
     }
 
-    try {
-      const parsedUrl = new URL(next)
-      nextPath = `${parsedUrl.pathname}${parsedUrl.search}`
-    } catch {
-      nextPath = next
-    }
+    nextPath = normalizeNextPagePath(next) || null
   }
 
   return rows

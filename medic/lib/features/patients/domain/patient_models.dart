@@ -252,6 +252,9 @@ class PreOperatoryAttachmentItem {
 class PatientPreOperatoryRecord {
   const PatientPreOperatoryRecord({
     required this.id,
+    required this.patientId,
+    required this.patientName,
+    required this.patientAvatarUrl,
     required this.status,
     required this.allergies,
     required this.medications,
@@ -263,11 +266,17 @@ class PatientPreOperatoryRecord {
     required this.drinksAlcohol,
     required this.notes,
     required this.assignedDoctorId,
+    required this.assignedDoctorName,
     required this.photos,
     required this.documents,
+    required this.createdAt,
+    required this.updatedAt,
   });
 
   final String id;
+  final String patientId;
+  final String patientName;
+  final String patientAvatarUrl;
   final PreOperatoryStatus status;
   final String allergies;
   final String medications;
@@ -279,8 +288,11 @@ class PatientPreOperatoryRecord {
   final bool drinksAlcohol;
   final String notes;
   final String? assignedDoctorId;
+  final String? assignedDoctorName;
   final List<PreOperatoryAttachmentItem> photos;
   final List<PreOperatoryAttachmentItem> documents;
+  final DateTime? createdAt;
+  final DateTime? updatedAt;
 
   static List<PreOperatoryAttachmentItem> _extractAttachments(dynamic raw) {
     if (raw is! List) return const [];
@@ -303,6 +315,10 @@ class PatientPreOperatoryRecord {
 
     return PatientPreOperatoryRecord(
       id: (json['id'] ?? '').toString(),
+      patientId: (json['patient'] ?? '').toString(),
+      patientName: (json['patient_name'] ?? '').toString(),
+      patientAvatarUrl:
+          resolveApiMediaUrl((json['patient_avatar_url'] ?? '').toString()),
       status: parsePreOperatoryStatus((json['status'] ?? '').toString()) ??
           PreOperatoryStatus.pending,
       allergies: (json['allergies'] ?? '').toString(),
@@ -318,8 +334,14 @@ class PatientPreOperatoryRecord {
           (json['assigned_doctor'] ?? '').toString().trim().isEmpty
               ? null
               : (json['assigned_doctor'] ?? '').toString(),
+      assignedDoctorName:
+          (json['assigned_doctor_name'] ?? '').toString().trim().isEmpty
+              ? null
+              : (json['assigned_doctor_name'] ?? '').toString(),
       photos: photos,
       documents: documents,
+      createdAt: DateTime.tryParse((json['created_at'] ?? '').toString()),
+      updatedAt: DateTime.tryParse((json['updated_at'] ?? '').toString()),
     );
   }
 }
@@ -725,6 +747,19 @@ PreOperatoryStatus? parsePreOperatoryStatus(String rawStatus) {
       return PreOperatoryStatus.rejected;
     default:
       return null;
+  }
+}
+
+String preOperatoryStatusApiValue(PreOperatoryStatus status) {
+  switch (status) {
+    case PreOperatoryStatus.pending:
+      return 'pending';
+    case PreOperatoryStatus.inReview:
+      return 'in_review';
+    case PreOperatoryStatus.approved:
+      return 'approved';
+    case PreOperatoryStatus.rejected:
+      return 'rejected';
   }
 }
 

@@ -6,6 +6,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../../../core/settings/app_preferences.dart';
+import '../../../core/settings/app_translations.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/gk_avatar.dart';
 import '../../../core/widgets/gk_card.dart';
@@ -31,18 +33,21 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   @override
   Widget build(BuildContext context) {
     final profileState = ref.watch(profileProvider);
+    final preferences = ref.watch(appPreferencesControllerProvider);
+    final language = preferences.language;
+    String t(String key) => appTr(key: key, language: language);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Perfil')),
+      appBar: AppBar(title: Text(t('profile_title'))),
       body: profileState.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (error, _) => Center(
-          child: Text('Erro ao carregar perfil: $error'),
+          child: Text('${t('profile_load_error')}: $error'),
         ),
         data: (user) {
           if (user == null) {
-            return const Center(
-              child: Text('Sessao invalida. Faca login novamente.'),
+            return Center(
+              child: Text(t('session_invalid_login_again')),
             );
           }
 
@@ -101,13 +106,15 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     ),
                     const SizedBox(height: 12),
                     _infoRow(
-                        'CRM', user.crmNumber.isEmpty ? '-' : user.crmNumber),
+                      t('profile_crm'),
+                      user.crmNumber.isEmpty ? '-' : user.crmNumber,
+                    ),
                     _infoRow(
-                      'Especialidade',
+                      t('profile_specialty'),
                       user.bio.isEmpty ? '-' : user.bio,
                     ),
                     _infoRow(
-                      'Telefone',
+                      t('profile_phone'),
                       user.phone.isEmpty ? '-' : user.phone,
                     ),
                   ],
@@ -118,14 +125,14 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      'Configuracoes',
-                      style: TextStyle(fontWeight: FontWeight.w700),
+                    Text(
+                      t('profile_settings_title'),
+                      style: const TextStyle(fontWeight: FontWeight.w700),
                     ),
                     const SizedBox(height: 6),
                     SwitchListTile(
                       contentPadding: EdgeInsets.zero,
-                      title: const Text('Notificacoes de novas mensagens'),
+                      title: Text(t('profile_notifications_new_messages')),
                       value: _newMessagesEnabled,
                       onChanged: (value) {
                         setState(() => _newMessagesEnabled = value);
@@ -133,16 +140,37 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     ),
                     SwitchListTile(
                       contentPadding: EdgeInsets.zero,
-                      title: const Text('Notificacoes de novos agendamentos'),
+                      title: Text(t('profile_notifications_new_appointments')),
                       value: _newAppointmentsEnabled,
                       onChanged: (value) {
                         setState(() => _newAppointmentsEnabled = value);
                       },
                     ),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(t('dark_mode')),
+                      secondary: const Icon(Icons.dark_mode_outlined),
+                      value: preferences.darkMode,
+                      onChanged: (value) {
+                        ref
+                            .read(appPreferencesControllerProvider.notifier)
+                            .setDarkMode(value);
+                      },
+                    ),
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: const Icon(Icons.language),
+                      title: Text(t('language')),
+                      subtitle: Text(
+                          languageLabels[preferences.language] ?? 'English'),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () =>
+                          _openLanguageSelector(context, preferences.language),
+                    ),
                     ListTile(
                       contentPadding: EdgeInsets.zero,
                       leading: const Icon(Icons.lock_outline),
-                      title: const Text('Alterar senha'),
+                      title: Text(t('change_password')),
                       trailing: const Icon(Icons.chevron_right),
                       onTap: _openChangePasswordSheet,
                     ),
@@ -152,9 +180,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               const SizedBox(height: 16),
               OutlinedButton.icon(
                 icon: const Icon(Icons.logout, color: GKColors.danger),
-                label: const Text(
-                  'Sair da conta',
-                  style: TextStyle(color: GKColors.danger),
+                label: Text(
+                  t('logout'),
+                  style: const TextStyle(color: GKColors.danger),
                 ),
                 style: OutlinedButton.styleFrom(
                   side: const BorderSide(color: Color(0xFFF5C2C2)),
@@ -211,6 +239,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   Future<void> _pickAndUploadAvatar(AuthUser? user) async {
     if (_uploadingAvatar || user == null) return;
 
+    final language = ref.read(appPreferencesControllerProvider).language;
+    String t(String key) => appTr(key: key, language: language);
+
     final image = await ImagePicker().pickImage(
       source: ImageSource.gallery,
       imageQuality: 85,
@@ -240,7 +271,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         _selectedAvatarFile = null;
       });
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Foto de perfil atualizada com sucesso.')),
+        SnackBar(content: Text(t('profile_photo_updated'))),
       );
     } catch (error) {
       if (!mounted) return;
@@ -252,7 +283,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           content: Text(
             _extractApiError(
               error,
-              fallback: 'Não foi possível enviar a foto agora.',
+              fallback: t('profile_photo_upload_error'),
             ),
           ),
         ),
@@ -270,6 +301,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     if (_passwordSheetOpen) return;
     _passwordSheetOpen = true;
 
+    final language = ref.read(appPreferencesControllerProvider).language;
+    String t(String key) => appTr(key: key, language: language);
+
     final currentController = TextEditingController();
     final newController = TextEditingController();
     final confirmController = TextEditingController();
@@ -277,6 +311,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     bool obscureNew = true;
     bool obscureConfirm = true;
     bool saving = false;
+    bool didCloseSheet = false;
 
     try {
       await showModalBottomSheet<void>(
@@ -287,73 +322,73 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           return StatefulBuilder(
             builder: (context, setSheetState) {
               Future<void> submit() async {
-              final currentPassword = currentController.text.trim();
-              final newPassword = newController.text.trim();
-              final confirmPassword = confirmController.text.trim();
+                final currentPassword = currentController.text.trim();
+                final newPassword = newController.text.trim();
+                final confirmPassword = confirmController.text.trim();
 
-              if (currentPassword.isEmpty ||
-                  newPassword.isEmpty ||
-                  confirmPassword.isEmpty) {
-                ScaffoldMessenger.of(this.context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Preencha todos os campos de senha.'),
-                  ),
-                );
-                return;
-              }
+                if (currentPassword.isEmpty ||
+                    newPassword.isEmpty ||
+                    confirmPassword.isEmpty) {
+                  ScaffoldMessenger.of(this.context).showSnackBar(
+                    SnackBar(
+                      content: Text(t('password_fill_all_fields')),
+                    ),
+                  );
+                  return;
+                }
 
-              if (newPassword.length < 8) {
-                ScaffoldMessenger.of(this.context).showSnackBar(
-                  const SnackBar(
-                    content:
-                        Text('A nova senha deve ter pelo menos 8 caracteres.'),
-                  ),
-                );
-                return;
-              }
+                if (newPassword.length < 8) {
+                  ScaffoldMessenger.of(this.context).showSnackBar(
+                    SnackBar(
+                      content: Text(t('password_min_length')),
+                    ),
+                  );
+                  return;
+                }
 
-              if (newPassword != confirmPassword) {
-                ScaffoldMessenger.of(this.context).showSnackBar(
-                  const SnackBar(
-                    content: Text('A confirmação da senha não confere.'),
-                  ),
-                );
-                return;
-              }
+                if (newPassword != confirmPassword) {
+                  ScaffoldMessenger.of(this.context).showSnackBar(
+                    SnackBar(
+                      content: Text(t('password_confirmation_mismatch')),
+                    ),
+                  );
+                  return;
+                }
 
-              setSheetState(() => saving = true);
-              try {
-                await ref.read(profileRepositoryProvider).changePassword(
-                      currentPassword: currentPassword,
-                      newPassword: newPassword,
-                      confirmNewPassword: confirmPassword,
-                    );
-                if (!mounted || !sheetContext.mounted) return;
-                Navigator.of(sheetContext).pop();
-                ScaffoldMessenger.of(this.context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Senha alterada com sucesso.'),
-                  ),
-                );
-                return;
-              } catch (error) {
-                if (!mounted) return;
-                ScaffoldMessenger.of(this.context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      _extractApiError(
-                        error,
-                        fallback: 'Não foi possível alterar a senha agora.',
+                setSheetState(() => saving = true);
+                try {
+                  await ref.read(profileRepositoryProvider).changePassword(
+                        currentPassword: currentPassword,
+                        newPassword: newPassword,
+                        confirmNewPassword: confirmPassword,
+                      );
+                  if (!mounted || !sheetContext.mounted) return;
+                  didCloseSheet = true;
+                  Navigator.of(sheetContext).pop();
+                  ScaffoldMessenger.of(this.context).showSnackBar(
+                    SnackBar(
+                      content: Text(t('password_changed_success')),
+                    ),
+                  );
+                  return;
+                } catch (error) {
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(this.context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        _extractApiError(
+                          error,
+                          fallback: t('password_change_error'),
+                        ),
                       ),
                     ),
-                  ),
-                );
-              }
+                  );
+                }
 
-              if (mounted && sheetContext.mounted) {
-                setSheetState(() => saving = false);
+                if (!didCloseSheet && mounted && sheetContext.mounted) {
+                  setSheetState(() => saving = false);
+                }
               }
-            }
 
               return AnimatedPadding(
                 duration: const Duration(milliseconds: 160),
@@ -374,91 +409,95 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                         mainAxisSize: MainAxisSize.min,
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                        Text(
-                          'Alterar senha',
-                          style:
-                              Theme.of(context).textTheme.titleLarge?.copyWith(
-                                    fontWeight: FontWeight.w700,
+                          Text(
+                            t('change_password'),
+                            style: Theme.of(context)
+                                .textTheme
+                                .titleLarge
+                                ?.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                ),
+                          ),
+                          const SizedBox(height: 12),
+                          TextField(
+                            controller: currentController,
+                            obscureText: obscureCurrent,
+                            textInputAction: TextInputAction.next,
+                            decoration: InputDecoration(
+                              labelText: t('current_password'),
+                              suffixIcon: IconButton(
+                                onPressed: () => setSheetState(
+                                  () => obscureCurrent = !obscureCurrent,
+                                ),
+                                icon: Icon(
+                                  obscureCurrent
+                                      ? Icons.visibility_off_outlined
+                                      : Icons.visibility_outlined,
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          TextField(
+                            controller: newController,
+                            obscureText: obscureNew,
+                            textInputAction: TextInputAction.next,
+                            decoration: InputDecoration(
+                              labelText: t('new_password'),
+                              suffixIcon: IconButton(
+                                onPressed: () => setSheetState(
+                                  () => obscureNew = !obscureNew,
+                                ),
+                                icon: Icon(
+                                  obscureNew
+                                      ? Icons.visibility_off_outlined
+                                      : Icons.visibility_outlined,
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          TextField(
+                            controller: confirmController,
+                            obscureText: obscureConfirm,
+                            textInputAction: TextInputAction.done,
+                            onSubmitted: (_) => submit(),
+                            decoration: InputDecoration(
+                              labelText: t('confirm_new_password'),
+                              suffixIcon: IconButton(
+                                onPressed: () => setSheetState(
+                                  () => obscureConfirm = !obscureConfirm,
+                                ),
+                                icon: Icon(
+                                  obscureConfirm
+                                      ? Icons.visibility_off_outlined
+                                      : Icons.visibility_outlined,
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 14),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: OutlinedButton(
+                                  onPressed: saving
+                                      ? null
+                                      : () => Navigator.of(sheetContext).pop(),
+                                  child: Text(t('cancel')),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: FilledButton(
+                                  onPressed: saving ? null : submit,
+                                  child: Text(
+                                    saving ? t('saving') : t('save'),
                                   ),
-                        ),
-                        const SizedBox(height: 12),
-                        TextField(
-                          controller: currentController,
-                          obscureText: obscureCurrent,
-                          textInputAction: TextInputAction.next,
-                          decoration: InputDecoration(
-                            labelText: 'Senha atual',
-                            suffixIcon: IconButton(
-                              onPressed: () => setSheetState(
-                                () => obscureCurrent = !obscureCurrent,
+                                ),
                               ),
-                              icon: Icon(
-                                obscureCurrent
-                                    ? Icons.visibility_off_outlined
-                                    : Icons.visibility_outlined,
-                              ),
-                            ),
+                            ],
                           ),
-                        ),
-                        const SizedBox(height: 10),
-                        TextField(
-                          controller: newController,
-                          obscureText: obscureNew,
-                          textInputAction: TextInputAction.next,
-                          decoration: InputDecoration(
-                            labelText: 'Nova senha',
-                            suffixIcon: IconButton(
-                              onPressed: () => setSheetState(
-                                () => obscureNew = !obscureNew,
-                              ),
-                              icon: Icon(
-                                obscureNew
-                                    ? Icons.visibility_off_outlined
-                                    : Icons.visibility_outlined,
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-                        TextField(
-                          controller: confirmController,
-                          obscureText: obscureConfirm,
-                          textInputAction: TextInputAction.done,
-                          onSubmitted: (_) => submit(),
-                          decoration: InputDecoration(
-                            labelText: 'Confirmar nova senha',
-                            suffixIcon: IconButton(
-                              onPressed: () => setSheetState(
-                                () => obscureConfirm = !obscureConfirm,
-                              ),
-                              icon: Icon(
-                                obscureConfirm
-                                    ? Icons.visibility_off_outlined
-                                    : Icons.visibility_outlined,
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 14),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: OutlinedButton(
-                                onPressed: saving
-                                    ? null
-                                    : () => Navigator.of(sheetContext).pop(),
-                                child: const Text('Cancelar'),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: FilledButton(
-                                onPressed: saving ? null : submit,
-                                child: Text(saving ? 'Salvando...' : 'Salvar'),
-                              ),
-                            ),
-                          ],
-                        ),
                         ],
                       ),
                     ),
@@ -494,21 +533,77 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     return fallback;
   }
 
+  Future<void> _openLanguageSelector(
+    BuildContext context,
+    String currentLanguage,
+  ) async {
+    final language = ref.read(appPreferencesControllerProvider).language;
+    String t(String key) => appTr(key: key, language: language);
+
+    await showDialog<void>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: Text(t('choose_language')),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ...supportedLanguages.map((language) {
+                  final selected = language == currentLanguage;
+                  return ListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(languageLabels[language] ?? language),
+                    trailing: selected
+                        ? const Icon(Icons.check, color: GKColors.primary)
+                        : null,
+                    onTap: () {
+                      ref
+                          .read(appPreferencesControllerProvider.notifier)
+                          .setLanguage(language);
+                      Navigator.of(context).pop();
+                    },
+                  );
+                }),
+                ListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.sync),
+                  title: Text(t('use_device_language')),
+                  onTap: () {
+                    ref
+                        .read(appPreferencesControllerProvider.notifier)
+                        .useAutomaticLanguage();
+                    Navigator.of(context).pop();
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   Future<void> _confirmLogout() async {
+    final language = ref.read(appPreferencesControllerProvider).language;
+    String t(String key) => appTr(key: key, language: language);
+
     final shouldLogout = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Sair da conta'),
-        content: const Text('Deseja encerrar a sessao deste profissional?'),
+        title: Text(t('logout')),
+        content: Text(t('logout_confirm_message')),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancelar'),
+            child: Text(t('cancel')),
           ),
           FilledButton(
             onPressed: () => Navigator.of(context).pop(true),
             style: FilledButton.styleFrom(backgroundColor: GKColors.danger),
-            child: const Text('Sair'),
+            child: Text(t('logout')),
           ),
         ],
       ),

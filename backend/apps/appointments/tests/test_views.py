@@ -8,7 +8,7 @@ from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from apps.appointments.models import Appointment, ProfessionalAvailability
+from apps.appointments.models import Appointment, BlockedPeriod, ProfessionalAvailability
 from apps.notifications.models import Notification
 from apps.patients.models import DoctorPatientAssignment, Patient
 from apps.post_op.models import PostOpJourney
@@ -714,7 +714,12 @@ class AppointmentViewsTestCase(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["slots"], [])
 
-    def test_surgeon_my_patients_includes_patient_with_scheduled_appointment(self):
+    def test_surgeon_my_patients_includes_assigned_patient_with_scheduled_appointment(self):
+        DoctorPatientAssignment.objects.create(
+            patient=self.patient,
+            doctor=self.surgeon,
+            assigned_by=self.master,
+        )
         Appointment.objects.create(
             tenant=self.tenant,
             patient=self.patient,
@@ -765,7 +770,7 @@ class AppointmentViewsTestCase(APITestCase):
         self.assertIn(str(own_appointment.id), ids)
         self.assertEqual(len(ids), 1)
 
-    def test_surgeon_cannot_create_appointment_for_another_surgeon(self):
+    def test_surgeon_cannot_create_appointment(self):
         self.client.force_authenticate(self.surgeon)
         url = reverse("appointments-list")
         date = timezone.localdate() + timedelta(days=1)
@@ -774,7 +779,7 @@ class AppointmentViewsTestCase(APITestCase):
             url,
             {
                 "patient": str(self.patient.id),
-                "professional": str(self.surgeon_2.id),
+                "professional": str(self.surgeon.id),
                 "specialty": str(self.specialty.id),
                 "appointment_date": str(date),
                 "appointment_time": "10:00:00",
@@ -787,8 +792,166 @@ class AppointmentViewsTestCase(APITestCase):
             format="json",
         )
 
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("professional", response.data)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_surgeon_cannot_update_cancel_or_change_status(self):
+        appointment = Appointment.objects.create(
+            tenant=self.tenant,
+            patient=self.patient,
+            professional=self.surgeon,
+            specialty=self.specialty,
+            appointment_date=timezone.localdate() + timedelta(days=2),
+            appointment_time=timezone.localtime().time().replace(hour=10, minute=0, second=0, microsecond=0),
+            duration_minutes=60,
+            status=Appointment.StatusChoices.PENDING,
+            appointment_type=Appointment.AppointmentTypeChoices.FIRST_VISIT,
+            created_by=self.master,
+        )
+
+        self.client.force_authenticate(self.surgeon)
+
+        update_response = self.client.patch(
+            reverse("appointments-detail", kwargs={"pk": appointment.id}),
+            {
+                "patient": str(self.patient.id),
+                "professional": str(self.surgeon.id),
+                "specialty": str(self.specialty.id),
+                "appointment_date": str(appointment.appointment_date),
+                "appointment_time": "11:00:00",
+                "duration_minutes": 60,
+                "appointment_type": "first_visit",
+                "clinic_location": "Sala 2",
+                "notes": "tentativa",
+            },
+            format="json",
+        )
+        self.assertEqual(update_response.status_code, status.HTTP_403_FORBIDDEN)
+
+        status_response = self.client.put(
+            reverse("appointments-update-status", kwargs={"pk": appointment.id}),
+            {"status": Appointment.StatusChoices.CONFIRMED},
+            format="json",
+        )
+        self.assertEqual(status_response.status_code, status.HTTP_403_FORBIDDEN)
+
+        cancel_response = self.client.delete(
+            reverse("appointments-detail", kwargs={"pk": appointment.id}),
+            {"reason": "teste"},
+            format="json",
+        )
+        self.assertEqual(cancel_response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_surgeon_can_manage_own_weekly_availability(self):
+        self.client.force_authenticate(self.surgeon)
+
+        update_response = self.client.put(
+            reverse("appointments-availability-rules"),
+            {
+                "rules": [
+                    {
+                        "day_of_week": 0,
+                        "start_time": "09:00:00",
+                        "end_time": "12:00:00",
+                        "is_active": True,
+                    },
+                    {
+                        "day_of_week": 2,
+                        "start_time": "14:00:00",
+                        "end_time": "18:00:00",
+                        "is_active": True,
+                    },
+                ]
+            },
+            format="json",
+        )
+
+        self.assertEqual(update_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            update_response.data["professional_id"],
+            str(self.surgeon.id),
+        )
+        self.assertEqual(len(update_response.data["rules"]), 2)
+        self.assertEqual(
+            ProfessionalAvailability.objects.filter(professional=self.surgeon).count(),
+            2,
+        )
+
+        list_response = self.client.get(reverse("appointments-availability-rules"))
+        self.assertEqual(list_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(list_response.data["professional_id"], str(self.surgeon.id))
+        self.assertEqual(len(list_response.data["rules"]), 2)
+
+    def test_surgeon_cannot_manage_other_professional_availability(self):
+        self.client.force_authenticate(self.surgeon)
+
+        response = self.client.put(
+            reverse("appointments-availability-rules"),
+            {
+                "professional_id": str(self.surgeon_2.id),
+                "rules": [
+                    {
+                        "day_of_week": 1,
+                        "start_time": "09:00:00",
+                        "end_time": "12:00:00",
+                        "is_active": True,
+                    }
+                ],
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_surgeon_can_create_list_and_delete_own_blocked_period(self):
+        self.client.force_authenticate(self.surgeon)
+        start_datetime = timezone.now() + timedelta(days=2, hours=2)
+        end_datetime = start_datetime + timedelta(hours=3)
+
+        create_response = self.client.post(
+            reverse("appointments-blocked-periods"),
+            {
+                "start_datetime": start_datetime.isoformat(),
+                "end_datetime": end_datetime.isoformat(),
+                "reason": "Congresso médico",
+            },
+            format="json",
+        )
+        self.assertEqual(create_response.status_code, status.HTTP_201_CREATED)
+        blocked_id = create_response.data["id"]
+        self.assertEqual(
+            str(create_response.data["professional"]),
+            str(self.surgeon.id),
+        )
+
+        list_response = self.client.get(reverse("appointments-blocked-periods"))
+        self.assertEqual(list_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(list_response.data["results"]), 1)
+        self.assertEqual(list_response.data["results"][0]["id"], blocked_id)
+
+        delete_response = self.client.delete(
+            reverse("appointments-blocked-periods"),
+            {"id": blocked_id},
+            format="json",
+        )
+        self.assertEqual(delete_response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(BlockedPeriod.objects.filter(id=blocked_id).exists())
+
+    def test_surgeon_cannot_delete_other_professional_blocked_period(self):
+        blocked = BlockedPeriod.objects.create(
+            professional=self.surgeon_2,
+            start_datetime=timezone.now() + timedelta(days=3),
+            end_datetime=timezone.now() + timedelta(days=3, hours=2),
+            reason="Férias",
+        )
+
+        self.client.force_authenticate(self.surgeon)
+        response = self.client.delete(
+            reverse("appointments-blocked-periods"),
+            {"id": str(blocked.id)},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
     def test_professional_id_alias_filters_appointments_for_master(self):
         own_appointment = Appointment.objects.create(

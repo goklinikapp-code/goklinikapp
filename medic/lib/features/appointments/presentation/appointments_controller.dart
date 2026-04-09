@@ -7,6 +7,20 @@ import '../domain/appointment_models.dart';
 class AppointmentsController
     extends StateNotifier<AsyncValue<List<AppointmentItem>>> {
   AppointmentsController(this._ref) : super(const AsyncValue.loading()) {
+    _ref.listen<AuthViewState>(
+      authControllerProvider,
+      (previous, next) {
+        final previousUserId = previous?.session?.user.id ?? '';
+        final nextUserId = next.session?.user.id ?? '';
+        if (previousUserId == nextUserId) return;
+
+        if (next.session == null) {
+          state = const AsyncValue.data(<AppointmentItem>[]);
+          return;
+        }
+        load();
+      },
+    );
     load();
   }
 
@@ -15,12 +29,21 @@ class AppointmentsController
   Future<void> load() async {
     final session = _ref.read(authControllerProvider).session;
     final professionalId =
-        session?.user.role == 'surgeon' ? session?.user.id : null;
+        session?.user.role == 'surgeon' ? session?.user.id.trim() : null;
+
     state = const AsyncValue.loading();
     state = await AsyncValue.guard(
-      () => _ref
-          .read(appointmentsRepositoryProvider)
-          .getAppointments(professionalId: professionalId),
+      () async {
+        final appointments = await _ref
+            .read(appointmentsRepositoryProvider)
+            .getAppointments(professionalId: professionalId);
+        if (professionalId == null || professionalId.isEmpty) {
+          return appointments;
+        }
+        return appointments
+            .where((item) => item.professionalId == professionalId)
+            .toList();
+      },
     );
   }
 

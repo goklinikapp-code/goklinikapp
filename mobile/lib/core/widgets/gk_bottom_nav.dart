@@ -6,7 +6,7 @@ import '../settings/app_preferences.dart';
 
 const _navLabels = <String, List<String>>{
   'en': ['HOME', 'SCHEDULE', 'POST-OP', 'CHAT', 'PROFILE'],
-  'pt': ['HOME', 'AGENDAS', 'POS-OP', 'CHAT', 'PERFIL'],
+  'pt': ['HOME', 'AGENDAS', 'PÓS-OP', 'CHAT', 'PERFIL'],
   'es': ['INICIO', 'AGENDA', 'POS-OP', 'CHAT', 'PERFIL'],
   'de': ['START', 'TERMINE', 'POST-OP', 'CHAT', 'PROFIL'],
   'ru': ['GLAVNAYA', 'RASPISANIE', 'POS-OP', 'CHAT', 'PROFIL'],

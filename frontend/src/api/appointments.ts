@@ -1,7 +1,9 @@
 import { apiClient } from '@/lib/axios'
+import { normalizeNextPagePath } from '@/api/pagination'
 
 interface PaginatedResponse<T> {
   results: T[]
+  next?: string | null
 }
 
 export interface AppointmentItem {
@@ -56,15 +58,71 @@ interface AvailableSlotsResponse {
   slots: string[]
 }
 
-export async function getAppointments(params?: Record<string, string>): Promise<AppointmentItem[]> {
-  const { data } = await apiClient.get<PaginatedResponse<AppointmentItem> | AppointmentItem[]>('/appointments/', {
-    params,
-  })
+export interface ProfessionalAvailabilityRule {
+  id?: string
+  day_of_week: number
+  start_time: string
+  end_time: string
+  is_active: boolean
+}
 
-  if (Array.isArray(data)) {
-    return data
+interface ProfessionalAvailabilityResponse {
+  professional_id: string
+  professional_name: string
+  rules: ProfessionalAvailabilityRule[]
+}
+
+export interface BlockedPeriodItem {
+  id: string
+  professional: string
+  professional_name?: string
+  start_datetime: string
+  end_datetime: string
+  reason: string
+}
+
+interface BlockedPeriodsResponse {
+  professional_id: string
+  professional_name: string
+  results: BlockedPeriodItem[]
+}
+
+export async function getAppointments(params?: Record<string, string>): Promise<AppointmentItem[]> {
+  let nextPath: string | null = '/appointments/'
+  const rows: AppointmentItem[] = []
+  let safety = 0
+  let isFirstRequest = true
+
+  while (nextPath && safety < 50) {
+    safety += 1
+    const response: {
+      data: PaginatedResponse<AppointmentItem> | AppointmentItem[]
+    } = await apiClient.get<PaginatedResponse<AppointmentItem> | AppointmentItem[]>(
+      nextPath,
+      {
+        params: isFirstRequest ? params : undefined,
+      },
+    )
+    const payload: PaginatedResponse<AppointmentItem> | AppointmentItem[] = response.data
+
+    if (Array.isArray(payload)) {
+      return payload
+    }
+
+    rows.push(...(payload.results || []))
+
+    const next: string = (payload.next || '').trim()
+    if (!next) {
+      nextPath = null
+      continue
+    }
+
+    nextPath = normalizeNextPagePath(next) || null
+
+    isFirstRequest = false
   }
-  return data.results || []
+
+  return rows
 }
 
 export async function createAppointment(payload: CreateAppointmentPayload) {
@@ -111,4 +169,56 @@ export async function getAvailableSlots(params: {
     params,
   })
   return Array.isArray(data?.slots) ? data.slots : []
+}
+
+export async function getProfessionalAvailabilityRules(params?: {
+  professional_id?: string
+}) {
+  const { data } = await apiClient.get<ProfessionalAvailabilityResponse>(
+    '/appointments/availability-rules/',
+    { params },
+  )
+  return data
+}
+
+export async function updateProfessionalAvailabilityRules(payload: {
+  professional_id?: string
+  rules: ProfessionalAvailabilityRule[]
+}) {
+  const { data } = await apiClient.put<ProfessionalAvailabilityResponse>(
+    '/appointments/availability-rules/',
+    payload,
+  )
+  return data
+}
+
+export async function getBlockedPeriods(params?: {
+  professional_id?: string
+  date_from?: string
+  date_to?: string
+}) {
+  const { data } = await apiClient.get<BlockedPeriodsResponse>(
+    '/appointments/blocked-periods/',
+    { params },
+  )
+  return data
+}
+
+export async function createBlockedPeriod(payload: {
+  professional_id?: string
+  start_datetime: string
+  end_datetime: string
+  reason: string
+}) {
+  const { data } = await apiClient.post<BlockedPeriodItem>(
+    '/appointments/blocked-periods/',
+    payload,
+  )
+  return data
+}
+
+export async function deleteBlockedPeriod(id: string) {
+  await apiClient.delete('/appointments/blocked-periods/', {
+    data: { id },
+  })
 }

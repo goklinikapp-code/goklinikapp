@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/settings/app_translations.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/gk_badge.dart';
@@ -15,24 +16,24 @@ class PostOperatoryView extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    String t(String key) => _t(context, key);
     final postOperatoryState =
         ref.watch(patientPostOperatoryProvider(patientId));
 
     return postOperatoryState.when(
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (error, _) => Center(
-        child: Text('Erro ao carregar pos-operatorio: $error'),
+        child: Text('${t('postop_load_error_prefix')} $error'),
       ),
       data: (record) {
         if (record == null) {
-          return const Center(
-            child: Text(
-                'Nenhuma jornada pos-operatoria ativa para este paciente.'),
+          return Center(
+            child: Text(t('postop_no_active_journey')),
           );
         }
 
-        final statusVisual = _journeyStatusVisual(record.status);
-        final clinicalVisual = _clinicalStatusVisual(record.clinicalStatus);
+        final statusVisual = _journeyStatusVisual(record.status, t);
+        final clinicalVisual = _clinicalStatusVisual(record.clinicalStatus, t);
 
         return ListView(
           padding: const EdgeInsets.all(16),
@@ -45,7 +46,7 @@ class PostOperatoryView extends ConsumerWidget {
                     children: [
                       Expanded(
                         child: Text(
-                          'Pos-operatorio',
+                          t('postop_title'),
                           style: Theme.of(context).textTheme.titleMedium,
                         ),
                       ),
@@ -58,7 +59,9 @@ class PostOperatoryView extends ConsumerWidget {
                   ),
                   const SizedBox(height: 10),
                   Text(
-                    'Dia ${record.currentDay} de ${record.totalDays}',
+                    t('postop_day_of_total')
+                        .replaceAll('{day}', '${record.currentDay}')
+                        .replaceAll('{total}', '${record.totalDays}'),
                     style: const TextStyle(
                       color: GKColors.neutral,
                       fontWeight: FontWeight.w600,
@@ -84,8 +87,8 @@ class PostOperatoryView extends ConsumerWidget {
                     border: Border.all(color: const Color(0xFFFECACA)),
                     borderRadius: BorderRadius.circular(10),
                   ),
-                  child: const Text(
-                    'Paciente requer atencao',
+                  child: Text(
+                    t('postop_patient_requires_attention'),
                     style: TextStyle(
                       color: Color(0xFFB91C1C),
                       fontWeight: FontWeight.w700,
@@ -108,46 +111,52 @@ class PostOperatoryView extends ConsumerWidget {
     );
   }
 
-  _Visual _journeyStatusVisual(PostOperatoryJourneyStatus status) {
+  _Visual _journeyStatusVisual(
+    PostOperatoryJourneyStatus status,
+    String Function(String key) t,
+  ) {
     switch (status) {
       case PostOperatoryJourneyStatus.active:
-        return const _Visual(
-          label: 'Em andamento',
+        return _Visual(
+          label: t('postop_status_in_progress'),
           background: Color(0xFFE4EDFF),
           foreground: Color(0xFF1D4ED8),
         );
       case PostOperatoryJourneyStatus.completed:
-        return const _Visual(
-          label: 'Concluido',
+        return _Visual(
+          label: t('postop_status_completed'),
           background: Color(0xFFDCFCE7),
           foreground: Color(0xFF166534),
         );
       case PostOperatoryJourneyStatus.cancelled:
-        return const _Visual(
-          label: 'Cancelado',
+        return _Visual(
+          label: t('postop_status_cancelled'),
           background: Color(0xFFFEE2E2),
           foreground: Color(0xFFB91C1C),
         );
     }
   }
 
-  _Visual _clinicalStatusVisual(PostOperatoryClinicalStatus status) {
+  _Visual _clinicalStatusVisual(
+    PostOperatoryClinicalStatus status,
+    String Function(String key) t,
+  ) {
     switch (status) {
       case PostOperatoryClinicalStatus.ok:
-        return const _Visual(
-          label: 'OK',
+        return _Visual(
+          label: t('status_ok'),
           background: Color(0xFFDCFCE7),
           foreground: Color(0xFF166534),
         );
       case PostOperatoryClinicalStatus.delayed:
-        return const _Visual(
-          label: 'Atrasado',
+        return _Visual(
+          label: t('postop_clinical_delayed'),
           background: Color(0xFFFFF3CD),
           foreground: Color(0xFF92400E),
         );
       case PostOperatoryClinicalStatus.risk:
-        return const _Visual(
-          label: 'Em risco',
+        return _Visual(
+          label: t('postop_clinical_risk'),
           background: Color(0xFFFEE2E2),
           foreground: Color(0xFFB91C1C),
         );
@@ -162,8 +171,9 @@ class _SummaryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    String t(String key) => _t(context, key);
     final lastCheckin = record.lastCheckinDate == null
-        ? 'Sem check-in'
+        ? t('postop_no_checkin')
         : formatDateTime(record.lastCheckinDate!);
     final lastPain = record.lastPainLevel?.toString() ?? '-';
 
@@ -171,15 +181,15 @@ class _SummaryCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Resumo',
+          Text(
+            t('postop_summary_title'),
             style: TextStyle(fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 10),
-          _valueRow('Ultimo check-in', lastCheckin),
-          _valueRow('Dor (ultimo)', lastPain),
+          _valueRow(t('postop_last_checkin'), lastCheckin),
+          _valueRow(t('postop_last_pain'), lastPain),
           _valueRow(
-            'Dias sem check-in',
+            t('postop_days_without_checkin'),
             record.daysWithoutCheckin.toString(),
           ),
         ],
@@ -219,18 +229,19 @@ class _CheckinsCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    String t(String key) => _t(context, key);
     return GKCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Check-ins',
+          Text(
+            t('postop_checkins_title'),
             style: TextStyle(fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 10),
           if (checkins.isEmpty)
-            const Text(
-              'Nenhum check-in enviado.',
+            Text(
+              t('postop_no_checkins'),
               style: TextStyle(color: GKColors.neutral),
             )
           else
@@ -249,12 +260,16 @@ class _CheckinsCard extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Dia ${item.day}',
+                        '${t('postop_day_label')} ${item.day}',
                         style: const TextStyle(fontWeight: FontWeight.w700),
                       ),
                       const SizedBox(height: 4),
-                      Text('Dor: ${item.painLevel}/10'),
-                      Text(item.hasFever ? 'Febre: Sim' : 'Febre: Nao'),
+                      Text('${t('postop_pain')}: ${item.painLevel}/10'),
+                      Text(
+                        item.hasFever
+                            ? '${t('postop_fever_label')}: ${t('yes')}'
+                            : '${t('postop_fever_label')}: ${t('no')}',
+                      ),
                       if (item.createdAt != null) ...[
                         const SizedBox(height: 4),
                         Text(
@@ -290,18 +305,19 @@ class _PhotosCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    String t(String key) => _t(context, key);
     return GKCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Fotos',
+          Text(
+            t('postop_recovery_photos'),
             style: TextStyle(fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 10),
           if (photos.isEmpty)
-            const Text(
-              'Nenhuma foto enviada.',
+            Text(
+              t('postop_no_photos_yet'),
               style: TextStyle(color: GKColors.neutral),
             )
           else
@@ -387,18 +403,19 @@ class _ObservationsCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    String t(String key) => _t(context, key);
     return GKCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Observacoes',
+          Text(
+            t('postop_notes'),
             style: TextStyle(fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 10),
           if (observations.isEmpty)
-            const Text(
-              'Sem observacoes registradas.',
+            Text(
+              t('postop_no_observations'),
               style: TextStyle(color: GKColors.neutral),
             )
           else
@@ -409,7 +426,7 @@ class _ObservationsCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Dia ${item.day}',
+                      '${t('postop_day_label')} ${item.day}',
                       style: const TextStyle(
                         fontWeight: FontWeight.w700,
                       ),
@@ -439,4 +456,9 @@ class _Visual {
   final String label;
   final Color background;
   final Color foreground;
+}
+
+String _t(BuildContext context, String key) {
+  final language = Localizations.localeOf(context).languageCode;
+  return appTr(key: key, language: language);
 }

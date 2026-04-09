@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from django.db.models import Exists, OuterRef, Q
+from django.db.models import Exists, OuterRef
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.pagination import PageNumberPagination
@@ -39,6 +39,39 @@ class PatientViewSet(viewsets.ModelViewSet):
     pagination_class = PatientPagination
 
     def get_queryset(self):
+        user = self.request.user
+        if not getattr(user, "is_authenticated", False) or not hasattr(user, "role"):
+            return Patient.objects.none()
+
+        professional_for_flags = None
+        if user.role == GoKlinikUser.RoleChoices.SURGEON:
+            professional_for_flags = user.id
+        elif user.role in {
+            GoKlinikUser.RoleChoices.CLINIC_MASTER,
+            GoKlinikUser.RoleChoices.SECRETARY,
+        }:
+            professional_for_flags = (
+                self.request.query_params.get("professional_id")
+                or self.request.query_params.get("professional")
+            )
+
+        active_appointments = Appointment.objects.filter(
+            patient_id=OuterRef("pk"),
+            status__in=ACTIVE_APPOINTMENT_STATUSES,
+        )
+        completed_surgeries = Appointment.objects.filter(
+            patient_id=OuterRef("pk"),
+            appointment_type=Appointment.AppointmentTypeChoices.SURGERY,
+            status=Appointment.StatusChoices.COMPLETED,
+        )
+        if professional_for_flags:
+            active_appointments = active_appointments.filter(
+                professional_id=professional_for_flags
+            )
+            completed_surgeries = completed_surgeries.filter(
+                professional_id=professional_for_flags
+            )
+
         queryset = Patient.objects.select_related(
             "tenant",
             "specialty",
@@ -46,26 +79,17 @@ class PatientViewSet(viewsets.ModelViewSet):
             "doctor_assignment__doctor",
             "doctor_assignment__assigned_by",
         ).prefetch_related("pre_operatory_records").annotate(
-            has_active_appointment=Exists(
-                Appointment.objects.filter(
-                    patient_id=OuterRef("pk"),
-                    status__in=ACTIVE_APPOINTMENT_STATUSES,
-                )
-            ),
-            has_completed_surgery=Exists(
-                Appointment.objects.filter(
-                    patient_id=OuterRef("pk"),
-                    appointment_type=Appointment.AppointmentTypeChoices.SURGERY,
-                    status=Appointment.StatusChoices.COMPLETED,
-                )
-            ),
+            has_active_appointment=Exists(active_appointments),
+            has_completed_surgery=Exists(completed_surgeries),
         ).all()
-        user = self.request.user
-        if not getattr(user, "is_authenticated", False) or not hasattr(user, "role"):
-            return queryset.none()
 
         if user.role != GoKlinikUser.RoleChoices.SUPER_ADMIN:
             queryset = queryset.filter(tenant_id=user.tenant_id)
+        if (
+            user.role == GoKlinikUser.RoleChoices.SURGEON
+            and self.action != "my_patients"
+        ):
+            queryset = queryset.filter(doctor_assignment__doctor_id=user.id)
 
         status_filter = self.request.query_params.get("status")
         specialty_filter = self.request.query_params.get("specialty")
@@ -137,13 +161,7 @@ class PatientViewSet(viewsets.ModelViewSet):
 
         queryset = self.get_queryset()
         if user.role == GoKlinikUser.RoleChoices.SURGEON:
-            queryset = queryset.filter(
-                Q(doctor_assignment__doctor_id=user.id)
-                | Q(
-                    appointments__professional_id=user.id,
-                    appointments__status__in=ACTIVE_APPOINTMENT_STATUSES,
-                )
-            ).distinct()
+            queryset = queryset.filter(doctor_assignment__doctor_id=user.id)
         elif user.role == GoKlinikUser.RoleChoices.NURSE:
             queryset = queryset.filter(doctor_assignment__isnull=False)
         else:

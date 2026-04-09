@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/settings/app_translations.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/gk_badge.dart';
@@ -15,10 +16,11 @@ class FinancialScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    String t(String key) => _t(context, key);
     final state = ref.watch(financialProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Financeiro')),
+      appBar: AppBar(title: Text(t('financial_title'))),
       body: state.when(
         loading: () => ListView(
           padding: const EdgeInsets.all(16),
@@ -28,7 +30,9 @@ class FinancialScreen extends ConsumerWidget {
             GKLoadingShimmer(height: 200),
           ],
         ),
-        error: (error, _) => Center(child: Text('Erro ao carregar financeiro: $error')),
+        error: (error, _) => Center(
+          child: Text('${t('financial_load_error_prefix')}: $error'),
+        ),
         data: (summary) => _FinancialContent(summary: summary),
       ),
     );
@@ -42,6 +46,7 @@ class _FinancialContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    String t(String key) => _t(context, key);
     final due = summary.nextDue;
 
     return DefaultTabController(
@@ -49,22 +54,40 @@ class _FinancialContent extends StatelessWidget {
       child: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          Text('Seu resumo mensal', style: Theme.of(context).textTheme.titleLarge),
+          Text(
+            t('financial_monthly_summary'),
+            style: Theme.of(context).textTheme.titleLarge,
+          ),
           const SizedBox(height: 12),
           GKCard(
             color: GKColors.primary,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('PRÓXIMA FATURA', style: TextStyle(fontSize: 11, color: Colors.white70, fontWeight: FontWeight.w700)),
+                Text(
+                  t('financial_next_invoice'),
+                  style: const TextStyle(
+                    fontSize: 11,
+                    color: Colors.white70,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
                 const SizedBox(height: 8),
                 Text(
-                  due == null ? 'Sem cobrança pendente' : formatCurrency(due.amount),
-                  style: const TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.w700),
+                  due == null
+                      ? t('financial_no_pending_charge')
+                      : formatCurrency(due.amount),
+                  style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 26,
+                      fontWeight: FontWeight.w700),
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  due?.dueDate == null ? '-' : 'Vencimento: ${formatDate(due!.dueDate!)}',
+                  due?.dueDate == null
+                      ? '-'
+                      : t('financial_due_date')
+                          .replaceAll('{date}', formatDate(due!.dueDate!)),
                   style: const TextStyle(color: Colors.white70),
                 ),
               ],
@@ -74,26 +97,36 @@ class _FinancialContent extends StatelessWidget {
           GKCard(
             child: Row(
               children: [
-                const Expanded(child: Text('SALDO EM ABERTO', style: TextStyle(fontWeight: FontWeight.w700))),
-                Text(formatCurrency(summary.openBalance), style: const TextStyle(fontWeight: FontWeight.w700)),
+                Expanded(
+                  child: Text(
+                    t('financial_open_balance'),
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                ),
+                Text(formatCurrency(summary.openBalance),
+                    style: const TextStyle(fontWeight: FontWeight.w700)),
                 const SizedBox(width: 8),
-                const GKBadge(label: 'parcelado', background: Color(0xFFFFF1CF), foreground: GKColors.accent),
+                GKBadge(
+                  label: t('financial_installments_badge'),
+                  background: const Color(0xFFFFF1CF),
+                  foreground: GKColors.accent,
+                ),
               ],
             ),
           ),
           const SizedBox(height: 10),
-          const TabBar(
+          TabBar(
             tabs: [
-              Tab(text: 'Histórico'),
-              Tab(text: 'Pacotes'),
+              Tab(text: t('medical_record_tab_history')),
+              Tab(text: t('financial_packages_tab')),
             ],
           ),
           SizedBox(
             height: 440,
             child: TabBarView(
               children: [
-                _TransactionsTab(items: summary.transactions),
-                _PackagesTab(items: summary.packages),
+                _TransactionsTab(items: summary.transactions, t: t),
+                _PackagesTab(items: summary.packages, t: t),
               ],
             ),
           ),
@@ -102,11 +135,13 @@ class _FinancialContent extends StatelessWidget {
             children: [
               Expanded(
                 child: GKButton(
-                  label: 'Copiar IBAN',
+                  label: t('financial_copy_iban'),
                   variant: GKButtonVariant.secondary,
                   onPressed: () {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('IBAN copiado para área de transferência.')),
+                      SnackBar(
+                        content: Text(t('financial_iban_copied')),
+                      ),
                     );
                   },
                 ),
@@ -114,10 +149,12 @@ class _FinancialContent extends StatelessWidget {
               const SizedBox(width: 8),
               Expanded(
                 child: GKButton(
-                  label: 'Fatura PDF',
+                  label: t('financial_invoice_pdf'),
                   onPressed: () {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Download da fatura será disponibilizado em breve.')),
+                      SnackBar(
+                        content: Text(t('financial_invoice_download_soon')),
+                      ),
                     );
                   },
                 ),
@@ -131,14 +168,18 @@ class _FinancialContent extends StatelessWidget {
 }
 
 class _TransactionsTab extends StatelessWidget {
-  const _TransactionsTab({required this.items});
+  const _TransactionsTab({
+    required this.items,
+    required this.t,
+  });
 
   final List<TransactionItem> items;
+  final String Function(String key) t;
 
   @override
   Widget build(BuildContext context) {
     if (items.isEmpty) {
-      return const Center(child: Text('Nenhuma transação encontrada.'));
+      return Center(child: Text(t('financial_no_transactions')));
     }
 
     return ListView.builder(
@@ -152,16 +193,24 @@ class _TransactionsTab extends StatelessWidget {
             isPaid ? Icons.check_circle_outline : Icons.pending_actions,
             color: isPaid ? GKColors.secondary : GKColors.accent,
           ),
-          title: Text(item.description.isEmpty ? 'Transação' : item.description),
-          subtitle: Text(item.dueDate == null ? '-' : formatDate(item.dueDate!)),
+          title: Text(
+            item.description.isEmpty
+                ? t('financial_transaction_default')
+                : item.description,
+          ),
+          subtitle:
+              Text(item.dueDate == null ? '-' : formatDate(item.dueDate!)),
           trailing: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              Text(formatCurrency(item.amount), style: const TextStyle(fontWeight: FontWeight.w700)),
+              Text(formatCurrency(item.amount),
+                  style: const TextStyle(fontWeight: FontWeight.w700)),
               const SizedBox(height: 4),
               GKBadge(
-                label: isPaid ? 'PAGO' : 'PENDENTE',
+                label: isPaid
+                    ? t('financial_status_paid')
+                    : t('financial_status_pending'),
                 background: isPaid ? GKColors.secondary : GKColors.accent,
                 foreground: Colors.white,
               ),
@@ -174,14 +223,18 @@ class _TransactionsTab extends StatelessWidget {
 }
 
 class _PackagesTab extends StatelessWidget {
-  const _PackagesTab({required this.items});
+  const _PackagesTab({
+    required this.items,
+    required this.t,
+  });
 
   final List<SessionPackageItem> items;
+  final String Function(String key) t;
 
   @override
   Widget build(BuildContext context) {
     if (items.isEmpty) {
-      return const Center(child: Text('Sem pacotes de sessões ativos.'));
+      return Center(child: Text(t('financial_no_active_packages')));
     }
 
     return ListView.builder(
@@ -197,9 +250,14 @@ class _PackagesTab extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(item.packageName, style: const TextStyle(fontWeight: FontWeight.w700)),
+              Text(item.packageName,
+                  style: const TextStyle(fontWeight: FontWeight.w700)),
               const SizedBox(height: 4),
-              Text('${item.sessionsRemaining} sessões restantes de ${item.totalSessions}'),
+              Text(
+                t('financial_sessions_remaining')
+                    .replaceAll('{remaining}', '${item.sessionsRemaining}')
+                    .replaceAll('{total}', '${item.totalSessions}'),
+              ),
               const SizedBox(height: 8),
               LinearProgressIndicator(
                 value: progress,
@@ -207,11 +265,19 @@ class _PackagesTab extends StatelessWidget {
                 backgroundColor: const Color(0xFFE2E8F0),
               ),
               const SizedBox(height: 8),
-              Text('Total: ${formatCurrency(item.totalAmount)}'),
+              Text(
+                t('financial_total')
+                    .replaceAll('{amount}', formatCurrency(item.totalAmount)),
+              ),
             ],
           ),
         );
       },
     );
   }
+}
+
+String _t(BuildContext context, String key) {
+  final language = Localizations.localeOf(context).languageCode;
+  return appTr(key: key, language: language);
 }

@@ -219,7 +219,12 @@ export function AppLayout() {
           if ((item.to === "/referrals" || item.to === "/tutorials") && user.role !== "clinic_master") {
             return false;
           }
-          if (item.to === "/pre-operatory" && user.role !== "clinic_master") {
+          if (
+            item.to === "/pre-operatory" &&
+            user.role !== "clinic_master" &&
+            user.role !== "surgeon" &&
+            user.role !== "nurse"
+          ) {
             return false;
           }
           if (

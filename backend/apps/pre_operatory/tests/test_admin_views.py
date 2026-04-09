@@ -238,3 +238,69 @@ class PreOperatoryAdminViewsTestCase(APITestCase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_assigned_doctor_can_list_pre_operatory_without_doctor_assignment_row(self):
+        self.pre_operatory.assigned_doctor = self.surgeon
+        self.pre_operatory.save(update_fields=["assigned_doctor"])
+
+        self.client.force_authenticate(self.surgeon)
+        response = self.client.get(reverse("api-pre-operatory"))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]["id"], str(self.pre_operatory.id))
+
+    def test_assigned_surgeon_can_approve_pre_operatory_and_update_notes(self):
+        DoctorPatientAssignment.objects.create(
+            patient=self.patient,
+            doctor=self.surgeon,
+            assigned_by=self.clinic_master,
+        )
+        self.client.force_authenticate(self.surgeon)
+
+        response = self.client.put(
+            reverse("api-pre-operatory-detail", kwargs={"pre_operatory_id": self.pre_operatory.id}),
+            {
+                "status": PreOperatory.StatusChoices.APPROVED,
+                "notes": "Apto para avançar para cirurgia.",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.pre_operatory.refresh_from_db()
+        self.assertEqual(self.pre_operatory.status, PreOperatory.StatusChoices.APPROVED)
+        self.assertEqual(self.pre_operatory.notes, "Apto para avançar para cirurgia.")
+
+    def test_assigned_surgeon_cannot_assign_doctor_or_mark_in_review(self):
+        DoctorPatientAssignment.objects.create(
+            patient=self.patient,
+            doctor=self.surgeon,
+            assigned_by=self.clinic_master,
+        )
+        self.client.force_authenticate(self.surgeon)
+
+        assign_response = self.client.put(
+            reverse("api-pre-operatory-detail", kwargs={"pre_operatory_id": self.pre_operatory.id}),
+            {"assigned_doctor": str(self.other_surgeon.id)},
+            format="json",
+        )
+        self.assertEqual(assign_response.status_code, status.HTTP_403_FORBIDDEN)
+
+        status_response = self.client.put(
+            reverse("api-pre-operatory-detail", kwargs={"pre_operatory_id": self.pre_operatory.id}),
+            {"status": PreOperatory.StatusChoices.IN_REVIEW},
+            format="json",
+        )
+        self.assertEqual(status_response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_unassigned_surgeon_cannot_update_pre_operatory(self):
+        self.client.force_authenticate(self.other_surgeon)
+
+        response = self.client.put(
+            reverse("api-pre-operatory-detail", kwargs={"pre_operatory_id": self.pre_operatory.id}),
+            {"status": PreOperatory.StatusChoices.APPROVED},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)

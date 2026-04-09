@@ -343,7 +343,8 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
                             else
                               Text(
                                 _displayContent(message.content),
-                                style: TextStyle(
+                                style: _emojiTextStyle(
+                                  context,
                                   color: mine
                                       ? colorScheme.onPrimary
                                       : colorScheme.onSurface,
@@ -446,6 +447,29 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
       ),
     );
   }
+}
+
+TextStyle _emojiTextStyle(
+  BuildContext context, {
+  double? fontSize,
+  FontWeight? fontWeight,
+  Color? color,
+}) {
+  final base = Theme.of(context).textTheme.bodyMedium ?? const TextStyle();
+  final fallback = <String>[
+    ...?base.fontFamilyFallback,
+    'AppleColorEmoji',
+    'Apple Color Emoji',
+    'Segoe UI Emoji',
+    'Noto Color Emoji',
+  ];
+
+  return base.copyWith(
+    fontSize: fontSize ?? base.fontSize,
+    fontWeight: fontWeight ?? base.fontWeight,
+    color: color ?? base.color,
+    fontFamilyFallback: fallback.toSet().toList(),
+  );
 }
 
 class _TypingBubble extends StatefulWidget {

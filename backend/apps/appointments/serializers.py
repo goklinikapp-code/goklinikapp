@@ -9,7 +9,7 @@ from config.media_urls import AbsoluteMediaUrlsSerializerMixin
 
 from apps.users.models import GoKlinikUser
 
-from .models import Appointment
+from .models import Appointment, BlockedPeriod, ProfessionalAvailability
 
 
 ALLOWED_STATUS_TRANSITIONS = {
@@ -421,3 +421,100 @@ class AppointmentStatusUpdateSerializer(serializers.Serializer):
 
 class AppointmentCancelSerializer(serializers.Serializer):
     reason = serializers.CharField()
+
+
+class ProfessionalAvailabilitySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ProfessionalAvailability
+        fields = (
+            "id",
+            "day_of_week",
+            "start_time",
+            "end_time",
+            "is_active",
+        )
+        read_only_fields = ("id",)
+
+
+class ProfessionalAvailabilityRuleSerializer(serializers.Serializer):
+    day_of_week = serializers.ChoiceField(choices=ProfessionalAvailability.DAYS)
+    start_time = serializers.TimeField()
+    end_time = serializers.TimeField()
+    is_active = serializers.BooleanField(default=True)
+
+    def validate(self, attrs):
+        start_time = attrs["start_time"]
+        end_time = attrs["end_time"]
+        if start_time >= end_time:
+            raise serializers.ValidationError(
+                {"end_time": "End time must be later than start time."}
+            )
+        return attrs
+
+
+class ProfessionalAvailabilityBulkUpdateSerializer(serializers.Serializer):
+    professional_id = serializers.UUIDField(required=False)
+    rules = ProfessionalAvailabilityRuleSerializer(many=True, required=False)
+
+    def validate_rules(self, value):
+        windows_by_day: dict[int, list[tuple[object, object]]] = {}
+        for item in value:
+            if not item.get("is_active", True):
+                continue
+            day = int(item["day_of_week"])
+            windows_by_day.setdefault(day, []).append(
+                (item["start_time"], item["end_time"])
+            )
+
+        for day, windows in windows_by_day.items():
+            ordered = sorted(windows, key=lambda row: row[0])
+            for index in range(1, len(ordered)):
+                previous_end = ordered[index - 1][1]
+                current_start = ordered[index][0]
+                if current_start < previous_end:
+                    raise serializers.ValidationError(
+                        f"Overlapping active intervals for day_of_week={day}."
+                    )
+        return value
+
+
+class BlockedPeriodSerializer(serializers.ModelSerializer):
+    professional_name = serializers.CharField(
+        source="professional.full_name",
+        read_only=True,
+    )
+
+    class Meta:
+        model = BlockedPeriod
+        fields = (
+            "id",
+            "professional",
+            "professional_name",
+            "start_datetime",
+            "end_datetime",
+            "reason",
+        )
+        read_only_fields = ("id", "professional_name")
+
+
+class BlockedPeriodCreateSerializer(serializers.Serializer):
+    professional_id = serializers.UUIDField(required=False)
+    start_datetime = serializers.DateTimeField()
+    end_datetime = serializers.DateTimeField()
+    reason = serializers.CharField(max_length=255)
+
+    def validate(self, attrs):
+        start_datetime = attrs["start_datetime"]
+        end_datetime = attrs["end_datetime"]
+        if start_datetime >= end_datetime:
+            raise serializers.ValidationError(
+                {"end_datetime": "End datetime must be later than start datetime."}
+            )
+        attrs["reason"] = (attrs.get("reason") or "").strip()
+        if not attrs["reason"]:
+            raise serializers.ValidationError({"reason": "Reason is required."})
+        return attrs
+
+
+class BlockedPeriodDeleteSerializer(serializers.Serializer):
+    id = serializers.UUIDField()

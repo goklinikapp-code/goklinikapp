@@ -1,5 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../appointments/data/appointments_repository_impl.dart';
+import '../../appointments/domain/appointment_models.dart';
 import '../../auth/presentation/auth_controller.dart';
 import '../data/patients_repository_impl.dart';
 import '../domain/patient_models.dart';
@@ -34,6 +36,39 @@ final patientPreOperatoryProvider =
     FutureProvider.family<PatientPreOperatoryRecord?, String>(
         (ref, patientId) async {
   return ref.read(patientsRepositoryProvider).getPatientPreOperatory(patientId);
+});
+
+final myPreOperatoryRecordsProvider =
+    FutureProvider.family<List<PatientPreOperatoryRecord>, PreOperatoryStatus?>(
+        (ref, status) async {
+  return ref
+      .read(patientsRepositoryProvider)
+      .getMyPreOperatoryRecords(status: status);
+});
+
+final myActiveAppointmentsProvider =
+    FutureProvider<List<AppointmentItem>>((ref) async {
+  final session = ref.watch(authControllerProvider).session;
+  final surgeonId = session?.user.id;
+  if (session?.user.role != 'surgeon' ||
+      surgeonId == null ||
+      surgeonId.isEmpty) {
+    return const <AppointmentItem>[];
+  }
+
+  final appointments = await ref
+      .read(appointmentsRepositoryProvider)
+      .getAppointments(professionalId: surgeonId);
+  const activeStatuses = {
+    'pending',
+    'confirmed',
+    'in_progress',
+  };
+
+  return appointments
+      .where((item) => item.professionalId == surgeonId)
+      .where((item) => activeStatuses.contains(item.status))
+      .toList();
 });
 
 final patientPostOperatoryProvider =

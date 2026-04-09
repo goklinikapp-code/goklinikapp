@@ -6,6 +6,8 @@ import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../../core/settings/app_preferences.dart';
+import '../../../core/settings/app_translations.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/api_media_url.dart';
 import '../../../core/utils/formatters.dart';
@@ -49,14 +51,16 @@ class _PatientDetailScreenState extends ConsumerState<PatientDetailScreen>
 
   @override
   Widget build(BuildContext context) {
+    final language = ref.watch(appPreferencesControllerProvider).language;
+    String t(String key) => appTr(key: key, language: language);
     final patientState = ref.watch(patientDetailProvider(widget.patientId));
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Detalhe do Paciente')),
+      appBar: AppBar(title: Text(t('patient_detail_title'))),
       body: patientState.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, _) =>
-            Center(child: Text('Erro ao carregar paciente: $error')),
+        error: (error, _) => Center(
+            child: Text('${t('patient_detail_load_error_prefix')}: $error')),
         data: (patient) {
           final statusVisual = _statusVisual(patient.medicStatus);
           return Column(
@@ -111,14 +115,14 @@ class _PatientDetailScreenState extends ConsumerState<PatientDetailScreen>
                 controller: _tabController,
                 isScrollable: true,
                 tabAlignment: TabAlignment.start,
-                tabs: const [
-                  Tab(text: 'Informacoes'),
-                  Tab(text: 'Historico'),
-                  Tab(text: 'Fotos'),
-                  Tab(text: 'Documentos'),
-                  Tab(text: 'Pre-operatorio'),
-                  Tab(text: 'Pos-operatorio'),
-                  Tab(text: 'Prontuario'),
+                tabs: [
+                  Tab(text: t('patient_detail_tab_info')),
+                  Tab(text: t('patient_detail_tab_history')),
+                  Tab(text: t('patient_detail_tab_photos')),
+                  Tab(text: t('patient_detail_tab_documents')),
+                  Tab(text: t('patient_detail_tab_preop')),
+                  Tab(text: t('patient_detail_tab_postop')),
+                  Tab(text: t('patient_detail_tab_prontuario')),
                 ],
               ),
               Expanded(
@@ -143,6 +147,7 @@ class _PatientDetailScreenState extends ConsumerState<PatientDetailScreen>
   }
 
   Widget _infoTab(MedicPatient patient) {
+    String t(String key) => _tr(key);
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
@@ -150,11 +155,17 @@ class _PatientDetailScreenState extends ConsumerState<PatientDetailScreen>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _row('Nome', patient.fullName),
-              _row('Idade', patient.age?.toString() ?? '-'),
-              _row('Telefone', patient.phone.isNotEmpty ? patient.phone : '-'),
-              _row('E-mail', patient.email.isNotEmpty ? patient.email : '-'),
-              _row('Tipo sanguineo',
+              _row(t('patient_detail_name'), patient.fullName),
+              _row(t('patient_detail_age'), patient.age?.toString() ?? '-'),
+              _row(
+                t('profile_phone'),
+                patient.phone.isNotEmpty ? patient.phone : '-',
+              ),
+              _row(
+                t('patient_detail_email'),
+                patient.email.isNotEmpty ? patient.email : '-',
+              ),
+              _row(t('patient_detail_blood_type'),
                   patient.bloodType.isNotEmpty ? patient.bloodType : '-'),
             ],
           ),
@@ -164,13 +175,13 @@ class _PatientDetailScreenState extends ConsumerState<PatientDetailScreen>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                'Alergias',
-                style: TextStyle(fontWeight: FontWeight.w700),
+              Text(
+                t('preop_allergies'),
+                style: const TextStyle(fontWeight: FontWeight.w700),
               ),
               const SizedBox(height: 8),
               if (patient.allergies.isEmpty)
-                const Text('Nenhuma alergia registrada')
+                Text(t('patient_detail_no_allergies'))
               else
                 Wrap(
                   spacing: 8,
@@ -186,13 +197,13 @@ class _PatientDetailScreenState extends ConsumerState<PatientDetailScreen>
                       .toList(),
                 ),
               const SizedBox(height: 14),
-              const Text(
-                'Medicamentos em uso',
-                style: TextStyle(fontWeight: FontWeight.w700),
+              Text(
+                t('preop_medications_in_use'),
+                style: const TextStyle(fontWeight: FontWeight.w700),
               ),
               const SizedBox(height: 8),
               if (patient.currentMedications.isEmpty)
-                const Text('Nenhum medicamento registrado')
+                Text(t('patient_detail_no_medications'))
               else
                 ...patient.currentMedications.map(
                   (item) => Padding(
@@ -215,14 +226,16 @@ class _PatientDetailScreenState extends ConsumerState<PatientDetailScreen>
   }
 
   Widget _historyTab() {
+    String t(String key) => _tr(key);
     final historyState = ref.watch(patientHistoryProvider(widget.patientId));
     return historyState.when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (error, _) =>
-          Center(child: Text('Erro ao carregar historico: $error')),
+      error: (error, _) => Center(
+          child:
+              Text('${t('patient_detail_history_load_error_prefix')}: $error')),
       data: (items) {
         if (items.isEmpty) {
-          return const Center(child: Text('Sem historico registrado.'));
+          return Center(child: Text(t('patient_detail_no_history')));
         }
         return ListView.builder(
           padding: const EdgeInsets.all(16),
@@ -239,7 +252,7 @@ class _PatientDetailScreenState extends ConsumerState<PatientDetailScreen>
                   const SizedBox(height: 4),
                   Text(
                     item.description.isEmpty
-                        ? 'Sem observacoes'
+                        ? t('patient_detail_no_notes')
                         : item.description,
                     style: const TextStyle(color: GKColors.neutral),
                   ),
@@ -259,15 +272,17 @@ class _PatientDetailScreenState extends ConsumerState<PatientDetailScreen>
   }
 
   Widget _photosTab(String patientId) {
+    String t(String key) => _tr(key);
     final journeyState = ref.watch(patientJourneyProvider(patientId));
     return journeyState.when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (error, _) =>
-          Center(child: Text('Erro ao carregar jornada: $error')),
+      error: (error, _) => Center(
+          child:
+              Text('${t('patient_detail_journey_load_error_prefix')}: $error')),
       data: (journey) {
         if (journey == null) {
-          return const Center(
-            child: Text('Sem jornada ativa para este paciente.'),
+          return Center(
+            child: Text(t('postop_no_active_journey')),
           );
         }
 
@@ -280,12 +295,14 @@ class _PatientDetailScreenState extends ConsumerState<PatientDetailScreen>
                 children: [
                   Expanded(
                     child: Text(
-                      'Evolucao fotografica',
+                      t('patient_detail_photo_evolution'),
                       style: Theme.of(context).textTheme.titleMedium,
                     ),
                   ),
                   GKButton(
-                    label: _uploadingPhoto ? 'Enviando...' : 'Adicionar foto',
+                    label: _uploadingPhoto
+                        ? t('chat_sending')
+                        : t('patient_detail_add_photo'),
                     variant: GKButtonVariant.secondary,
                     onPressed:
                         _uploadingPhoto ? null : () => _addPhoto(journey.id),
@@ -296,12 +313,13 @@ class _PatientDetailScreenState extends ConsumerState<PatientDetailScreen>
             Expanded(
               child: photosState.when(
                 loading: () => const Center(child: CircularProgressIndicator()),
-                error: (error, _) =>
-                    Center(child: Text('Erro ao carregar fotos: $error')),
+                error: (error, _) => Center(
+                    child: Text(
+                        '${t('patient_detail_photos_load_error_prefix')}: $error')),
                 data: (photos) {
                   if (photos.isEmpty) {
-                    return const Center(
-                      child: Text('Sem fotos cadastradas para esta jornada.'),
+                    return Center(
+                      child: Text(t('patient_detail_no_photos')),
                     );
                   }
                   return GridView.builder(
@@ -338,7 +356,7 @@ class _PatientDetailScreenState extends ConsumerState<PatientDetailScreen>
                             ),
                             const SizedBox(height: 6),
                             Text(
-                              'Dia ${photo.dayNumber}',
+                              '${t('postop_day_label')} ${photo.dayNumber}',
                               style:
                                   const TextStyle(fontWeight: FontWeight.w700),
                             ),
@@ -357,14 +375,16 @@ class _PatientDetailScreenState extends ConsumerState<PatientDetailScreen>
   }
 
   Widget _documentsTab() {
+    String t(String key) => _tr(key);
     final docsState = ref.watch(patientDocumentsProvider(widget.patientId));
     return docsState.when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (error, _) =>
-          Center(child: Text('Erro ao carregar documentos: $error')),
+      error: (error, _) => Center(
+          child: Text(
+              '${t('patient_detail_documents_load_error_prefix')}: $error')),
       data: (items) {
         if (items.isEmpty) {
-          return const Center(child: Text('Nenhum documento encontrado.'));
+          return Center(child: Text(t('patient_detail_no_documents')));
         }
 
         return ListView.builder(
@@ -423,6 +443,7 @@ class _PatientDetailScreenState extends ConsumerState<PatientDetailScreen>
   }
 
   Future<void> _openStatusSheet(MedicPatient patient) async {
+    String t(String key) => _tr(key);
     final selected = await showModalBottomSheet<MedicPatientStatus>(
       context: context,
       shape: const RoundedRectangleBorder(
@@ -432,38 +453,38 @@ class _PatientDetailScreenState extends ConsumerState<PatientDetailScreen>
         final options = [
           (
             status: MedicPatientStatus.scheduled,
-            label: 'Agendado',
-            description: 'Paciente aguardando consulta/procedimento',
+            label: t('patients_filter_scheduled'),
+            description: t('patient_detail_status_scheduled_desc'),
             color: const Color(0xFF1D4ED8),
           ),
           (
             status: MedicPatientStatus.preOp,
-            label: 'Pre-op',
-            description: 'Preparacao pre-operatoria em andamento',
+            label: t('quick_pre_operatory'),
+            description: t('patient_detail_status_preop_desc'),
             color: const Color(0xFFB45309),
           ),
           (
             status: MedicPatientStatus.recovering,
-            label: 'Em recuperacao',
-            description: 'Recuperacao pos-procedimento ativa',
+            label: t('patients_filter_recovering'),
+            description: t('patient_detail_status_recovering_desc'),
             color: const Color(0xFFC2410C),
           ),
           (
             status: MedicPatientStatus.recovered,
-            label: 'Recuperado',
-            description: 'Recuperacao concluida',
+            label: t('patients_filter_recovered'),
+            description: t('patient_detail_status_recovered_desc'),
             color: const Color(0xFF166534),
           ),
           (
             status: MedicPatientStatus.specialCase,
-            label: 'Caso especial',
-            description: 'Acompanhamento intensivo',
+            label: t('patients_filter_special'),
+            description: t('patient_detail_status_special_desc'),
             color: const Color(0xFFB91C1C),
           ),
           (
             status: MedicPatientStatus.inactive,
-            label: 'Inativo',
-            description: 'Paciente sem acompanhamento ativo',
+            label: t('patient_status_inactive'),
+            description: t('patient_detail_status_inactive_desc'),
             color: const Color(0xFF4B5563),
           ),
         ];
@@ -499,11 +520,12 @@ class _PatientDetailScreenState extends ConsumerState<PatientDetailScreen>
     ref.invalidate(myPatientsProvider);
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Status atualizado')),
+      SnackBar(content: Text(t('patient_detail_status_updated'))),
     );
   }
 
   Future<void> _addPhoto(String journeyId) async {
+    String t(String key) => _tr(key);
     final picker = ImagePicker();
     final selected = await picker.pickImage(
       source: ImageSource.gallery,
@@ -526,7 +548,7 @@ class _PatientDetailScreenState extends ConsumerState<PatientDetailScreen>
       ref.invalidate(journeyPhotosProvider(journeyId));
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Foto enviada com sucesso')),
+        SnackBar(content: Text(t('postop_photo_upload_success'))),
       );
     } finally {
       if (mounted) {
@@ -569,38 +591,46 @@ class _PatientDetailScreenState extends ConsumerState<PatientDetailScreen>
   }
 
   _StatusVisual _statusVisual(MedicPatientStatus status) {
+    String t(String key) => _tr(key);
     return switch (status) {
-      MedicPatientStatus.scheduled => const _StatusVisual(
-          label: 'Agendado',
+      MedicPatientStatus.scheduled => _StatusVisual(
+          label: t('patients_filter_scheduled'),
           background: Color(0xFFE4EDFF),
           foreground: Color(0xFF1D4ED8),
         ),
-      MedicPatientStatus.preOp => const _StatusVisual(
-          label: 'Pre-op',
+      MedicPatientStatus.preOp => _StatusVisual(
+          label: t('quick_pre_operatory'),
           background: Color(0xFFFFF3CD),
           foreground: Color(0xFFB45309),
         ),
-      MedicPatientStatus.recovering => const _StatusVisual(
-          label: 'Em recuperacao',
+      MedicPatientStatus.recovering => _StatusVisual(
+          label: t('patients_filter_recovering'),
           background: Color(0xFFFFE5D0),
           foreground: Color(0xFFC2410C),
         ),
-      MedicPatientStatus.recovered => const _StatusVisual(
-          label: 'Recuperado',
+      MedicPatientStatus.recovered => _StatusVisual(
+          label: t('patients_filter_recovered'),
           background: Color(0xFFDCFCE7),
           foreground: Color(0xFF166534),
         ),
-      MedicPatientStatus.specialCase => const _StatusVisual(
-          label: 'Caso especial',
+      MedicPatientStatus.specialCase => _StatusVisual(
+          label: t('patients_filter_special'),
           background: Color(0xFFFEE2E2),
           foreground: Color(0xFFB91C1C),
         ),
-      MedicPatientStatus.inactive => const _StatusVisual(
-          label: 'Inativo',
+      MedicPatientStatus.inactive => _StatusVisual(
+          label: t('patient_status_inactive'),
           background: Color(0xFFE5E7EB),
           foreground: Color(0xFF4B5563),
         ),
     };
+  }
+
+  String _tr(String key, {bool watch = false}) {
+    final language = watch
+        ? ref.watch(appPreferencesControllerProvider).language
+        : ref.read(appPreferencesControllerProvider).language;
+    return appTr(key: key, language: language);
   }
 }
 

@@ -9,7 +9,7 @@ from django.utils.dateparse import parse_date
 from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
-from rest_framework.exceptions import APIException, PermissionDenied
+from rest_framework.exceptions import APIException, PermissionDenied, ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
@@ -24,11 +24,16 @@ from apps.notifications.services import NotificationService
 from apps.patients.models import DoctorPatientAssignment
 from apps.users.models import GoKlinikUser
 
-from .models import Appointment
+from .models import Appointment, BlockedPeriod, ProfessionalAvailability
 from .serializers import (
     AppointmentCancelSerializer,
     AppointmentSerializer,
     AppointmentStatusUpdateSerializer,
+    BlockedPeriodCreateSerializer,
+    BlockedPeriodDeleteSerializer,
+    BlockedPeriodSerializer,
+    ProfessionalAvailabilityBulkUpdateSerializer,
+    ProfessionalAvailabilitySerializer,
 )
 from .services import AppointmentService
 from .tasks import create_postop_schedule
@@ -42,6 +47,19 @@ APPOINTMENT_STATUS_LABELS_PT_BR = {
     Appointment.StatusChoices.COMPLETED: "concluído",
     Appointment.StatusChoices.CANCELLED: "cancelado",
     Appointment.StatusChoices.RESCHEDULED: "reagendado",
+}
+
+APPOINTMENT_MANAGEMENT_ROLES = {
+    GoKlinikUser.RoleChoices.CLINIC_MASTER,
+    GoKlinikUser.RoleChoices.SECRETARY,
+    GoKlinikUser.RoleChoices.NURSE,
+}
+
+AVAILABILITY_MANAGEMENT_ROLES = {
+    GoKlinikUser.RoleChoices.CLINIC_MASTER,
+    GoKlinikUser.RoleChoices.SECRETARY,
+    GoKlinikUser.RoleChoices.NURSE,
+    GoKlinikUser.RoleChoices.SURGEON,
 }
 
 
@@ -101,17 +119,50 @@ class AppointmentViewSet(viewsets.ModelViewSet):
 
         return queryset.order_by("appointment_date", "appointment_time")
 
-    def perform_create(self, serializer):
-        user = self.request.user
+    def _ensure_can_manage_appointments(self, user: GoKlinikUser) -> None:
         if user.role == GoKlinikUser.RoleChoices.PATIENT:
             raise PermissionDenied("Patients can only view appointments.")
-        if user.role not in {
-            GoKlinikUser.RoleChoices.CLINIC_MASTER,
-            GoKlinikUser.RoleChoices.SECRETARY,
-            GoKlinikUser.RoleChoices.NURSE,
-            GoKlinikUser.RoleChoices.SURGEON,
-        }:
-            raise PermissionDenied("Role not allowed to create appointments.")
+        if user.role == GoKlinikUser.RoleChoices.SURGEON:
+            raise PermissionDenied("Surgeons can only view appointments.")
+        if user.role not in APPOINTMENT_MANAGEMENT_ROLES:
+            raise PermissionDenied("Role not allowed to manage appointments.")
+
+    def _resolve_availability_professional(
+        self,
+        *,
+        professional_id_raw,
+    ) -> GoKlinikUser:
+        user = self.request.user
+        if user.role not in AVAILABILITY_MANAGEMENT_ROLES:
+            raise PermissionDenied("Role not allowed to manage professional availability.")
+
+        target_id = str(professional_id_raw or "").strip()
+        if user.role == GoKlinikUser.RoleChoices.SURGEON:
+            if target_id and target_id != str(user.id):
+                raise PermissionDenied("Surgeons can only manage their own availability.")
+            target_id = str(user.id)
+
+        if not target_id:
+            raise ValidationError({"professional_id": ["This field is required."]})
+
+        professional = (
+            GoKlinikUser.objects.filter(
+                id=target_id,
+                role=GoKlinikUser.RoleChoices.SURGEON,
+                tenant_id=user.tenant_id,
+            )
+            .only("id", "first_name", "last_name", "tenant_id", "role")
+            .first()
+        )
+        if not professional:
+            raise ValidationError(
+                {"professional_id": ["Professional not found for this tenant."]}
+            )
+        return professional
+
+    def perform_create(self, serializer):
+        user = self.request.user
+        self._ensure_can_manage_appointments(user)
         professional = serializer.validated_data.get("professional")
         appointment_date = serializer.validated_data.get("appointment_date")
         appointment_time = serializer.validated_data.get("appointment_time")
@@ -156,14 +207,13 @@ class AppointmentViewSet(viewsets.ModelViewSet):
     def perform_update(self, serializer):
         user = self.request.user
         if user.role == GoKlinikUser.RoleChoices.PATIENT:
-            raise PermissionDenied("Patients can only view appointments.")
-        if user.role not in {
-            GoKlinikUser.RoleChoices.CLINIC_MASTER,
-            GoKlinikUser.RoleChoices.SECRETARY,
-            GoKlinikUser.RoleChoices.NURSE,
-            GoKlinikUser.RoleChoices.SURGEON,
-        }:
-            raise PermissionDenied("Role not allowed to update appointments.")
+            instance = serializer.instance
+            if not instance or str(instance.patient_id) != str(user.id):
+                raise PermissionDenied(
+                    "Patients can only update their own appointments."
+                )
+        else:
+            self._ensure_can_manage_appointments(user)
 
         appointment = self.get_object()
         old_status = appointment.status
@@ -281,8 +331,7 @@ class AppointmentViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["put"], url_path="status")
     def update_status(self, request, pk=None):
         appointment = self.get_object()
-        if request.user.role == GoKlinikUser.RoleChoices.PATIENT:
-            return Response(status=status.HTTP_403_FORBIDDEN)
+        self._ensure_can_manage_appointments(request.user)
 
         serializer = AppointmentStatusUpdateSerializer(
             data=request.data,
@@ -315,9 +364,14 @@ class AppointmentViewSet(viewsets.ModelViewSet):
         )
 
     def destroy(self, request, *args, **kwargs):
-        if request.user.role == GoKlinikUser.RoleChoices.PATIENT:
-            raise PermissionDenied("Patients can only view appointments.")
         appointment = self.get_object()
+        if request.user.role == GoKlinikUser.RoleChoices.PATIENT:
+            if str(appointment.patient_id) != str(request.user.id):
+                raise PermissionDenied(
+                    "Patients can only cancel their own appointments."
+                )
+        else:
+            self._ensure_can_manage_appointments(request.user)
         serializer = AppointmentCancelSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
@@ -325,6 +379,125 @@ class AppointmentViewSet(viewsets.ModelViewSet):
         appointment.cancellation_reason = serializer.validated_data["reason"]
         appointment.save(update_fields=["status", "cancellation_reason", "updated_at"])
 
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @action(detail=False, methods=["get", "put"], url_path="availability-rules")
+    def availability_rules(self, request):
+        if request.method.lower() == "get":
+            professional = self._resolve_availability_professional(
+                professional_id_raw=request.query_params.get("professional_id"),
+            )
+            rules = ProfessionalAvailability.objects.filter(
+                professional_id=professional.id
+            ).order_by("day_of_week", "start_time")
+            return Response(
+                {
+                    "professional_id": str(professional.id),
+                    "professional_name": professional.full_name,
+                    "rules": ProfessionalAvailabilitySerializer(rules, many=True).data,
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        serializer = ProfessionalAvailabilityBulkUpdateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        professional = self._resolve_availability_professional(
+            professional_id_raw=serializer.validated_data.get("professional_id"),
+        )
+        rules_payload = serializer.validated_data.get("rules", [])
+
+        with transaction.atomic():
+            ProfessionalAvailability.objects.filter(professional_id=professional.id).delete()
+            ProfessionalAvailability.objects.bulk_create(
+                [
+                    ProfessionalAvailability(
+                        professional_id=professional.id,
+                        day_of_week=int(item["day_of_week"]),
+                        start_time=item["start_time"],
+                        end_time=item["end_time"],
+                        is_active=item.get("is_active", True),
+                    )
+                    for item in rules_payload
+                ]
+            )
+
+        rules = ProfessionalAvailability.objects.filter(
+            professional_id=professional.id
+        ).order_by("day_of_week", "start_time")
+        return Response(
+            {
+                "professional_id": str(professional.id),
+                "professional_name": professional.full_name,
+                "rules": ProfessionalAvailabilitySerializer(rules, many=True).data,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+    @action(detail=False, methods=["get", "post", "delete"], url_path="blocked-periods")
+    def blocked_periods(self, request):
+        if request.method.lower() == "get":
+            professional = self._resolve_availability_professional(
+                professional_id_raw=request.query_params.get("professional_id"),
+            )
+            queryset = BlockedPeriod.objects.filter(professional_id=professional.id)
+
+            date_from_raw = (request.query_params.get("date_from") or "").strip()
+            date_to_raw = (request.query_params.get("date_to") or "").strip()
+            if date_from_raw:
+                parsed_from = parse_date(date_from_raw)
+                if not parsed_from:
+                    raise ValidationError({"date_from": ["Invalid date format. Use YYYY-MM-DD."]})
+                queryset = queryset.filter(end_datetime__date__gte=parsed_from)
+            if date_to_raw:
+                parsed_to = parse_date(date_to_raw)
+                if not parsed_to:
+                    raise ValidationError({"date_to": ["Invalid date format. Use YYYY-MM-DD."]})
+                queryset = queryset.filter(start_datetime__date__lte=parsed_to)
+
+            rows = queryset.order_by("start_datetime")
+            return Response(
+                {
+                    "professional_id": str(professional.id),
+                    "professional_name": professional.full_name,
+                    "results": BlockedPeriodSerializer(rows, many=True).data,
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        if request.method.lower() == "post":
+            serializer = BlockedPeriodCreateSerializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+            professional = self._resolve_availability_professional(
+                professional_id_raw=serializer.validated_data.get("professional_id"),
+            )
+            blocked = BlockedPeriod.objects.create(
+                professional_id=professional.id,
+                start_datetime=serializer.validated_data["start_datetime"],
+                end_datetime=serializer.validated_data["end_datetime"],
+                reason=serializer.validated_data["reason"],
+            )
+            return Response(
+                BlockedPeriodSerializer(blocked).data,
+                status=status.HTTP_201_CREATED,
+            )
+
+        serializer = BlockedPeriodDeleteSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        blocked = (
+            BlockedPeriod.objects.select_related("professional")
+            .filter(id=serializer.validated_data["id"])
+            .first()
+        )
+        if not blocked:
+            return Response(
+                {"detail": "Blocked period not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        self._resolve_availability_professional(
+            professional_id_raw=blocked.professional_id,
+        )
+        blocked.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     def _dispatch_status_side_effects(

@@ -22,12 +22,19 @@ import { z } from 'zod'
 
 import {
   cancelAppointment,
+  createBlockedPeriod,
   createAppointment,
+  deleteBlockedPeriod,
+  getBlockedPeriods,
   getAppointments,
   getAvailableSlots,
+  getProfessionalAvailabilityRules,
+  type ProfessionalAvailabilityRule,
+  updateProfessionalAvailabilityRules,
   updateAppointment,
   updateAppointmentStatus,
   type AppointmentItem,
+  type BlockedPeriodItem,
   type UpdateAppointmentPayload,
 } from '@/api/appointments'
 import { getPatients } from '@/api/patients'
@@ -63,6 +70,7 @@ type AppointmentTypeValue = (typeof appointmentTypeValues)[number]
 
 type SlotsByDay = Record<string, string[]>
 const DATE_ONLY_PATTERN = /^\d{4}-\d{2}-\d{2}$/
+const WEEK_DAYS = [0, 1, 2, 3, 4, 5, 6] as const
 
 interface AppointmentForm {
   patient: string
@@ -90,6 +98,19 @@ interface AppointmentCancelState {
   reason: string
 }
 
+interface WeeklyAvailabilityRow {
+  day_of_week: number
+  is_active: boolean
+  start_time: string
+  end_time: string
+}
+
+interface BlockedPeriodFormState {
+  start_datetime: string
+  end_datetime: string
+  reason: string
+}
+
 type ScheduleViewMode = 'list' | 'calendar'
 const DEFAULT_SCHEDULE_VIEW_MODE: ScheduleViewMode = 'calendar'
 
@@ -114,6 +135,23 @@ function toApiTime(value?: string | null): string {
 function toDateOnly(value: string): string {
   if (DATE_ONLY_PATTERN.test(value)) return value
   return value.slice(0, 10)
+}
+
+function toInputTimeFromApi(value?: string | null): string {
+  if (!value) return ''
+  return value.slice(0, 5)
+}
+
+function toDateTimeLocalValue(value?: string | null): string {
+  if (!value) return ''
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  const year = String(date.getFullYear())
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  const hours = String(date.getHours()).padStart(2, '0')
+  const minutes = String(date.getMinutes()).padStart(2, '0')
+  return `${year}-${month}-${day}T${hours}:${minutes}`
 }
 
 function extractErrorMessage(error: unknown, fallback: string): string {
@@ -191,6 +229,19 @@ export default function SchedulePage() {
     format(new Date(), 'yyyy-MM-dd'),
   )
   const [completingAppointmentId, setCompletingAppointmentId] = useState<string | null>(null)
+  const [availabilityRows, setAvailabilityRows] = useState<WeeklyAvailabilityRow[]>(
+    WEEK_DAYS.map((day) => ({
+      day_of_week: day,
+      is_active: day >= 0 && day <= 4,
+      start_time: '09:00',
+      end_time: '18:00',
+    })),
+  )
+  const [blockedPeriodForm, setBlockedPeriodForm] = useState<BlockedPeriodFormState>({
+    start_datetime: '',
+    end_datetime: '',
+    reason: '',
+  })
   const [searchParams] = useSearchParams()
 
   const queryClient = useQueryClient()
@@ -293,6 +344,17 @@ export default function SchedulePage() {
   const isSurgeonUser = currentUser?.role === 'surgeon'
   const surgeonProfessionalId = isSurgeonUser ? (currentUser?.id || '') : ''
   const surgeonProfessionalName = currentUser?.full_name || ''
+  const canManageAppointments = !isSurgeonUser
+  const weekDayLabels = useMemo(() => {
+    return WEEK_DAYS.map((dayIndex) => {
+      const date = addDays(startOfWeek(new Date(), { weekStartsOn: 1 }), dayIndex)
+      const label = new Intl.DateTimeFormat(locale, { weekday: 'long' }).format(date)
+      return {
+        value: dayIndex,
+        label: label.charAt(0).toUpperCase() + label.slice(1),
+      }
+    })
+  }, [locale])
 
   const appointmentsByDate = useMemo(() => {
     const groups = new Map<string, AppointmentItem[]>()
@@ -435,6 +497,131 @@ export default function SchedulePage() {
     : selectedDay || bookingDays[0] || ''
   const selectedDaySlots = slotsByDay[effectiveSelectedDay] || []
 
+  const blockedPeriodsDateTo = format(addDays(new Date(), 180), 'yyyy-MM-dd')
+
+  const {
+    data: weeklyAvailabilityResponse,
+    isLoading: isLoadingWeeklyAvailability,
+  } = useQuery({
+    queryKey: ['schedule-weekly-availability', surgeonProfessionalId],
+    enabled: isSurgeonUser && Boolean(surgeonProfessionalId),
+    queryFn: () =>
+      getProfessionalAvailabilityRules({
+        professional_id: surgeonProfessionalId,
+      }),
+  })
+
+  useEffect(() => {
+    if (!weeklyAvailabilityResponse || !isSurgeonUser) return
+    const nextRows = WEEK_DAYS.map((day) => {
+      const firstRule = (weeklyAvailabilityResponse.rules || [])
+        .filter((rule) => Number(rule.day_of_week) === day && rule.is_active)
+        .sort((a, b) => a.start_time.localeCompare(b.start_time))[0]
+
+      return {
+        day_of_week: day,
+        is_active: Boolean(firstRule),
+        start_time: firstRule ? toInputTimeFromApi(firstRule.start_time) : '09:00',
+        end_time: firstRule ? toInputTimeFromApi(firstRule.end_time) : '18:00',
+      }
+    })
+    setAvailabilityRows(nextRows)
+  }, [weeklyAvailabilityResponse, isSurgeonUser])
+
+  const {
+    data: blockedPeriodsResponse,
+    isLoading: isLoadingBlockedPeriods,
+  } = useQuery({
+    queryKey: ['schedule-blocked-periods', surgeonProfessionalId, today, blockedPeriodsDateTo],
+    enabled: isSurgeonUser && Boolean(surgeonProfessionalId),
+    queryFn: () =>
+      getBlockedPeriods({
+        professional_id: surgeonProfessionalId,
+        date_from: today,
+        date_to: blockedPeriodsDateTo,
+      }),
+  })
+  const blockedPeriods = blockedPeriodsResponse?.results || []
+
+  const saveAvailabilityMutation = useMutation({
+    mutationFn: (rows: WeeklyAvailabilityRow[]) =>
+      updateProfessionalAvailabilityRules({
+        professional_id: surgeonProfessionalId,
+        rules: rows
+          .filter((row) => row.is_active)
+          .map(
+            (row): ProfessionalAvailabilityRule => ({
+              day_of_week: row.day_of_week,
+              start_time: toApiTime(row.start_time),
+              end_time: toApiTime(row.end_time),
+              is_active: true,
+            }),
+          ),
+      }),
+    onSuccess: () => {
+      toast.success(t('schedule_doctor_availability_saved'))
+      void queryClient.invalidateQueries({
+        queryKey: ['schedule-weekly-availability', surgeonProfessionalId],
+      })
+      void queryClient.invalidateQueries({
+        queryKey: ['schedule-availability'],
+        exact: false,
+      })
+    },
+    onError: (error) => {
+      toast.error(extractErrorMessage(error, t('schedule_doctor_availability_save_error')))
+    },
+  })
+
+  const createBlockedPeriodMutation = useMutation({
+    mutationFn: () => {
+      const startValue = blockedPeriodForm.start_datetime.trim()
+      const endValue = blockedPeriodForm.end_datetime.trim()
+      const reason = blockedPeriodForm.reason.trim()
+      return createBlockedPeriod({
+        professional_id: surgeonProfessionalId,
+        start_datetime: new Date(startValue).toISOString(),
+        end_datetime: new Date(endValue).toISOString(),
+        reason,
+      })
+    },
+    onSuccess: () => {
+      toast.success(t('schedule_blocked_period_created'))
+      setBlockedPeriodForm({
+        start_datetime: '',
+        end_datetime: '',
+        reason: '',
+      })
+      void queryClient.invalidateQueries({
+        queryKey: ['schedule-blocked-periods', surgeonProfessionalId, today, blockedPeriodsDateTo],
+      })
+      void queryClient.invalidateQueries({
+        queryKey: ['schedule-availability'],
+        exact: false,
+      })
+    },
+    onError: (error) => {
+      toast.error(extractErrorMessage(error, t('schedule_blocked_period_create_error')))
+    },
+  })
+
+  const deleteBlockedPeriodMutation = useMutation({
+    mutationFn: (blockedPeriodId: string) => deleteBlockedPeriod(blockedPeriodId),
+    onSuccess: () => {
+      toast.success(t('schedule_blocked_period_removed'))
+      void queryClient.invalidateQueries({
+        queryKey: ['schedule-blocked-periods', surgeonProfessionalId, today, blockedPeriodsDateTo],
+      })
+      void queryClient.invalidateQueries({
+        queryKey: ['schedule-availability'],
+        exact: false,
+      })
+    },
+    onError: (error) => {
+      toast.error(extractErrorMessage(error, t('schedule_blocked_period_remove_error')))
+    },
+  })
+
   const createMutation = useMutation({
     mutationFn: createAppointment,
     onSuccess: () => {
@@ -542,6 +729,7 @@ export default function SchedulePage() {
   }
 
   const openCreateModal = () => {
+    if (!canManageAppointments) return
     const firstDay = bookingDays[0] || ''
     setSelectedDay(firstDay)
     setSelectedSlot('')
@@ -610,6 +798,7 @@ export default function SchedulePage() {
   }
 
   const handleSaveDetails = () => {
+    if (!canManageAppointments) return
     if (!selectedAppointment || !editForm) return
 
     if (!editForm.patient) {
@@ -647,6 +836,54 @@ export default function SchedulePage() {
     })
   }
 
+  const updateAvailabilityRow = (
+    dayOfWeek: number,
+    updater: (current: WeeklyAvailabilityRow) => WeeklyAvailabilityRow,
+  ) => {
+    setAvailabilityRows((previous) =>
+      previous.map((row) => (row.day_of_week === dayOfWeek ? updater(row) : row)),
+    )
+  }
+
+  const handleSaveDoctorAvailability = () => {
+    const activeRows = availabilityRows.filter((row) => row.is_active)
+    if (activeRows.some((row) => !row.start_time || !row.end_time)) {
+      toast.error(t('schedule_doctor_availability_invalid_time'))
+      return
+    }
+    if (activeRows.some((row) => row.start_time >= row.end_time)) {
+      toast.error(t('schedule_doctor_availability_invalid_range'))
+      return
+    }
+    saveAvailabilityMutation.mutate(availabilityRows)
+  }
+
+  const handleCreateBlockedPeriod = () => {
+    const startValue = blockedPeriodForm.start_datetime.trim()
+    const endValue = blockedPeriodForm.end_datetime.trim()
+    const reasonValue = blockedPeriodForm.reason.trim()
+
+    if (!startValue || !endValue) {
+      toast.error(t('schedule_blocked_period_invalid_datetime'))
+      return
+    }
+    if (!reasonValue) {
+      toast.error(t('schedule_blocked_period_reason_required'))
+      return
+    }
+    const startDate = new Date(startValue)
+    const endDate = new Date(endValue)
+    if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
+      toast.error(t('schedule_blocked_period_invalid_datetime'))
+      return
+    }
+    if (startDate >= endDate) {
+      toast.error(t('schedule_blocked_period_invalid_range'))
+      return
+    }
+    createBlockedPeriodMutation.mutate()
+  }
+
   const formatDateTime = (value?: string | null): string => {
     if (!value) return t('schedule_not_informed')
     const date = new Date(value)
@@ -665,6 +902,7 @@ export default function SchedulePage() {
     const professionalAvatar = resolveProfessionalAvatar(appointment)
 
     const canMarkAsPerformed =
+      canManageAppointments &&
       appointment.appointment_type === 'surgery' &&
       appointment.status !== 'completed' &&
       appointment.status !== 'cancelled'
@@ -718,7 +956,7 @@ export default function SchedulePage() {
               {isCompletingThisAppointment ? t('schedule_saving') : t('schedule_mark_as_realized')}
             </Button>
           ) : null}
-          {appointment.status !== 'cancelled' ? (
+          {canManageAppointments && appointment.status !== 'cancelled' ? (
             <Button
               size="sm"
               variant="danger"
@@ -751,10 +989,12 @@ export default function SchedulePage() {
               <RefreshCw className="h-4 w-4" />
               {isFetchingAppointments ? t('schedule_refreshing') : t('schedule_refresh')}
             </Button>
-            <Button onClick={openCreateModal}>
-              <Plus className="h-4 w-4" />
-              {t('schedule_new_appointment')}
-            </Button>
+            {canManageAppointments ? (
+              <Button onClick={openCreateModal}>
+                <Plus className="h-4 w-4" />
+                {t('schedule_new_appointment')}
+              </Button>
+            ) : null}
           </div>
         }
       />
@@ -821,7 +1061,7 @@ export default function SchedulePage() {
               {t('schedule_retry')}
             </Button>
           </div>
-        ) : !groupedAppointments.length ? (
+        ) : viewMode === 'list' && !groupedAppointments.length ? (
           <p className="text-sm text-slate-500">{t('schedule_empty')}</p>
         ) : viewMode === 'list' ? (
           groupedAppointments.map((group) => (
@@ -901,6 +1141,180 @@ export default function SchedulePage() {
           </div>
         )}
       </Card>
+
+      {isSurgeonUser ? (
+        <Card className="space-y-5">
+          <div>
+            <p className="text-base font-semibold text-night">{t('schedule_doctor_availability_title')}</p>
+            <p className="mt-1 text-sm text-slate-500">{t('schedule_doctor_availability_subtitle')}</p>
+          </div>
+
+          <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50/60 p-3">
+            {weekDayLabels.map((day) => {
+              const row =
+                availabilityRows.find((item) => item.day_of_week === day.value) ||
+                {
+                  day_of_week: day.value,
+                  is_active: false,
+                  start_time: '09:00',
+                  end_time: '18:00',
+                }
+
+              return (
+                <div
+                  key={day.value}
+                  className="grid items-center gap-2 rounded-lg border border-slate-200 bg-white p-2 md:grid-cols-[180px_1fr_1fr]"
+                >
+                  <label className="inline-flex items-center gap-2 text-sm font-medium text-night">
+                    <input
+                      type="checkbox"
+                      checked={row.is_active}
+                      onChange={(event) =>
+                        updateAvailabilityRow(day.value, (current) => ({
+                          ...current,
+                          is_active: event.target.checked,
+                        }))
+                      }
+                    />
+                    {day.label}
+                  </label>
+                  <Input
+                    type="time"
+                    value={row.start_time}
+                    disabled={!row.is_active}
+                    onChange={(event) =>
+                      updateAvailabilityRow(day.value, (current) => ({
+                        ...current,
+                        start_time: event.target.value,
+                      }))
+                    }
+                  />
+                  <Input
+                    type="time"
+                    value={row.end_time}
+                    disabled={!row.is_active}
+                    onChange={(event) =>
+                      updateAvailabilityRow(day.value, (current) => ({
+                        ...current,
+                        end_time: event.target.value,
+                      }))
+                    }
+                  />
+                </div>
+              )
+            })}
+
+            {isLoadingWeeklyAvailability ? (
+              <p className="text-xs text-slate-500">{t('schedule_loading_availability')}</p>
+            ) : null}
+          </div>
+
+          <div className="flex justify-end">
+            <Button
+              onClick={handleSaveDoctorAvailability}
+              disabled={saveAvailabilityMutation.isPending}
+            >
+              {saveAvailabilityMutation.isPending
+                ? t('schedule_saving')
+                : t('schedule_doctor_availability_save_button')}
+            </Button>
+          </div>
+
+          <div className="space-y-3 rounded-xl border border-slate-200 bg-white p-4">
+            <div>
+              <p className="text-sm font-semibold text-night">{t('schedule_blocked_periods_title')}</p>
+              <p className="mt-1 text-xs text-slate-500">{t('schedule_blocked_periods_subtitle')}</p>
+            </div>
+
+            <div className="grid gap-2 md:grid-cols-2">
+              <div>
+                <p className="mb-1 text-xs font-semibold text-slate-600">{t('schedule_blocked_period_start')}</p>
+                <Input
+                  type="datetime-local"
+                  value={blockedPeriodForm.start_datetime}
+                  onChange={(event) =>
+                    setBlockedPeriodForm((prev) => ({
+                      ...prev,
+                      start_datetime: event.target.value,
+                    }))
+                  }
+                />
+              </div>
+              <div>
+                <p className="mb-1 text-xs font-semibold text-slate-600">{t('schedule_blocked_period_end')}</p>
+                <Input
+                  type="datetime-local"
+                  value={blockedPeriodForm.end_datetime}
+                  onChange={(event) =>
+                    setBlockedPeriodForm((prev) => ({
+                      ...prev,
+                      end_datetime: event.target.value,
+                    }))
+                  }
+                />
+              </div>
+            </div>
+
+            <div>
+              <p className="mb-1 text-xs font-semibold text-slate-600">{t('schedule_blocked_period_reason')}</p>
+              <TextArea
+                rows={2}
+                value={blockedPeriodForm.reason}
+                onChange={(event) =>
+                  setBlockedPeriodForm((prev) => ({
+                    ...prev,
+                    reason: event.target.value,
+                  }))
+                }
+                placeholder={t('schedule_blocked_period_reason_placeholder')}
+              />
+            </div>
+
+            <div className="flex justify-end">
+              <Button
+                variant="secondary"
+                onClick={handleCreateBlockedPeriod}
+                disabled={createBlockedPeriodMutation.isPending}
+              >
+                {createBlockedPeriodMutation.isPending
+                  ? t('schedule_saving')
+                  : t('schedule_blocked_period_add_button')}
+              </Button>
+            </div>
+
+            <div className="space-y-2">
+              {isLoadingBlockedPeriods ? (
+                <p className="text-sm text-slate-500">{t('schedule_loading')}</p>
+              ) : blockedPeriods.length ? (
+                blockedPeriods.map((item: BlockedPeriodItem) => (
+                  <div
+                    key={item.id}
+                    className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2"
+                  >
+                    <div>
+                      <p className="text-sm font-semibold text-night">{item.reason}</p>
+                      <p className="text-xs text-slate-600">
+                        {toDateTimeLocalValue(item.start_datetime).replace('T', ' ')} -{' '}
+                        {toDateTimeLocalValue(item.end_datetime).replace('T', ' ')}
+                      </p>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="danger"
+                      onClick={() => deleteBlockedPeriodMutation.mutate(item.id)}
+                      disabled={deleteBlockedPeriodMutation.isPending}
+                    >
+                      {t('schedule_blocked_period_remove_button')}
+                    </Button>
+                  </div>
+                ))
+              ) : (
+                <p className="text-sm text-slate-500">{t('schedule_blocked_period_empty')}</p>
+              )}
+            </div>
+          </div>
+        </Card>
+      ) : null}
 
       <Modal
         isOpen={isModalOpen}
@@ -1094,6 +1508,7 @@ export default function SchedulePage() {
               <p className="mb-1 text-xs font-semibold text-slate-600">{t('schedule_field_patient')}</p>
               <Select
                 value={editForm.patient}
+                disabled={!canManageAppointments}
                 onChange={(event) => setEditForm((prev) => (prev ? { ...prev, patient: event.target.value } : prev))}
               >
                 <option value="">{t('schedule_select_patient')}</option>
@@ -1109,6 +1524,7 @@ export default function SchedulePage() {
               <p className="mb-1 text-xs font-semibold text-slate-600">{t('schedule_field_professional')}</p>
               <Select
                 value={editForm.professional}
+                disabled={!canManageAppointments}
                 onChange={(event) =>
                   setEditForm((prev) => (prev ? { ...prev, professional: event.target.value } : prev))
                 }
@@ -1135,6 +1551,8 @@ export default function SchedulePage() {
                 <p className="mb-1 text-xs font-semibold text-slate-600">{t('schedule_field_date')}</p>
                 <Input
                   type="date"
+                  readOnly={!canManageAppointments}
+                  disabled={!canManageAppointments}
                   value={editForm.appointment_date}
                   onChange={(event) =>
                     setEditForm((prev) => (prev ? { ...prev, appointment_date: event.target.value } : prev))
@@ -1145,6 +1563,8 @@ export default function SchedulePage() {
                 <p className="mb-1 text-xs font-semibold text-slate-600">{t('schedule_field_time')}</p>
                 <Input
                   type="time"
+                  readOnly={!canManageAppointments}
+                  disabled={!canManageAppointments}
                   value={editForm.appointment_time}
                   onChange={(event) =>
                     setEditForm((prev) => (prev ? { ...prev, appointment_time: event.target.value } : prev))
@@ -1158,6 +1578,7 @@ export default function SchedulePage() {
                 <p className="mb-1 text-xs font-semibold text-slate-600">{t('schedule_field_type')}</p>
                 <Select
                   value={editForm.appointment_type}
+                  disabled={!canManageAppointments}
                   onChange={(event) =>
                     setEditForm((prev) =>
                       prev ? { ...prev, appointment_type: normalizeAppointmentType(event.target.value) } : prev,
@@ -1176,6 +1597,7 @@ export default function SchedulePage() {
                 <p className="mb-1 text-xs font-semibold text-slate-600">{t('schedule_field_status')}</p>
                 <Select
                   value={editForm.status}
+                  disabled={!canManageAppointments}
                   onChange={(event) =>
                     setEditForm((prev) => (prev ? { ...prev, status: event.target.value } : prev))
                   }
@@ -1192,6 +1614,8 @@ export default function SchedulePage() {
             <div>
               <p className="mb-1 text-xs font-semibold text-slate-600">{t('schedule_field_location')}</p>
               <Input
+                readOnly={!canManageAppointments}
+                disabled={!canManageAppointments}
                 value={editForm.clinic_location}
                 onChange={(event) =>
                   setEditForm((prev) => (prev ? { ...prev, clinic_location: event.target.value } : prev))
@@ -1206,6 +1630,8 @@ export default function SchedulePage() {
                 type="number"
                 min={15}
                 step={5}
+                readOnly={!canManageAppointments}
+                disabled={!canManageAppointments}
                 value={String(editForm.duration_minutes || 60)}
                 onChange={(event) =>
                   setEditForm((prev) =>
@@ -1224,6 +1650,8 @@ export default function SchedulePage() {
               <p className="mb-1 text-xs font-semibold text-slate-600">{t('schedule_field_notes')}</p>
               <TextArea
                 rows={3}
+                readOnly={!canManageAppointments}
+                disabled={!canManageAppointments}
                 value={editForm.notes}
                 onChange={(event) =>
                   setEditForm((prev) => (prev ? { ...prev, notes: event.target.value } : prev))
@@ -1233,7 +1661,7 @@ export default function SchedulePage() {
             </div>
 
             <div className="mt-2 flex justify-end gap-2">
-              {selectedAppointment.status !== 'cancelled' ? (
+              {canManageAppointments && selectedAppointment.status !== 'cancelled' ? (
                 <Button
                   variant="danger"
                   onClick={() => openCancelModal(selectedAppointment)}
@@ -1245,9 +1673,11 @@ export default function SchedulePage() {
               <Button variant="secondary" onClick={closeDetailsModal}>
                 {t('schedule_cancel')}
               </Button>
-              <Button onClick={handleSaveDetails} disabled={updateMutation.isPending}>
-                {updateMutation.isPending ? t('schedule_saving') : t('schedule_save_changes')}
-              </Button>
+              {canManageAppointments ? (
+                <Button onClick={handleSaveDetails} disabled={updateMutation.isPending}>
+                  {updateMutation.isPending ? t('schedule_saving') : t('schedule_save_changes')}
+                </Button>
+              ) : null}
             </div>
           </div>
         ) : null}
