@@ -16,7 +16,6 @@ import '../../patients/domain/patient_models.dart';
 import '../../patients/presentation/patients_controller.dart';
 
 enum PreOperatoryFilterChip {
-  pending,
   inReview,
   approved,
   rejected,
@@ -25,8 +24,6 @@ enum PreOperatoryFilterChip {
 extension on PreOperatoryFilterChip {
   PreOperatoryStatus get status {
     switch (this) {
-      case PreOperatoryFilterChip.pending:
-        return PreOperatoryStatus.pending;
       case PreOperatoryFilterChip.inReview:
         return PreOperatoryStatus.inReview;
       case PreOperatoryFilterChip.approved:
@@ -45,7 +42,7 @@ class PreOperatoryScreen extends ConsumerStatefulWidget {
 }
 
 class _PreOperatoryScreenState extends ConsumerState<PreOperatoryScreen> {
-  PreOperatoryFilterChip _filter = PreOperatoryFilterChip.pending;
+  PreOperatoryFilterChip _filter = PreOperatoryFilterChip.inReview;
   bool _detailsSheetOpen = false;
 
   @override
@@ -76,8 +73,6 @@ class _PreOperatoryScreenState extends ConsumerState<PreOperatoryScreen> {
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 12),
               children: [
-                _chip(
-                    t('preop_filter_pending'), PreOperatoryFilterChip.pending),
                 _chip(
                   t('preop_filter_in_review'),
                   PreOperatoryFilterChip.inReview,
@@ -342,7 +337,9 @@ class _PreOperatoryScreenState extends ConsumerState<PreOperatoryScreen> {
                               if (record.photos.isNotEmpty) ...[
                                 Text(
                                   t('preop_photos_sent'),
-                                  style: TextStyle(fontWeight: FontWeight.w700),
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                  ),
                                 ),
                                 const SizedBox(height: 8),
                                 SizedBox(
@@ -579,26 +576,26 @@ class _PreOperatoryScreenState extends ConsumerState<PreOperatoryScreen> {
       case PreOperatoryStatus.pending:
         return _StatusVisual(
           label: t('preop_status_pending'),
-          background: Color(0xFFE2E8F0),
-          foreground: Color(0xFF334155),
+          background: const Color(0xFFE2E8F0),
+          foreground: const Color(0xFF334155),
         );
       case PreOperatoryStatus.inReview:
         return _StatusVisual(
           label: t('preop_status_in_review'),
-          background: Color(0xFFFFF3CD),
-          foreground: Color(0xFFB45309),
+          background: const Color(0xFFFFF3CD),
+          foreground: const Color(0xFFB45309),
         );
       case PreOperatoryStatus.approved:
         return _StatusVisual(
           label: t('preop_status_approved'),
-          background: Color(0xFFDCFCE7),
-          foreground: Color(0xFF166534),
+          background: const Color(0xFFDCFCE7),
+          foreground: const Color(0xFF166534),
         );
       case PreOperatoryStatus.rejected:
         return _StatusVisual(
           label: t('preop_status_rejected'),
-          background: Color(0xFFFEE2E2),
-          foreground: Color(0xFFB91C1C),
+          background: const Color(0xFFFEE2E2),
+          foreground: const Color(0xFFB91C1C),
         );
     }
   }

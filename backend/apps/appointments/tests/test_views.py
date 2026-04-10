@@ -770,6 +770,72 @@ class AppointmentViewsTestCase(APITestCase):
         self.assertIn(str(own_appointment.id), ids)
         self.assertEqual(len(ids), 1)
 
+    def test_surgeon_list_excludes_appointments_of_patients_reassigned_to_other_doctor(self):
+        reassigned_patient = Patient.objects.create_user(
+            email="patient-reassigned@app.com",
+            password="pass12345",
+            tenant=self.tenant,
+            role=GoKlinikUser.RoleChoices.PATIENT,
+            first_name="Pat",
+            last_name="Reassigned",
+        )
+
+        DoctorPatientAssignment.objects.create(
+            patient=reassigned_patient,
+            doctor=self.surgeon_2,
+            assigned_by=self.master,
+        )
+
+        hidden_appointment = Appointment.objects.create(
+            tenant=self.tenant,
+            patient=reassigned_patient,
+            professional=self.surgeon,
+            specialty=self.specialty,
+            appointment_date=timezone.localdate() + timedelta(days=2),
+            appointment_time=timezone.localtime().time().replace(
+                hour=15,
+                minute=0,
+                second=0,
+                microsecond=0,
+            ),
+            status=Appointment.StatusChoices.PENDING,
+            appointment_type=Appointment.AppointmentTypeChoices.FIRST_VISIT,
+            created_by=self.master,
+        )
+
+        DoctorPatientAssignment.objects.update_or_create(
+            patient=self.patient,
+            defaults={
+                "doctor": self.surgeon,
+                "assigned_by": self.master,
+            },
+        )
+        visible_appointment = Appointment.objects.create(
+            tenant=self.tenant,
+            patient=self.patient,
+            professional=self.surgeon,
+            specialty=self.specialty,
+            appointment_date=timezone.localdate() + timedelta(days=1),
+            appointment_time=timezone.localtime().time().replace(
+                hour=9,
+                minute=0,
+                second=0,
+                microsecond=0,
+            ),
+            status=Appointment.StatusChoices.PENDING,
+            appointment_type=Appointment.AppointmentTypeChoices.FIRST_VISIT,
+            created_by=self.master,
+        )
+
+        self.client.force_authenticate(self.surgeon)
+        response = self.client.get(reverse("appointments-list"))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        results = response.data.get("results", response.data)
+        ids = {str(item["id"]) for item in results}
+
+        self.assertIn(str(visible_appointment.id), ids)
+        self.assertNotIn(str(hidden_appointment.id), ids)
+
     def test_surgeon_cannot_create_appointment(self):
         self.client.force_authenticate(self.surgeon)
         url = reverse("appointments-list")

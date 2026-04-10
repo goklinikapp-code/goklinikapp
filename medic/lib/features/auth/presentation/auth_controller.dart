@@ -7,7 +7,7 @@ import '../data/auth_repository_impl.dart';
 import '../domain/auth_session.dart';
 import '../domain/auth_user.dart';
 
-const _allowedProfessionalRoles = {'surgeon', 'nurse', 'clinic_master'};
+const _allowedMedicRoles = {'surgeon'};
 
 class AuthViewState {
   const AuthViewState({
@@ -58,6 +58,8 @@ class AuthController extends StateNotifier<AuthViewState> {
   final Ref _ref;
 
   AuthStorage get _storage => _ref.read(authStorageProvider);
+  bool _isRoleAllowed(String role) =>
+      _allowedMedicRoles.contains(role.trim().toLowerCase());
 
   Future<void> init() async {
     List<dynamic> results;
@@ -97,6 +99,11 @@ class AuthController extends StateNotifier<AuthViewState> {
       }
     }
 
+    if (session != null && !_isRoleAllowed(session.user.role)) {
+      await _storage.clearSession();
+      session = null;
+    }
+
     state = state.copyWith(
       initialized: true,
       onboardingCompleted: onboardingDone,
@@ -131,13 +138,13 @@ class AuthController extends StateNotifier<AuthViewState> {
         return false;
       }
 
-      if (!_allowedProfessionalRoles.contains(session.user.role)) {
+      if (!_isRoleAllowed(session.user.role)) {
         await _storage.clearSession();
         state = state.copyWith(
           loading: false,
           clearSession: true,
           errorMessage:
-              'Acesso nao autorizado. Este aplicativo e exclusivo para profissionais da clinica.',
+              'Acesso nao autorizado. Este aplicativo e exclusivo para medicos.',
         );
         return false;
       }
@@ -187,6 +194,16 @@ class AuthController extends StateNotifier<AuthViewState> {
         );
         return false;
       }
+      if (!_isRoleAllowed(session.user.role)) {
+        await _storage.clearSession();
+        state = state.copyWith(
+          loading: false,
+          clearSession: true,
+          errorMessage:
+              'Acesso nao autorizado. Este aplicativo e exclusivo para medicos.',
+        );
+        return false;
+      }
       await _storage.saveTokens(
         accessToken: session.accessToken,
         refreshToken: session.refreshToken,
@@ -231,6 +248,12 @@ class AuthController extends StateNotifier<AuthViewState> {
   }
 
   Future<void> updateCurrentUser(AuthUser user) async {
+    if (!_isRoleAllowed(user.role)) {
+      await _storage.clearSession();
+      state = state.copyWith(clearSession: true, clearError: true);
+      return;
+    }
+
     final currentSession = state.session;
     if (currentSession == null) return;
 

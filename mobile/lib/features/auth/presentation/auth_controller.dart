@@ -7,6 +7,8 @@ import '../data/auth_repository_impl.dart';
 import '../domain/auth_session.dart';
 import '../domain/auth_user.dart';
 
+const _patientRole = 'patient';
+
 class AuthViewState {
   const AuthViewState({
     required this.initialized,
@@ -56,28 +58,49 @@ class AuthController extends StateNotifier<AuthViewState> {
   final Ref _ref;
 
   AuthStorage get _storage => _ref.read(authStorageProvider);
+  bool _isRoleAllowed(String role) => role.trim().toLowerCase() == _patientRole;
 
   Future<void> init() async {
-    final results = await Future.wait<dynamic>([
-      _storage.isOnboardingCompleted(),
-      _storage.readAccessToken(),
-      _storage.readRefreshToken(),
-      _storage.readUserJson(),
-    ]);
+    List<dynamic> results;
+    try {
+      results = await Future.wait<dynamic>([
+        _storage.isOnboardingCompleted(),
+        _storage.readAccessToken(),
+        _storage.readRefreshToken(),
+        _storage.readUserJson(),
+      ]);
+    } catch (_) {
+      state = state.copyWith(
+        initialized: true,
+        onboardingCompleted: false,
+        clearSession: true,
+        clearError: true,
+      );
+      return;
+    }
 
-    final onboardingDone = results[0] as bool;
+    final onboardingDone = (results[0] as bool?) ?? false;
     final access = results[1] as String?;
     final refresh = results[2] as String?;
     final userJson = results[3] as String?;
 
     AuthSession? session;
     if (access != null && refresh != null && userJson != null) {
-      final userMap = jsonDecode(userJson) as Map<String, dynamic>;
-      session = AuthSession.fromJson({
-        'access_token': access,
-        'refresh_token': refresh,
-        'user': userMap,
-      });
+      try {
+        final userMap = jsonDecode(userJson) as Map<String, dynamic>;
+        session = AuthSession.fromJson({
+          'access_token': access,
+          'refresh_token': refresh,
+          'user': userMap,
+        });
+      } catch (_) {
+        session = null;
+      }
+    }
+
+    if (session != null && !_isRoleAllowed(session.user.role)) {
+      await _storage.clearSession();
+      session = null;
     }
 
     state = state.copyWith(
@@ -110,6 +133,16 @@ class AuthController extends StateNotifier<AuthViewState> {
         state = state.copyWith(
           loading: false,
           errorMessage: 'Resposta de login inválida. Verifique as credenciais.',
+        );
+        return false;
+      }
+      if (!_isRoleAllowed(session.user.role)) {
+        await _storage.clearSession();
+        state = state.copyWith(
+          loading: false,
+          clearSession: true,
+          errorMessage:
+              'Acesso nao autorizado. Este aplicativo e exclusivo para pacientes.',
         );
         return false;
       }
@@ -156,6 +189,16 @@ class AuthController extends StateNotifier<AuthViewState> {
         );
         return false;
       }
+      if (!_isRoleAllowed(session.user.role)) {
+        await _storage.clearSession();
+        state = state.copyWith(
+          loading: false,
+          clearSession: true,
+          errorMessage:
+              'Acesso nao autorizado. Este aplicativo e exclusivo para pacientes.',
+        );
+        return false;
+      }
       await _storage.saveTokens(
         accessToken: session.accessToken,
         refreshToken: session.refreshToken,
@@ -199,6 +242,12 @@ class AuthController extends StateNotifier<AuthViewState> {
   }
 
   Future<void> updateCurrentUser(AuthUser user) async {
+    if (!_isRoleAllowed(user.role)) {
+      await _storage.clearSession();
+      state = state.copyWith(clearSession: true, clearError: true);
+      return;
+    }
+
     final currentSession = state.session;
     if (currentSession == null) return;
 

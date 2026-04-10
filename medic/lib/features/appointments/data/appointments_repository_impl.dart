@@ -60,11 +60,90 @@ class AppointmentsRepositoryImpl implements AppointmentsRepository {
       return parsed;
     }
 
+    Set<String> assignedPatientIds;
+    try {
+      assignedPatientIds = await _loadAssignedPatientIds(
+        professionalId: professionalId,
+      );
+    } catch (_) {
+      return const <AppointmentItem>[];
+    }
+    if (assignedPatientIds.isEmpty) {
+      return const <AppointmentItem>[];
+    }
+
     // Defensive client-side guard to avoid cross-professional leakage when
     // backend caches/proxies return broader datasets.
     return parsed
         .where((item) => item.professionalId == professionalId)
+        .where((item) => assignedPatientIds.contains(item.patientId))
         .toList();
+  }
+
+  Future<Set<String>> _loadAssignedPatientIds({
+    String? professionalId,
+  }) async {
+    final ids = <String>{};
+    final queryParameters =
+        (professionalId != null && professionalId.isNotEmpty)
+            ? {
+                'professional_id': professionalId,
+                'professional': professionalId,
+              }
+            : null;
+
+    Response<dynamic> response = await _dio.get<dynamic>(
+      ApiEndpoints.patientsMyPatients,
+      queryParameters: queryParameters,
+    );
+
+    dynamic data = response.data;
+    if (data is List<dynamic>) {
+      for (final item in data.whereType<Map<String, dynamic>>()) {
+        final patientId = (item['id'] ?? '').toString().trim();
+        if (patientId.isNotEmpty) {
+          ids.add(patientId);
+        }
+      }
+      return ids;
+    }
+
+    if (data is! Map) {
+      return ids;
+    }
+
+    final results = data['results'];
+    if (results is List<dynamic>) {
+      for (final item in results.whereType<Map<String, dynamic>>()) {
+        final patientId = (item['id'] ?? '').toString().trim();
+        if (patientId.isNotEmpty) {
+          ids.add(patientId);
+        }
+      }
+    }
+
+    var next = (data['next'] ?? '').toString().trim();
+    var guard = 0;
+    while (next.isNotEmpty && guard < 20) {
+      final nextResponse = await _dio.get<dynamic>(next);
+      final nextData = nextResponse.data;
+      if (nextData is! Map) break;
+
+      final nextResults = nextData['results'];
+      if (nextResults is List<dynamic>) {
+        for (final item in nextResults.whereType<Map<String, dynamic>>()) {
+          final patientId = (item['id'] ?? '').toString().trim();
+          if (patientId.isNotEmpty) {
+            ids.add(patientId);
+          }
+        }
+      }
+
+      next = (nextData['next'] ?? '').toString().trim();
+      guard += 1;
+    }
+
+    return ids;
   }
 
   @override

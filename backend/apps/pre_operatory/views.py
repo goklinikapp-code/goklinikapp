@@ -236,7 +236,21 @@ class PreOperatoryCreateAPIView(APIView):
                 Q(assigned_doctor_id=user.id)
                 | Q(patient_id__in=assigned_patient_ids)
             ).distinct()
-        if status_filter:
+
+            surgeon_visible_statuses = {
+                PreOperatory.StatusChoices.IN_REVIEW,
+                PreOperatory.StatusChoices.APPROVED,
+                PreOperatory.StatusChoices.REJECTED,
+            }
+            queryset = queryset.filter(status__in=surgeon_visible_statuses)
+            if status_filter:
+                if status_filter in surgeon_visible_statuses:
+                    queryset = queryset.filter(status=status_filter)
+                else:
+                    queryset = queryset.none()
+            else:
+                queryset = queryset.filter(status=PreOperatory.StatusChoices.IN_REVIEW)
+        elif status_filter:
             queryset = queryset.filter(status=status_filter)
         else:
             queryset = queryset.filter(
@@ -615,6 +629,12 @@ class PreOperatoryDetailAPIView(APIView):
                     pre_operatory.assigned_doctor_id or ""
                 ):
                     changed_fields.append("assigned_doctor")
+                if (
+                    pre_operatory.assigned_doctor_id
+                    and pre_operatory.status == PreOperatory.StatusChoices.PENDING
+                ):
+                    pre_operatory.status = PreOperatory.StatusChoices.IN_REVIEW
+                    changed_fields.append("status")
 
             pre_operatory.save()
 

@@ -180,6 +180,104 @@ class PreOperatoryAdminViewsTestCase(APITestCase):
         self.assertEqual(str(assignment.doctor_id), str(self.surgeon.id))
         self.assertEqual(str(assignment.assigned_by_id), str(self.clinic_master.id))
 
+    def test_assigning_doctor_moves_pending_pre_operatory_to_in_review(self):
+        self.client.force_authenticate(self.clinic_master)
+
+        response = self.client.put(
+            reverse("api-pre-operatory-detail", kwargs={"pre_operatory_id": self.pre_operatory.id}),
+            {
+                "assigned_doctor": str(self.surgeon.id),
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.pre_operatory.refresh_from_db()
+        self.assertEqual(self.pre_operatory.status, PreOperatory.StatusChoices.IN_REVIEW)
+        self.assertEqual(str(self.pre_operatory.assigned_doctor_id), str(self.surgeon.id))
+
+    def test_surgeon_list_only_returns_pre_operatory_in_review(self):
+        self.pre_operatory.assigned_doctor = self.surgeon
+        self.pre_operatory.status = PreOperatory.StatusChoices.PENDING
+        self.pre_operatory.save(update_fields=["assigned_doctor", "status"])
+
+        in_review_patient = Patient.objects.create_user(
+            email="in-review@clinic.com",
+            password="pass12345",
+            tenant=self.tenant,
+            role=GoKlinikUser.RoleChoices.PATIENT,
+            first_name="In",
+            last_name="Review",
+        )
+        in_review_record = PreOperatory.objects.create(
+            patient=in_review_patient,
+            tenant=self.tenant,
+            status=PreOperatory.StatusChoices.IN_REVIEW,
+            assigned_doctor=self.surgeon,
+        )
+
+        self.client.force_authenticate(self.surgeon)
+        response = self.client.get(reverse("api-pre-operatory"))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        ids = {item["id"] for item in response.data}
+        self.assertIn(str(in_review_record.id), ids)
+        self.assertNotIn(str(self.pre_operatory.id), ids)
+
+    def test_surgeon_can_filter_approved_and_rejected(self):
+        self.pre_operatory.assigned_doctor = self.surgeon
+        self.pre_operatory.status = PreOperatory.StatusChoices.APPROVED
+        self.pre_operatory.save(update_fields=["assigned_doctor", "status"])
+
+        rejected_patient = Patient.objects.create_user(
+            email="rejected-filter@clinic.com",
+            password="pass12345",
+            tenant=self.tenant,
+            role=GoKlinikUser.RoleChoices.PATIENT,
+            first_name="Rejected",
+            last_name="Filter",
+        )
+        rejected_record = PreOperatory.objects.create(
+            patient=rejected_patient,
+            tenant=self.tenant,
+            status=PreOperatory.StatusChoices.REJECTED,
+            assigned_doctor=self.surgeon,
+        )
+
+        self.client.force_authenticate(self.surgeon)
+
+        approved_response = self.client.get(
+            reverse("api-pre-operatory"),
+            {"status": PreOperatory.StatusChoices.APPROVED},
+        )
+        self.assertEqual(approved_response.status_code, status.HTTP_200_OK)
+        approved_ids = {item["id"] for item in approved_response.data}
+        self.assertIn(str(self.pre_operatory.id), approved_ids)
+        self.assertNotIn(str(rejected_record.id), approved_ids)
+
+        rejected_response = self.client.get(
+            reverse("api-pre-operatory"),
+            {"status": PreOperatory.StatusChoices.REJECTED},
+        )
+        self.assertEqual(rejected_response.status_code, status.HTTP_200_OK)
+        rejected_ids = {item["id"] for item in rejected_response.data}
+        self.assertIn(str(rejected_record.id), rejected_ids)
+        self.assertNotIn(str(self.pre_operatory.id), rejected_ids)
+
+    def test_surgeon_filter_pending_returns_empty(self):
+        self.pre_operatory.assigned_doctor = self.surgeon
+        self.pre_operatory.status = PreOperatory.StatusChoices.PENDING
+        self.pre_operatory.save(update_fields=["assigned_doctor", "status"])
+
+        self.client.force_authenticate(self.surgeon)
+        response = self.client.get(
+            reverse("api-pre-operatory"),
+            {"status": PreOperatory.StatusChoices.PENDING},
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data, [])
+
     def test_patient_cannot_update_status(self):
         self.client.force_authenticate(self.patient)
 
@@ -241,7 +339,8 @@ class PreOperatoryAdminViewsTestCase(APITestCase):
 
     def test_assigned_doctor_can_list_pre_operatory_without_doctor_assignment_row(self):
         self.pre_operatory.assigned_doctor = self.surgeon
-        self.pre_operatory.save(update_fields=["assigned_doctor"])
+        self.pre_operatory.status = PreOperatory.StatusChoices.IN_REVIEW
+        self.pre_operatory.save(update_fields=["assigned_doctor", "status"])
 
         self.client.force_authenticate(self.surgeon)
         response = self.client.get(reverse("api-pre-operatory"))

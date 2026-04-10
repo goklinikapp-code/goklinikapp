@@ -102,10 +102,16 @@ class AppointmentViewSet(viewsets.ModelViewSet):
         date_from = self.request.query_params.get("date_from")
         date_to = self.request.query_params.get("date_to")
 
-        # Surgeons should only see their own appointments in the mobile app,
-        # regardless of the query params provided by the client.
+        # Surgeons should only see appointments that are both:
+        # 1) owned by them on the appointment record, and
+        # 2) currently assigned to them in doctor-patient assignment.
+        # This prevents stale appointments from appearing after a patient
+        # is reassigned to another doctor.
         if user.role == GoKlinikUser.RoleChoices.SURGEON:
-            queryset = queryset.filter(professional_id=user.id)
+            queryset = queryset.filter(
+                professional_id=user.id,
+                patient__doctor_assignment__doctor_id=user.id,
+            )
         elif professional:
             queryset = queryset.filter(professional_id=professional)
         if status_filter:

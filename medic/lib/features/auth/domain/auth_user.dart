@@ -55,7 +55,7 @@ class AuthUser {
       id: (json['id'] ?? '').toString(),
       email: (json['email'] ?? '').toString(),
       fullName: fullName,
-      role: (json['role'] ?? 'patient').toString(),
+      role: (json['role'] ?? '').toString(),
       phone: (json['phone'] ?? '').toString(),
       avatarUrl: resolveApiMediaUrl((json['avatar_url'] ?? '').toString()),
       crmNumber: (json['crm_number'] ?? '').toString(),
