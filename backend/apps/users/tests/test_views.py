@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timedelta
 from io import BytesIO
 from unittest.mock import patch
 
@@ -7,6 +8,7 @@ from django.core import mail
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import override_settings
 from django.urls import reverse
+from django.utils import timezone
 from PIL import Image
 from rest_framework import status
 from rest_framework.test import APITestCase
@@ -357,3 +359,68 @@ class CurrentUserAvatarUploadAPIViewTestCase(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertEqual(response.data["detail"], "Invalid file type.")
         upload_file_mock.assert_not_called()
+
+
+class PatientLoginTrackingTestCase(APITestCase):
+    def setUp(self):
+        self.tenant = Tenant.objects.create(name="Login Tenant", slug="login-tenant")
+        self.patient = Patient.objects.create_user(
+            email="patient@login.com",
+            password="pass12345",
+            tenant=self.tenant,
+            role=GoKlinikUser.RoleChoices.PATIENT,
+            first_name="Patient",
+            last_name="Login",
+        )
+        self.clinic_master = GoKlinikUser.objects.create_user(
+            email="master@login.com",
+            password="pass12345",
+            tenant=self.tenant,
+            role=GoKlinikUser.RoleChoices.CLINIC_MASTER,
+            first_name="Master",
+            last_name="Login",
+        )
+
+    @patch("apps.users.serializers.supabase_sign_in", return_value=True)
+    @patch("apps.users.views.timezone.now")
+    def test_patient_login_sets_install_date_and_updates_last_login(
+        self,
+        timezone_now_mock,
+        _supabase_sign_in_mock,
+    ):
+        first_login = timezone.make_aware(datetime(2026, 1, 10, 10, 0, 0))
+        second_login = first_login + timedelta(hours=2)
+        timezone_now_mock.side_effect = [first_login, second_login]
+
+        first_response = self.client.post(
+            reverse("auth-login"),
+            {"email": self.patient.email, "password": "pass12345"},
+            format="json",
+        )
+        self.assertEqual(first_response.status_code, status.HTTP_200_OK)
+        self.patient.refresh_from_db()
+        self.assertEqual(self.patient.app_installed_at, first_login)
+        self.assertEqual(self.patient.last_app_login_at, first_login)
+
+        second_response = self.client.post(
+            reverse("auth-login"),
+            {"email": self.patient.email, "password": "pass12345"},
+            format="json",
+        )
+        self.assertEqual(second_response.status_code, status.HTTP_200_OK)
+        self.patient.refresh_from_db()
+        self.assertEqual(self.patient.app_installed_at, first_login)
+        self.assertEqual(self.patient.last_app_login_at, second_login)
+
+    @patch("apps.users.serializers.supabase_sign_in", return_value=True)
+    def test_non_patient_login_does_not_populate_app_tracking_fields(self, _supabase_sign_in_mock):
+        response = self.client.post(
+            reverse("auth-login"),
+            {"email": self.clinic_master.email, "password": "pass12345"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        self.clinic_master.refresh_from_db()
+        self.assertIsNone(self.clinic_master.app_installed_at)
+        self.assertIsNone(self.clinic_master.last_app_login_at)

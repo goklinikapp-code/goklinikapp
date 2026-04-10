@@ -3,6 +3,7 @@ from __future__ import annotations
 from rest_framework import serializers
 
 from config.media_urls import AbsoluteMediaUrlsSerializerMixin
+from apps.tenants.models import TenantSpecialty
 
 from .models import PreOperatory, PreOperatoryFile
 
@@ -48,6 +49,17 @@ class PreOperatorySerializer(AbsoluteMediaUrlsSerializerMixin, serializers.Model
         read_only=True,
         allow_null=True,
     )
+    procedure_name = serializers.CharField(
+        source="procedure.specialty_name",
+        read_only=True,
+        allow_null=True,
+    )
+    procedure_description = serializers.CharField(
+        source="procedure.description",
+        read_only=True,
+        allow_blank=True,
+        allow_null=True,
+    )
 
     class Meta:
         model = PreOperatory
@@ -68,6 +80,9 @@ class PreOperatorySerializer(AbsoluteMediaUrlsSerializerMixin, serializers.Model
             "height",
             "weight",
             "notes",
+            "procedure",
+            "procedure_name",
+            "procedure_description",
             "assigned_doctor",
             "assigned_doctor_name",
             "status",
@@ -117,6 +132,11 @@ class PreOperatorySerializer(AbsoluteMediaUrlsSerializerMixin, serializers.Model
 class PreOperatoryWriteSerializer(serializers.ModelSerializer):
     height = LenientFloatField(required=False, allow_null=True)
     weight = LenientFloatField(required=False, allow_null=True)
+    procedure = serializers.PrimaryKeyRelatedField(
+        queryset=TenantSpecialty.objects.none(),
+        required=False,
+        allow_null=True,
+    )
     photos = serializers.ListField(
         child=serializers.FileField(),
         required=False,
@@ -139,8 +159,23 @@ class PreOperatoryWriteSerializer(serializers.ModelSerializer):
             "alcohol",
             "height",
             "weight",
+            "procedure",
             "photos",
             "documents",
+        )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        tenant_id = self.context.get("tenant_id")
+        queryset = TenantSpecialty.objects.none()
+        if tenant_id:
+            queryset = TenantSpecialty.objects.filter(
+                tenant_id=tenant_id,
+                is_active=True,
+            )
+        self.fields["procedure"].queryset = queryset.order_by(
+            "display_order",
+            "specialty_name",
         )
 
     def validate_allergies(self, value: str) -> str:
@@ -179,11 +214,15 @@ class PreOperatoryWriteSerializer(serializers.ModelSerializer):
                 errors["height"] = "Height is required."
             if attrs.get("weight") is None:
                 errors["weight"] = "Weight is required."
+            if attrs.get("procedure") is None:
+                errors["procedure"] = "Procedure selection is required."
         else:
             if "height" in attrs and attrs.get("height") is None:
                 errors["height"] = "Height is required."
             if "weight" in attrs and attrs.get("weight") is None:
                 errors["weight"] = "Weight is required."
+            if "procedure" in attrs and attrs.get("procedure") is None:
+                errors["procedure"] = "Procedure selection is required."
 
         if errors:
             raise serializers.ValidationError(errors)

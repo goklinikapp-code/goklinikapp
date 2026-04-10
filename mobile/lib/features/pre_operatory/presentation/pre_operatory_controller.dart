@@ -41,3 +41,8 @@ final preOperatoryControllerProvider = StateNotifierProvider<
     PreOperatoryController, AsyncValue<PreOperatoryRecord?>>((ref) {
   return PreOperatoryController(ref);
 });
+
+final preOperatoryProceduresProvider =
+    FutureProvider<List<PreOperatoryProcedureOption>>((ref) async {
+  return ref.read(preOperatoryRepositoryProvider).listClinicProcedures();
+});

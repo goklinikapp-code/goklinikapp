@@ -151,6 +151,15 @@ class LoginAPIView(APIView):
         serializer.is_valid(raise_exception=True)
         user = serializer.validated_data["user"]
 
+        if user.role == GoKlinikUser.RoleChoices.PATIENT:
+            now = timezone.now()
+            updated_fields = ["last_app_login_at"]
+            user.last_app_login_at = now
+            if user.app_installed_at is None:
+                user.app_installed_at = now
+                updated_fields.append("app_installed_at")
+            user.save(update_fields=updated_fields)
+
         refresh = RefreshToken.for_user(user)
         return Response(
             {

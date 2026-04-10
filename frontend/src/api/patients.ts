@@ -7,8 +7,30 @@ interface PaginatedResponse<T> {
   next?: string | null
 }
 
-export async function getPatients(): Promise<PatientRow[]> {
-  let nextPath: string | null = '/patients/'
+export interface PatientsFilters {
+  status?: string
+  app_status?: 'installed' | 'not_installed'
+}
+
+export interface PatientsImportResponse {
+  total_rows: number
+  imported: number
+  duplicates: number
+  errors: number
+  error_details: string[]
+}
+
+export async function getPatients(filters: PatientsFilters = {}): Promise<PatientRow[]> {
+  const queryParams = new URLSearchParams()
+  if (filters.status) {
+    queryParams.set('status', filters.status)
+  }
+  if (filters.app_status) {
+    queryParams.set('app_status', filters.app_status)
+  }
+
+  const queryString = queryParams.toString()
+  let nextPath: string | null = queryString ? `/patients/?${queryString}` : '/patients/'
   const rows: PatientRow[] = []
   let safety = 0
 
@@ -35,6 +57,18 @@ export async function getPatients(): Promise<PatientRow[]> {
   }
 
   return rows
+}
+
+export async function importPatients(file: File): Promise<PatientsImportResponse> {
+  const formData = new FormData()
+  formData.append('file', file)
+
+  const { data } = await apiClient.post<PatientsImportResponse>('/patients/import/', formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+  })
+  return data
 }
 
 interface CreatePatientPayload {

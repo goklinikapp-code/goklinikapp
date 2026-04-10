@@ -48,6 +48,7 @@ class MedicPatient {
     required this.rawStatus,
     required this.medicStatus,
     required this.specialtyName,
+    required this.preOperatoryProcedureName,
     required this.dateJoined,
     required this.dateOfBirth,
     required this.avatarUrl,
@@ -68,6 +69,7 @@ class MedicPatient {
   final String rawStatus;
   final MedicPatientStatus medicStatus;
   final String specialtyName;
+  final String preOperatoryProcedureName;
   final DateTime? dateJoined;
   final DateTime? dateOfBirth;
   final String avatarUrl;
@@ -113,6 +115,8 @@ class MedicPatient {
         preOperatoryStatus: preOperatoryStatus,
       ),
       specialtyName: (json['specialty_name'] ?? '').toString(),
+      preOperatoryProcedureName:
+          (json['pre_operatory_procedure_name'] ?? '').toString(),
       dateJoined: DateTime.tryParse((json['date_joined'] ?? '').toString()),
       dateOfBirth: DateTime.tryParse((json['date_of_birth'] ?? '').toString()),
       avatarUrl: resolveApiMediaUrl((json['avatar_url'] ?? '').toString()),

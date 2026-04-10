@@ -78,6 +78,8 @@ class GoKlinikUser(AbstractUser):
     crm_number = models.CharField(max_length=60, blank=True)
     years_experience = models.PositiveIntegerField(null=True, blank=True)
     is_visible_in_app = models.BooleanField(default=True)
+    app_installed_at = models.DateTimeField(null=True, blank=True)
+    last_app_login_at = models.DateTimeField(null=True, blank=True)
     access_permissions = models.JSONField(default=list, blank=True)
 
     USERNAME_FIELD = "email"

@@ -33,8 +33,11 @@ class _PreOperatoryScreenState extends ConsumerState<PreOperatoryScreen> {
   bool _alcohol = false;
   bool _isSubmitting = false;
   bool _isEditMode = false;
+  bool _isProcedureDescriptionExpanded = false;
   String? _deletingPhotoId;
   String? _boundRecordId;
+  String? _selectedProcedureId;
+  String _selectedProcedureDescriptionDraft = '';
   final List<String> _photoPaths = [];
   final List<String> _documentPaths = [];
 
@@ -84,6 +87,9 @@ class _PreOperatoryScreenState extends ConsumerState<PreOperatoryScreen> {
         record.weight == null ? '' : record.weight!.toString();
     _smoking = record.smoking;
     _alcohol = record.alcohol;
+    _selectedProcedureId = record.procedureId;
+    _selectedProcedureDescriptionDraft = record.procedureDescription.trim();
+    _isProcedureDescriptionExpanded = false;
   }
 
   String _statusLabel(String status) {
@@ -191,9 +197,42 @@ class _PreOperatoryScreenState extends ConsumerState<PreOperatoryScreen> {
       alcohol: _alcohol,
       height: _parseLocalizedNumber(_heightController.text),
       weight: _parseLocalizedNumber(_weightController.text),
+      procedureId: _selectedProcedureId,
       photoPaths: List<String>.from(_photoPaths),
       documentPaths: List<String>.from(_documentPaths),
     );
+  }
+
+  String _selectedProcedureDescription({
+    required String? selectedProcedureId,
+    required List<PreOperatoryProcedureOption> procedures,
+    required PreOperatoryRecord? record,
+  }) {
+    final draft = _selectedProcedureDescriptionDraft.trim();
+    if (draft.isNotEmpty) {
+      return draft;
+    }
+
+    final selectedId = (selectedProcedureId ?? '').trim();
+    if (selectedId.isEmpty) {
+      return '';
+    }
+
+    for (final option in procedures) {
+      if (option.id == selectedId) {
+        final description = option.description.trim();
+        if (description.isNotEmpty) {
+          return description;
+        }
+        break;
+      }
+    }
+
+    if (record != null && (record.procedureId ?? '').trim() == selectedId) {
+      return record.procedureDescription.trim();
+    }
+
+    return '';
   }
 
   Future<void> _openUrl(String rawUrl) async {
@@ -500,6 +539,7 @@ class _PreOperatoryScreenState extends ConsumerState<PreOperatoryScreen> {
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(preOperatoryControllerProvider);
+    final proceduresState = ref.watch(preOperatoryProceduresProvider);
 
     return Scaffold(
       appBar: AppBar(
@@ -541,6 +581,21 @@ class _PreOperatoryScreenState extends ConsumerState<PreOperatoryScreen> {
           ),
         ),
         data: (record) {
+          final procedures = proceduresState.valueOrNull ??
+              const <PreOperatoryProcedureOption>[];
+          PreOperatoryProcedureOption? selectedProcedure;
+          for (final item in procedures) {
+            if (item.id == _selectedProcedureId) {
+              selectedProcedure = item;
+              break;
+            }
+          }
+          final selectedProcedureValue = selectedProcedure?.id;
+          final selectedProcedureDescription = _selectedProcedureDescription(
+            selectedProcedureId: _selectedProcedureId,
+            procedures: procedures,
+            record: record,
+          );
           if (record != null && _boundRecordId != record.id) {
             scheduleMicrotask(() {
               if (!mounted) return;
@@ -557,8 +612,13 @@ class _PreOperatoryScreenState extends ConsumerState<PreOperatoryScreen> {
               (_parseLocalizedNumber(_heightController.text) ?? 0) > 0;
           final hasValidWeight =
               (_parseLocalizedNumber(_weightController.text) ?? 0) > 0;
-          final canSubmit =
-              canEdit && !_isSubmitting && hasValidHeight && hasValidWeight;
+          final hasSelectedProcedure =
+              (_selectedProcedureId ?? '').trim().isNotEmpty;
+          final canSubmit = canEdit &&
+              !_isSubmitting &&
+              hasValidHeight &&
+              hasValidWeight &&
+              hasSelectedProcedure;
 
           return ListView(
             padding: const EdgeInsets.all(16),
@@ -636,6 +696,129 @@ class _PreOperatoryScreenState extends ConsumerState<PreOperatoryScreen> {
                         labelText: 'Doenças',
                       ),
                     ),
+                    const SizedBox(height: 8),
+                    DropdownButtonFormField<String>(
+                      initialValue: selectedProcedureValue,
+                      isExpanded: true,
+                      decoration: const InputDecoration(
+                        labelText: 'Procedimento',
+                        hintText: 'Selecione o procedimento',
+                      ),
+                      items: procedures
+                          .map(
+                            (item) => DropdownMenuItem<String>(
+                              value: item.id,
+                              child: Text(
+                                item.name,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: !canEdit || proceduresState.isLoading
+                          ? null
+                          : (value) {
+                              final nextId = (value ?? '').trim();
+                              var nextDescription = '';
+                              for (final option in procedures) {
+                                if (option.id == nextId) {
+                                  nextDescription = option.description.trim();
+                                  break;
+                                }
+                              }
+                              setState(() {
+                                _selectedProcedureId = value;
+                                _selectedProcedureDescriptionDraft =
+                                    nextDescription;
+                                _isProcedureDescriptionExpanded = false;
+                              });
+                            },
+                    ),
+                    if (proceduresState.hasError) ...[
+                      const SizedBox(height: 6),
+                      const Text(
+                        'Não foi possível carregar os procedimentos da clínica.',
+                        style: TextStyle(color: GKColors.neutral),
+                      ),
+                    ],
+                    if (selectedProcedureDescription.isNotEmpty) ...[
+                      const SizedBox(height: 6),
+                      const Text(
+                        'Descrição',
+                        style: TextStyle(
+                          color: GKColors.primary,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 8,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF8FAFC),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                            color: const Color(0xFFE2E8F0),
+                          ),
+                        ),
+                        child: LayoutBuilder(
+                          builder: (context, constraints) {
+                            const descriptionStyle = TextStyle(
+                              color: GKColors.neutral,
+                            );
+                            final collapsedPainter = TextPainter(
+                              text: TextSpan(
+                                text: selectedProcedureDescription,
+                                style: descriptionStyle,
+                              ),
+                              maxLines: 3,
+                              textDirection: Directionality.of(context),
+                            )..layout(maxWidth: constraints.maxWidth);
+                            final hasOverflow = collapsedPainter.didExceedMaxLines;
+                            final canToggle =
+                                hasOverflow || _isProcedureDescriptionExpanded;
+
+                            return Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  selectedProcedureDescription,
+                                  softWrap: true,
+                                  maxLines:
+                                      _isProcedureDescriptionExpanded ? null : 3,
+                                  overflow: _isProcedureDescriptionExpanded
+                                      ? TextOverflow.visible
+                                      : TextOverflow.ellipsis,
+                                  style: descriptionStyle,
+                                ),
+                                if (canToggle) ...[
+                                  const SizedBox(height: 6),
+                                  GestureDetector(
+                                    onTap: () => setState(
+                                      () => _isProcedureDescriptionExpanded =
+                                          !_isProcedureDescriptionExpanded,
+                                    ),
+                                    child: Text(
+                                      _isProcedureDescriptionExpanded
+                                          ? 'Ver menos'
+                                          : 'Ver mais',
+                                      style: const TextStyle(
+                                        color: GKColors.primary,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            );
+                          },
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 8),
                     Row(
                       children: [
@@ -753,6 +936,13 @@ class _PreOperatoryScreenState extends ConsumerState<PreOperatoryScreen> {
                         style: TextStyle(color: GKColors.neutral),
                       ),
                     ],
+                    if (!hasRecord && !hasSelectedProcedure) ...[
+                      const SizedBox(height: 8),
+                      const Text(
+                        'Selecione um procedimento para enviar o pré-operatório.',
+                        style: TextStyle(color: GKColors.neutral),
+                      ),
+                    ],
                     if (hasRecord && !canEdit && canEditExistingRecord)
                       GKButton(
                         label: 'Editar informações',
@@ -794,6 +984,13 @@ class _PreOperatoryScreenState extends ConsumerState<PreOperatoryScreen> {
                       const SizedBox(height: 8),
                       const Text(
                         'Altura e peso são obrigatórios para salvar alterações.',
+                        style: TextStyle(color: GKColors.neutral),
+                      ),
+                    ],
+                    if (hasRecord && canEdit && !hasSelectedProcedure) ...[
+                      const SizedBox(height: 8),
+                      const Text(
+                        'Selecione um procedimento para salvar as alterações.',
                         style: TextStyle(color: GKColors.neutral),
                       ),
                     ],

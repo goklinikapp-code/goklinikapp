@@ -196,6 +196,45 @@ class PreOperatoryAdminViewsTestCase(APITestCase):
         self.assertEqual(self.pre_operatory.status, PreOperatory.StatusChoices.IN_REVIEW)
         self.assertEqual(str(self.pre_operatory.assigned_doctor_id), str(self.surgeon.id))
 
+    def test_clinic_master_cannot_mark_in_review_without_assigned_doctor(self):
+        self.client.force_authenticate(self.clinic_master)
+
+        response = self.client.put(
+            reverse("api-pre-operatory-detail", kwargs={"pre_operatory_id": self.pre_operatory.id}),
+            {
+                "status": PreOperatory.StatusChoices.IN_REVIEW,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("assigned_doctor", response.data)
+        self.pre_operatory.refresh_from_db()
+        self.assertEqual(self.pre_operatory.status, PreOperatory.StatusChoices.PENDING)
+        self.assertIsNone(self.pre_operatory.assigned_doctor_id)
+
+    def test_clinic_master_can_mark_in_review_when_assigning_doctor_in_same_request(self):
+        self.client.force_authenticate(self.clinic_master)
+
+        response = self.client.put(
+            reverse("api-pre-operatory-detail", kwargs={"pre_operatory_id": self.pre_operatory.id}),
+            {
+                "status": PreOperatory.StatusChoices.IN_REVIEW,
+                "assigned_doctor": str(self.surgeon.id),
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.pre_operatory.refresh_from_db()
+        self.assertEqual(self.pre_operatory.status, PreOperatory.StatusChoices.IN_REVIEW)
+        self.assertEqual(str(self.pre_operatory.assigned_doctor_id), str(self.surgeon.id))
+
+        assignment = DoctorPatientAssignment.objects.filter(patient=self.patient).first()
+        self.assertIsNotNone(assignment)
+        self.assertEqual(str(assignment.doctor_id), str(self.surgeon.id))
+        self.assertEqual(str(assignment.assigned_by_id), str(self.clinic_master.id))
+
     def test_surgeon_list_only_returns_pre_operatory_in_review(self):
         self.pre_operatory.assigned_doctor = self.surgeon
         self.pre_operatory.status = PreOperatory.StatusChoices.PENDING

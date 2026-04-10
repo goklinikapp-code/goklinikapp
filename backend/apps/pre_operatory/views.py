@@ -76,7 +76,11 @@ def _active_pre_operatory_for_patient(user: GoKlinikUser) -> PreOperatory | None
 
 
 def _pre_operatory_queryset():
-    return PreOperatory.objects.select_related("patient", "assigned_doctor").prefetch_related("files")
+    return PreOperatory.objects.select_related(
+        "patient",
+        "assigned_doctor",
+        "procedure",
+    ).prefetch_related("files")
 
 
 def _latest_pre_operatory_for_patient(user: GoKlinikUser) -> PreOperatory | None:
@@ -296,7 +300,10 @@ class PreOperatoryCreateAPIView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        serializer = PreOperatoryWriteSerializer(data=request.data)
+        serializer = PreOperatoryWriteSerializer(
+            data=request.data,
+            context={"tenant_id": user.tenant_id},
+        )
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
         photos = list(request.FILES.getlist("photos"))
@@ -315,6 +322,7 @@ class PreOperatoryCreateAPIView(APIView):
                     alcohol=data.get("alcohol", False),
                     height=data.get("height"),
                     weight=data.get("weight"),
+                    procedure=data.get("procedure"),
                     status=PreOperatory.StatusChoices.PENDING,
                 )
 
@@ -439,6 +447,7 @@ class PreOperatoryDetailAPIView(APIView):
             pre_operatory,
             data=request.data,
             partial=True,
+            context={"tenant_id": user.tenant_id},
         )
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
@@ -463,6 +472,12 @@ class PreOperatoryDetailAPIView(APIView):
                         if getattr(pre_operatory, field_name) != data[field_name]:
                             changed_fields.append(field_name)
                         setattr(pre_operatory, field_name, data[field_name])
+                if "procedure" in data:
+                    if str(pre_operatory.procedure_id or "") != str(
+                        data["procedure"].id
+                    ):
+                        changed_fields.append("procedure")
+                    pre_operatory.procedure = data["procedure"]
 
                 if pre_operatory.status == PreOperatory.StatusChoices.REJECTED:
                     pre_operatory.status = PreOperatory.StatusChoices.PENDING
@@ -604,6 +619,32 @@ class PreOperatoryDetailAPIView(APIView):
                     {"assigned_doctor": ["Doctor not found for this tenant."]},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
+
+        resulting_assigned_doctor_id = pre_operatory.assigned_doctor_id
+        if has_assigned_doctor_update:
+            resulting_assigned_doctor_id = assigned_doctor.id if assigned_doctor else None
+
+        resulting_status = data.get("status", pre_operatory.status)
+        if (
+            has_assigned_doctor_update
+            and resulting_assigned_doctor_id
+            and "status" not in data
+            and pre_operatory.status == PreOperatory.StatusChoices.PENDING
+        ):
+            resulting_status = PreOperatory.StatusChoices.IN_REVIEW
+
+        if (
+            resulting_status == PreOperatory.StatusChoices.IN_REVIEW
+            and not resulting_assigned_doctor_id
+        ):
+            return Response(
+                {
+                    "assigned_doctor": [
+                        "Assign a doctor before marking pre-operatory as in review."
+                    ]
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         with transaction.atomic():
             changed_fields = []

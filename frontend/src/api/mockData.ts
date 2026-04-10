@@ -80,6 +80,8 @@ export const patientsMock: PatientRow[] = [
     specialty_name: 'Rinoplastia',
     date_joined: '2025-11-14',
     last_visit: '2026-03-18',
+    app_installed_at: null,
+    last_app_login_at: null,
   },
   {
     id: 'PT-1202',
@@ -90,6 +92,8 @@ export const patientsMock: PatientRow[] = [
     specialty_name: 'Harmonizacao Facial',
     date_joined: '2025-08-02',
     last_visit: '2025-09-22',
+    app_installed_at: null,
+    last_app_login_at: null,
   },
   {
     id: 'PT-1203',
@@ -100,5 +104,7 @@ export const patientsMock: PatientRow[] = [
     specialty_name: 'Mamoplastia',
     date_joined: '2026-01-03',
     last_visit: '2026-03-20',
+    app_installed_at: null,
+    last_app_login_at: null,
   },
 ]

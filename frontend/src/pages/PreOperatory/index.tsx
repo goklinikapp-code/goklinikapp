@@ -323,12 +323,14 @@ export default function PreOperatoryPage() {
                   type="button"
                   variant="secondary"
                   disabled={Boolean(pendingAction)}
-                  onClick={() =>
+                  onClick={() => {
+                    if (!requireDoctor()) return
                     void executeAction('in_review', {
                       status: 'in_review',
                       notes,
+                      assigned_doctor: selectedDoctorId,
                     })
-                  }
+                  }}
                 >
                   {pendingAction === 'in_review' ? t('preop_saving') : t('preop_mark_in_review')}
                 </Button>

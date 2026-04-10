@@ -1,7 +1,7 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { isAxiosError } from 'axios'
-import { Mail, Phone, Plus, SlidersHorizontal, Stethoscope } from 'lucide-react'
+import { Mail, Phone, Plus, SlidersHorizontal, Stethoscope, Upload } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import toast from 'react-hot-toast'
@@ -19,6 +19,7 @@ import { Modal } from '@/components/ui/Modal'
 import { Select } from '@/components/ui/Select'
 import { TextArea } from '@/components/ui/TextArea'
 import { t as translate, type TranslationKey } from '@/i18n/system'
+import { ImportPatientsModal } from '@/pages/Patients/components/ImportPatientsModal'
 import { useAuthStore } from '@/stores/authStore'
 import { usePreferencesStore } from '@/stores/preferencesStore'
 import { formatDate } from '@/utils/format'
@@ -36,6 +37,19 @@ const patientSchema = z.object({
 
 type PatientForm = z.infer<typeof patientSchema>
 
+function formatDateTime(value?: string | null): string {
+  if (!value) return '-'
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) return '-'
+  return new Intl.DateTimeFormat('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(parsed)
+}
+
 export default function PatientsPage() {
   const navigate = useNavigate()
   const language = usePreferencesStore((state) => state.language)
@@ -49,14 +63,29 @@ export default function PatientsPage() {
   const [itemsPerPage, setItemsPerPage] = useState(25)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [isModalOpen, setIsModalOpen] = useState(false)
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false)
   const [isAssignModalOpen, setIsAssignModalOpen] = useState(false)
   const [selectedDoctorId, setSelectedDoctorId] = useState('')
   const [assignmentNotes, setAssignmentNotes] = useState('')
 
   const queryClient = useQueryClient()
+  const appStatusFilter = statusFilter === 'app_installed'
+    ? 'installed'
+    : statusFilter === 'app_not_installed'
+      ? 'not_installed'
+      : undefined
+  const patientStatusFilter =
+    statusFilter === 'active' || statusFilter === 'inactive' || statusFilter === 'lead'
+      ? statusFilter
+      : undefined
+
   const { data: patients = [], isLoading } = useQuery({
-    queryKey: ['patients-list'],
-    queryFn: getPatients,
+    queryKey: ['patients-list', patientStatusFilter, appStatusFilter],
+    queryFn: () =>
+      getPatients({
+        status: patientStatusFilter,
+        app_status: appStatusFilter,
+      }),
     refetchInterval: 10000,
     refetchOnMount: 'always',
   })
@@ -84,14 +113,14 @@ export default function PatientsPage() {
 
   const filteredPatients = useMemo(() => {
     return patients.filter((patient) => {
-      const statusMatch = statusFilter === 'all' ? true : patient.status === statusFilter
       const specialtyMatch =
         specialtyFilter === 'all' ? true : patient.specialty_name?.toLowerCase() === specialtyFilter.toLowerCase()
-      const dateMatch = dateFilter ? patient.date_joined === dateFilter : true
+      const joinedDate = patient.date_joined ? patient.date_joined.slice(0, 10) : ''
+      const dateMatch = dateFilter ? joinedDate === dateFilter : true
 
-      return statusMatch && specialtyMatch && dateMatch
+      return specialtyMatch && dateMatch
     })
-  }, [patients, statusFilter, specialtyFilter, dateFilter])
+  }, [patients, specialtyFilter, dateFilter])
 
   const totalPages = Math.max(1, Math.ceil(filteredPatients.length / itemsPerPage))
   const paginatedPatients = filteredPatients.slice((page - 1) * itemsPerPage, page * itemsPerPage)
@@ -205,10 +234,16 @@ export default function PatientsPage() {
         title={t('patients_title')}
         subtitle={t('patients_subtitle')}
         actions={
-          <Button onClick={() => setIsModalOpen(true)}>
-            <Plus className="h-4 w-4" />
-            {t('patients_new_patient')}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="secondary" onClick={() => setIsImportModalOpen(true)}>
+              <Upload className="h-4 w-4" />
+              Importar Planilha
+            </Button>
+            <Button onClick={() => setIsModalOpen(true)}>
+              <Plus className="h-4 w-4" />
+              {t('patients_new_patient')}
+            </Button>
+          </div>
         }
       />
 
@@ -228,6 +263,8 @@ export default function PatientsPage() {
             <option value="active">{t('patients_status_active')}</option>
             <option value="inactive">{t('patients_status_inactive')}</option>
             <option value="lead">{t('patients_status_lead')}</option>
+            <option value="app_installed">App Instalado</option>
+            <option value="app_not_installed">App Nao Instalado</option>
           </Select>
 
           <Input type="date" value={dateFilter} onChange={(event) => setDateFilter(event.target.value)} />
@@ -249,13 +286,14 @@ export default function PatientsPage() {
                   <th className="px-4 py-3 text-left overline">{t('patients_col_contact')}</th>
                   <th className="px-4 py-3 text-left overline">{t('patients_col_last_visit')}</th>
                   <th className="px-4 py-3 text-left overline">{t('patients_col_specialty')}</th>
-                  <th className="px-4 py-3 text-left overline">{t('patients_col_status')}</th>
+                  <th className="w-[120px] px-4 py-3 text-left overline">APP</th>
+                  <th className="px-4 py-3 text-left overline">ULTIMO ACESSO</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 bg-white">
                 {isLoading ? (
                   <tr>
-                    <td colSpan={5} className="px-4 py-10 text-center text-sm text-slate-500">
+                    <td colSpan={6} className="px-4 py-10 text-center text-sm text-slate-500">
                       {t('patients_loading')}
                     </td>
                   </tr>
@@ -291,14 +329,28 @@ export default function PatientsPage() {
                           {patient.specialty_name || t('patients_not_informed')}
                         </Badge>
                       </td>
-                      <td className="px-4 py-3">
-                        <Badge status={patient.status} />
+                      <td className="w-[120px] px-4 py-3 align-top">
+                        {patient.app_installed_at ? (
+                          <div className="space-y-1">
+                            <Badge className="bg-emerald-100 text-emerald-700">APP INSTALADO</Badge>
+                            <p className="caption text-slate-500">{formatDate(patient.app_installed_at)}</p>
+                          </div>
+                        ) : (
+                          <Badge className="bg-slate-100 text-slate-600">NAO INSTALADO</Badge>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-slate-600">
+                        {patient.last_app_login_at ? (
+                          formatDateTime(patient.last_app_login_at)
+                        ) : (
+                          <span className="block text-center text-slate-400">-</span>
+                        )}
                       </td>
                     </tr>
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={5} className="px-4 py-10 text-center text-sm text-slate-500">
+                    <td colSpan={6} className="px-4 py-10 text-center text-sm text-slate-500">
                       {t('patients_empty_filters')}
                     </td>
                   </tr>
@@ -376,6 +428,25 @@ export default function PatientsPage() {
               </div>
 
               <div>
+                <p className="overline mb-2">App Status</p>
+                <div className="space-y-1 text-sm text-slate-600">
+                  {selectedPatient.app_installed_at ? (
+                    <Badge className="bg-emerald-100 text-emerald-700">APP INSTALADO</Badge>
+                  ) : (
+                    <Badge className="bg-slate-100 text-slate-600">NAO INSTALADO</Badge>
+                  )}
+                  <p>
+                    Primeiro acesso:{' '}
+                    {selectedPatient.app_installed_at ? formatDate(selectedPatient.app_installed_at) : '-'}
+                  </p>
+                  <p>
+                    Ultimo login:{' '}
+                    {selectedPatient.last_app_login_at ? formatDateTime(selectedPatient.last_app_login_at) : '-'}
+                  </p>
+                </div>
+              </div>
+
+              <div>
                 <p className="overline mb-2">{t('patients_responsible_doctor')}</p>
                 {selectedPatient.assigned_doctor ? (
                   <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
@@ -385,13 +456,14 @@ export default function PatientsPage() {
                 ) : (
                   <p className="text-sm text-slate-600">{t('patients_no_assigned_doctor')}</p>
                 )}
-                <Button className="mt-2" fullWidth variant="secondary" onClick={openAssignDoctorModal}>
-                  <Stethoscope className="h-4 w-4" />
-                  {t('patients_assign_to_doctor')}
-                </Button>
-                {!canAssignDoctor ? (
+                {canAssignDoctor ? (
+                  <Button className="mt-2" fullWidth variant="secondary" onClick={openAssignDoctorModal}>
+                    <Stethoscope className="h-4 w-4" />
+                    {t('patients_assign_to_doctor')}
+                  </Button>
+                ) : (
                   <p className="caption mt-2">{t('patients_assign_permission_hint')}</p>
-                ) : null}
+                )}
               </div>
 
               <div className="space-y-2 pt-2">
@@ -458,55 +530,65 @@ export default function PatientsPage() {
         </form>
       </Modal>
 
-      <Modal
-        isOpen={isAssignModalOpen}
-        onClose={() => setIsAssignModalOpen(false)}
-        title={t('patients_assign_modal_title')}
-      >
-        <div className="space-y-3">
-          <div>
-            <p className="mb-1 text-xs font-semibold text-slate-600">{t('patients_modal_patient')}</p>
-            <Input value={selectedPatient?.full_name || ''} readOnly />
-          </div>
+      <ImportPatientsModal
+        isOpen={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
+        onImported={() => {
+          void queryClient.invalidateQueries({ queryKey: ['patients-list'] })
+        }}
+      />
 
-          <div>
-            <p className="mb-1 text-xs font-semibold text-slate-600">{t('patients_select_doctor')}</p>
-            <Select
-              value={selectedDoctorId}
-              onChange={(event) => setSelectedDoctorId(event.target.value)}
-              disabled={doctorsLoading}
-            >
-              <option value="">{t('patients_select_doctor_placeholder')}</option>
-              {doctors.map((doctor) => (
-                <option key={doctor.id} value={doctor.id}>
-                  {doctor.name} - {doctor.specialty}
-                </option>
-              ))}
-            </Select>
-          </div>
+      {canAssignDoctor ? (
+        <Modal
+          isOpen={isAssignModalOpen}
+          onClose={() => setIsAssignModalOpen(false)}
+          title={t('patients_assign_modal_title')}
+        >
+          <div className="space-y-3">
+            <div>
+              <p className="mb-1 text-xs font-semibold text-slate-600">{t('patients_modal_patient')}</p>
+              <Input value={selectedPatient?.full_name || ''} readOnly />
+            </div>
 
-          <div>
-            <p className="mb-1 text-xs font-semibold text-slate-600">{t('patients_notes')}</p>
-            <TextArea
-              rows={4}
-              placeholder={t('patients_notes_placeholder')}
-              value={assignmentNotes}
-              onChange={(event) => setAssignmentNotes(event.target.value)}
-            />
-          </div>
+            <div>
+              <p className="mb-1 text-xs font-semibold text-slate-600">{t('patients_select_doctor')}</p>
+              <Select
+                value={selectedDoctorId}
+                onChange={(event) => setSelectedDoctorId(event.target.value)}
+                disabled={doctorsLoading}
+              >
+                <option value="">{t('patients_select_doctor_placeholder')}</option>
+                {doctors.map((doctor) => (
+                  <option key={doctor.id} value={doctor.id}>
+                    {doctor.name} - {doctor.specialty}
+                  </option>
+                ))}
+              </Select>
+            </div>
 
-          <div className="flex justify-end gap-2">
-            <Button variant="secondary" onClick={() => setIsAssignModalOpen(false)}>
-              {t('patients_cancel')}
-            </Button>
-            <Button onClick={handleAssignDoctor} disabled={assignDoctorMutation.isPending}>
-              {assignDoctorMutation.isPending
-                ? t('patients_assign_confirming')
-                : t('patients_assign_confirm')}
-            </Button>
+            <div>
+              <p className="mb-1 text-xs font-semibold text-slate-600">{t('patients_notes')}</p>
+              <TextArea
+                rows={4}
+                placeholder={t('patients_notes_placeholder')}
+                value={assignmentNotes}
+                onChange={(event) => setAssignmentNotes(event.target.value)}
+              />
+            </div>
+
+            <div className="flex justify-end gap-2">
+              <Button variant="secondary" onClick={() => setIsAssignModalOpen(false)}>
+                {t('patients_cancel')}
+              </Button>
+              <Button onClick={handleAssignDoctor} disabled={assignDoctorMutation.isPending}>
+                {assignDoctorMutation.isPending
+                  ? t('patients_assign_confirming')
+                  : t('patients_assign_confirm')}
+              </Button>
+            </div>
           </div>
-        </div>
-      </Modal>
+        </Modal>
+      ) : null}
     </div>
   )
 }

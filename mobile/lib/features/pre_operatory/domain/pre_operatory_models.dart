@@ -27,6 +27,26 @@ class PreOperatoryFileItem {
   }
 }
 
+class PreOperatoryProcedureOption {
+  const PreOperatoryProcedureOption({
+    required this.id,
+    required this.name,
+    required this.description,
+  });
+
+  final String id;
+  final String name;
+  final String description;
+
+  factory PreOperatoryProcedureOption.fromJson(Map<String, dynamic> json) {
+    return PreOperatoryProcedureOption(
+      id: (json['id'] ?? '').toString(),
+      name: (json['specialty_name'] ?? '').toString(),
+      description: (json['description'] ?? '').toString(),
+    );
+  }
+}
+
 class PreOperatoryRecord {
   const PreOperatoryRecord({
     required this.id,
@@ -40,6 +60,9 @@ class PreOperatoryRecord {
     required this.alcohol,
     required this.height,
     required this.weight,
+    required this.procedureId,
+    required this.procedureName,
+    required this.procedureDescription,
     required this.files,
     required this.createdAt,
     required this.updatedAt,
@@ -56,6 +79,9 @@ class PreOperatoryRecord {
   final bool alcohol;
   final double? height;
   final double? weight;
+  final String? procedureId;
+  final String? procedureName;
+  final String procedureDescription;
   final List<PreOperatoryFileItem> files;
   final DateTime createdAt;
   final DateTime updatedAt;
@@ -96,6 +122,13 @@ class PreOperatoryRecord {
       alcohol: json['alcohol'] == true,
       height: double.tryParse((json['height'] ?? '').toString()),
       weight: double.tryParse((json['weight'] ?? '').toString()),
+      procedureId: (json['procedure'] ?? '').toString().trim().isEmpty
+          ? null
+          : (json['procedure'] ?? '').toString(),
+      procedureName: (json['procedure_name'] ?? '').toString().trim().isEmpty
+          ? null
+          : (json['procedure_name'] ?? '').toString(),
+      procedureDescription: (json['procedure_description'] ?? '').toString(),
       files: files,
       createdAt: DateTime.tryParse((json['created_at'] ?? '').toString()) ??
           DateTime.now(),
@@ -115,6 +148,7 @@ class PreOperatoryUpsertPayload {
     required this.alcohol,
     required this.height,
     required this.weight,
+    required this.procedureId,
     required this.photoPaths,
     required this.documentPaths,
   });
@@ -127,6 +161,7 @@ class PreOperatoryUpsertPayload {
   final bool alcohol;
   final double? height;
   final double? weight;
+  final String? procedureId;
   final List<String> photoPaths;
   final List<String> documentPaths;
 }

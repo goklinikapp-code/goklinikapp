@@ -36,6 +36,13 @@ class PreOperatory(models.Model):
     height = models.FloatField(null=True, blank=True)
     weight = models.FloatField(null=True, blank=True)
     notes = models.TextField(blank=True)
+    procedure = models.ForeignKey(
+        "tenants.TenantSpecialty",
+        on_delete=models.SET_NULL,
+        related_name="pre_operatory_records",
+        null=True,
+        blank=True,
+    )
     assigned_doctor = models.ForeignKey(
         "users.GoKlinikUser",
         on_delete=models.SET_NULL,

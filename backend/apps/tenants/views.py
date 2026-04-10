@@ -154,6 +154,7 @@ class TenantSpecialtyListCreateAPIView(APIView):
                 GoKlinikUser.RoleChoices.SURGEON,
                 GoKlinikUser.RoleChoices.NURSE,
                 GoKlinikUser.RoleChoices.SECRETARY,
+                GoKlinikUser.RoleChoices.PATIENT,
             }
         else:
             allowed_roles = {
@@ -174,7 +175,10 @@ class TenantSpecialtyListCreateAPIView(APIView):
         if error:
             return error
 
-        queryset = TenantSpecialty.objects.filter(tenant=tenant).order_by("display_order", "specialty_name")
+        queryset = TenantSpecialty.objects.filter(tenant=tenant)
+        if request.user.role == GoKlinikUser.RoleChoices.PATIENT:
+            queryset = queryset.filter(is_active=True)
+        queryset = queryset.order_by("display_order", "specialty_name")
         return Response(TenantSpecialtySerializer(queryset, many=True).data, status=status.HTTP_200_OK)
 
     def post(self, request, *args, **kwargs):

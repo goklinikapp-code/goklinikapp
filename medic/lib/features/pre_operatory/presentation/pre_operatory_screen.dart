@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/settings/app_preferences.dart';
 import '../../../core/settings/app_translations.dart';
@@ -376,6 +377,37 @@ class _PreOperatoryScreenState extends ConsumerState<PreOperatoryScreen> {
                                 ),
                                 const SizedBox(height: 12),
                               ],
+                              Text(
+                                t('preop_documents_title'),
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              if (record.documents.isEmpty)
+                                Text(
+                                  t('preop_no_documents_sent'),
+                                  style:
+                                      const TextStyle(color: GKColors.neutral),
+                                )
+                              else
+                                Wrap(
+                                  spacing: 8,
+                                  runSpacing: 8,
+                                  children:
+                                      record.documents.asMap().entries.map(
+                                    (entry) {
+                                      final index = entry.key;
+                                      final doc = entry.value;
+                                      return ActionChip(
+                                        label: Text('Documento ${index + 1}'),
+                                        onPressed: () =>
+                                            _openExternalUrl(doc.fileUrl),
+                                      );
+                                    },
+                                  ).toList(),
+                                ),
+                              const SizedBox(height: 12),
                               TextField(
                                 controller: notesController,
                                 minLines: 3,
@@ -598,6 +630,12 @@ class _PreOperatoryScreenState extends ConsumerState<PreOperatoryScreen> {
           foreground: const Color(0xFFB91C1C),
         );
     }
+  }
+
+  Future<void> _openExternalUrl(String rawUrl) async {
+    final uri = Uri.tryParse(rawUrl);
+    if (uri == null) return;
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 
   Widget _chip(String label, PreOperatoryFilterChip value) {

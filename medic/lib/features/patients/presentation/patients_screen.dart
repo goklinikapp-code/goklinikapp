@@ -595,10 +595,15 @@ class _PatientsScreenState extends ConsumerState<PatientsScreen> {
                         : _preOperatoryStatusVisual(entry.preOperatoryStatus!);
                     final subtitle = entry.appointment != null
                         ? _appointmentSummary(entry.appointment!)
-                        : (entry.patient?.specialtyName.trim().isNotEmpty ==
+                        : (entry.patient?.preOperatoryProcedureName
+                                    .trim()
+                                    .isNotEmpty ==
                                 true
-                            ? entry.patient!.specialtyName.trim()
-                            : _t('patients_no_procedure_info'));
+                            ? entry.patient!.preOperatoryProcedureName.trim()
+                            : (entry.patient?.specialtyName.trim().isNotEmpty ==
+                                    true
+                                ? entry.patient!.specialtyName.trim()
+                                : _t('patients_no_procedure_info')));
 
                     return GestureDetector(
                       onTap: () async {

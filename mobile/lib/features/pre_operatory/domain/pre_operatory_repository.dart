@@ -1,6 +1,8 @@
 import 'pre_operatory_models.dart';
 
 abstract class PreOperatoryRepository {
+  Future<List<PreOperatoryProcedureOption>> listClinicProcedures();
+
   Future<PreOperatoryRecord?> getMyPreOperatory();
 
   Future<PreOperatoryRecord> createPreOperatory(

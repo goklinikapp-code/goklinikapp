@@ -1,14 +1,18 @@
 from __future__ import annotations
 
 from datetime import timedelta
+from io import BytesIO
 
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.urls import reverse
 from django.utils import timezone
+from openpyxl import Workbook
 from rest_framework import status
 from rest_framework.test import APITestCase
 
 from apps.appointments.models import Appointment
 from apps.patients.models import DoctorPatientAssignment, Patient
+from apps.pre_operatory.models import PreOperatory
 from apps.tenants.models import Tenant, TenantSpecialty
 from apps.users.models import GoKlinikUser
 
@@ -151,3 +155,164 @@ class PatientViewSetSurgeonScopeTestCase(APITestCase):
         row = response.data["results"][0]
         self.assertEqual(row["id"], str(self.patient_a.id))
         self.assertFalse(row["has_active_appointment"])
+
+    def test_surgeon_cannot_assign_doctor_to_patient(self):
+        self.client.force_authenticate(self.surgeon_a)
+
+        response = self.client.post(
+            reverse("patients-assign-doctor", args=[self.patient_a.id]),
+            {
+                "doctor_id": str(self.surgeon_b.id),
+                "notes": "Tentativa indevida de redirecionamento.",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+        assignment = DoctorPatientAssignment.objects.filter(
+            patient=self.patient_a
+        ).first()
+        self.assertIsNotNone(assignment)
+        self.assertEqual(str(assignment.doctor_id), str(self.surgeon_a.id))
+
+    def test_my_patients_exposes_pre_operatory_selected_procedure_name(self):
+        procedure = TenantSpecialty.objects.create(
+            tenant=self.tenant,
+            specialty_name="Lipo HD",
+            description="Procedimento de contorno corporal.",
+            is_active=True,
+        )
+        PreOperatory.objects.create(
+            patient=self.patient_a,
+            tenant=self.tenant,
+            status=PreOperatory.StatusChoices.PENDING,
+            height=1.70,
+            weight=70,
+            procedure=procedure,
+        )
+
+        self.client.force_authenticate(self.surgeon_a)
+        response = self.client.get(reverse("patients-my-patients"))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["count"], 1)
+        row = response.data["results"][0]
+        self.assertEqual(row["id"], str(self.patient_a.id))
+        self.assertEqual(
+            row["pre_operatory_procedure_name"],
+            procedure.specialty_name,
+        )
+
+    def test_import_patients_csv_smoke_success(self):
+        self.client.force_authenticate(self.master)
+        csv_content = (
+            "nome,email,telefone\n"
+            "Ana Souza,ana.souza@patients.com,11911111111\n"
+            "Bruno Lima,bruno.lima@patients.com,11922222222\n"
+            "Carla Dias,carla.dias@patients.com,11933333333\n"
+        )
+        upload = SimpleUploadedFile(
+            "pacientes.csv",
+            csv_content.encode("utf-8"),
+            content_type="text/csv",
+        )
+
+        response = self.client.post(
+            reverse("patients-import-patients"),
+            {"file": upload},
+            format="multipart",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["total_rows"], 3)
+        self.assertEqual(response.data["imported"], 3)
+        self.assertEqual(response.data["duplicates"], 0)
+        self.assertEqual(response.data["errors"], 0)
+
+    def test_import_patients_xlsx_smoke_success(self):
+        self.client.force_authenticate(self.master)
+
+        workbook = Workbook()
+        worksheet = workbook.active
+        worksheet.append(["nome", "email", "telefone"])
+        worksheet.append(["Maria Excel", "maria.excel@patients.com", "11944444444"])
+        worksheet.append(["Pedro Excel", "pedro.excel@patients.com", "11955555555"])
+
+        stream = BytesIO()
+        workbook.save(stream)
+        stream.seek(0)
+        upload = SimpleUploadedFile(
+            "pacientes.xlsx",
+            stream.read(),
+            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+
+        response = self.client.post(
+            reverse("patients-import-patients"),
+            {"file": upload},
+            format="multipart",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["total_rows"], 2)
+        self.assertEqual(response.data["imported"], 2)
+        self.assertEqual(response.data["duplicates"], 0)
+        self.assertEqual(response.data["errors"], 0)
+
+    def test_import_patients_csv_smoke_with_duplicate(self):
+        self.client.force_authenticate(self.master)
+        csv_content = (
+            "nome,email,telefone\n"
+            "Paciente A Duplicado,patient-a@patients.com,11911111111\n"
+            "Bruno Lima,bruno.lima2@patients.com,11922222222\n"
+            "Carla Dias,carla.dias2@patients.com,11933333333\n"
+        )
+        upload = SimpleUploadedFile(
+            "pacientes.csv",
+            csv_content.encode("utf-8"),
+            content_type="text/csv",
+        )
+
+        response = self.client.post(
+            reverse("patients-import-patients"),
+            {"file": upload},
+            format="multipart",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["total_rows"], 3)
+        self.assertEqual(response.data["imported"], 2)
+        self.assertEqual(response.data["duplicates"], 1)
+        self.assertEqual(response.data["errors"], 0)
+
+    def test_filter_app_status_installed(self):
+        now = timezone.now()
+        self.patient_a.app_installed_at = now
+        self.patient_a.last_app_login_at = now
+        self.patient_a.save(update_fields=["app_installed_at", "last_app_login_at"])
+
+        self.client.force_authenticate(self.master)
+        response = self.client.get(reverse("patients-list"), {"app_status": "installed"})
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        ids = {item["id"] for item in response.data["results"]}
+        self.assertEqual(ids, {str(self.patient_a.id)})
+        self.assertIsNotNone(response.data["results"][0]["app_installed_at"])
+        self.assertIsNotNone(response.data["results"][0]["last_app_login_at"])
+
+    def test_import_patients_forbidden_for_surgeon(self):
+        self.client.force_authenticate(self.surgeon_a)
+        upload = SimpleUploadedFile(
+            "pacientes.csv",
+            "nome,email,telefone\nTeste,teste@patients.com,11911111111\n".encode("utf-8"),
+            content_type="text/csv",
+        )
+
+        response = self.client.post(
+            reverse("patients-import-patients"),
+            {"file": upload},
+            format="multipart",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)

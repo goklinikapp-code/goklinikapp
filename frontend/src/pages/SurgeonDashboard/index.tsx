@@ -94,7 +94,7 @@ export default function SurgeonDashboardPage() {
 
   const patientsQuery = useQuery({
     queryKey: ['surgeon-dashboard', 'patients', user?.id],
-    queryFn: getPatients,
+    queryFn: () => getPatients(),
     enabled: user?.role === 'surgeon',
     refetchInterval: 30000,
   })

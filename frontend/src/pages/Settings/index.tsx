@@ -24,6 +24,7 @@ import {
   createTenantProcedure,
   deleteTenantProcedure,
   listTenantProcedures,
+  type TenantProcedure,
   updateBranding,
   updateTenantProcedure,
   uploadBrandingLogo,
@@ -274,7 +275,9 @@ export default function SettingsPage() {
 
   const [procedureName, setProcedureName] = useState('')
   const [procedureDescription, setProcedureDescription] = useState('')
-  const [editingProcedureId, setEditingProcedureId] = useState<string | null>(null)
+  const [editingProcedure, setEditingProcedure] = useState<TenantProcedure | null>(null)
+  const [editingProcedureName, setEditingProcedureName] = useState('')
+  const [editingProcedureDescription, setEditingProcedureDescription] = useState('')
   const [logoPreview, setLogoPreview] = useState<string | null>(null)
   const [selectedLogoFile, setSelectedLogoFile] = useState<File | null>(null)
   const [isRemoveLogoModalOpen, setIsRemoveLogoModalOpen] = useState(false)
@@ -355,10 +358,12 @@ export default function SettingsPage() {
 
   const deleteProcedureMutation = useMutation({
     mutationFn: (id: string) => deleteTenantProcedure(id, tenantConfig.id),
-    onSuccess: async () => {
+    onSuccess: async (_, deletedProcedureId) => {
       toast.success('Procedimento removido')
-      if (editingProcedureId) {
-        setEditingProcedureId(null)
+      if (editingProcedure?.id === deletedProcedureId) {
+        setEditingProcedure(null)
+        setEditingProcedureName('')
+        setEditingProcedureDescription('')
       }
       await queryClient.invalidateQueries({ queryKey: ['tenant-procedures', tenantConfig.id] })
     },
@@ -415,21 +420,41 @@ export default function SettingsPage() {
       return
     }
 
-    if (editingProcedureId) {
-      updateProcedureMutation.mutate({
-        id: editingProcedureId,
-        specialty_name: trimmedName,
-        description: procedureDescription.trim(),
-      })
-      return
-    }
     createProcedureMutation.mutate()
   }
 
-  const cancelProcedureEditing = () => {
-    setEditingProcedureId(null)
-    setProcedureName('')
-    setProcedureDescription('')
+  const openProcedureEditModal = (procedure: TenantProcedure) => {
+    setEditingProcedure(procedure)
+    setEditingProcedureName(procedure.specialty_name)
+    setEditingProcedureDescription(procedure.description || '')
+  }
+
+  const closeProcedureEditModal = () => {
+    setEditingProcedure(null)
+    setEditingProcedureName('')
+    setEditingProcedureDescription('')
+  }
+
+  const handleSaveProcedureEdit = () => {
+    if (!editingProcedure) return
+    const trimmedName = editingProcedureName.trim()
+    if (!trimmedName) {
+      toast.error('Informe o nome do procedimento')
+      return
+    }
+
+    updateProcedureMutation.mutate(
+      {
+        id: editingProcedure.id,
+        specialty_name: trimmedName,
+        description: editingProcedureDescription.trim(),
+      },
+      {
+        onSuccess: () => {
+          closeProcedureEditModal()
+        },
+      },
+    )
   }
 
   return (
@@ -868,17 +893,12 @@ export default function SettingsPage() {
               onChange={(event) => setProcedureDescription(event.target.value)}
             />
             <div className="md:col-span-2 flex flex-wrap justify-end gap-2">
-              {editingProcedureId ? (
-                <Button type="button" variant="secondary" onClick={cancelProcedureEditing}>
-                  Cancelar edição
-                </Button>
-              ) : null}
               <Button
                 type="button"
                 onClick={handleSaveProcedure}
                 disabled={createProcedureMutation.isPending || updateProcedureMutation.isPending}
               >
-                {editingProcedureId ? 'Salvar alterações' : 'Cadastrar procedimento'}
+                {createProcedureMutation.isPending ? 'Cadastrando...' : 'Cadastrar procedimento'}
               </Button>
             </div>
           </div>
@@ -918,11 +938,7 @@ export default function SettingsPage() {
                     <Button
                       type="button"
                       variant="secondary"
-                      onClick={() => {
-                        setEditingProcedureId(procedure.id)
-                        setProcedureName(procedure.specialty_name)
-                        setProcedureDescription(procedure.description || '')
-                      }}
+                      onClick={() => openProcedureEditModal(procedure)}
                     >
                       Editar
                     </Button>
@@ -944,6 +960,49 @@ export default function SettingsPage() {
               </p>
             ) : null}
           </div>
+
+          <Modal
+            isOpen={Boolean(editingProcedure)}
+            onClose={closeProcedureEditModal}
+            title="Editar procedimento"
+            className="max-w-2xl"
+          >
+            <div className="space-y-4">
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <p className="text-sm font-semibold text-night">{editingProcedure?.specialty_name || 'Procedimento'}</p>
+                <p className="caption mt-1">Atualize os dados desse procedimento para refletir no app e no painel.</p>
+              </div>
+
+              <div className="space-y-3">
+                <div>
+                  <p className="mb-1 text-xs font-semibold text-slate-600">Nome do procedimento</p>
+                  <Input
+                    placeholder="Ex: Rinoplastia estruturada"
+                    value={editingProcedureName}
+                    onChange={(event) => setEditingProcedureName(event.target.value)}
+                  />
+                </div>
+                <div>
+                  <p className="mb-1 text-xs font-semibold text-slate-600">Descrição (opcional)</p>
+                  <TextArea
+                    rows={4}
+                    placeholder="Descreva brevemente o procedimento para orientar o paciente."
+                    value={editingProcedureDescription}
+                    onChange={(event) => setEditingProcedureDescription(event.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2">
+                <Button type="button" variant="secondary" onClick={closeProcedureEditModal}>
+                  Cancelar
+                </Button>
+                <Button type="button" onClick={handleSaveProcedureEdit} disabled={updateProcedureMutation.isPending}>
+                  {updateProcedureMutation.isPending ? 'Salvando...' : 'Salvar alterações'}
+                </Button>
+              </div>
+            </div>
+          </Modal>
         </Card>
       ) : null}
 

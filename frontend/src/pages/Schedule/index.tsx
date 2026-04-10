@@ -332,7 +332,7 @@ export default function SchedulePage() {
 
   const { data: patients = [] } = useQuery({
     queryKey: ['patients-list'],
-    queryFn: getPatients,
+    queryFn: () => getPatients(),
   })
 
   const { data: teamMembers = [] } = useQuery({

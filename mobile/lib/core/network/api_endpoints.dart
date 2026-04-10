@@ -69,4 +69,5 @@ class ApiEndpoints {
 
   static String publicTenantBranding(String slug) =>
       '/api/public/tenants/$slug/branding/';
+  static const publicTenantProcedures = '/api/public/tenants/procedures/';
 }

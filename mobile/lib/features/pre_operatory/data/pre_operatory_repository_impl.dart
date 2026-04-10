@@ -14,7 +14,7 @@ class PreOperatoryRepositoryImpl implements PreOperatoryRepository {
   final Dio _dio;
 
   FormData _buildFormData(PreOperatoryUpsertPayload payload) {
-    final formData = FormData.fromMap({
+    final map = <String, dynamic>{
       'allergies': payload.allergies,
       'medications': payload.medications,
       'previous_surgeries': payload.previousSurgeries,
@@ -23,7 +23,12 @@ class PreOperatoryRepositoryImpl implements PreOperatoryRepository {
       'alcohol': payload.alcohol,
       'height': payload.height,
       'weight': payload.weight,
-    });
+    };
+    final procedureId = (payload.procedureId ?? '').trim();
+    if (procedureId.isNotEmpty) {
+      map['procedure'] = procedureId;
+    }
+    final formData = FormData.fromMap(map);
 
     return formData;
   }
@@ -49,6 +54,19 @@ class PreOperatoryRepositoryImpl implements PreOperatoryRepository {
         ),
       );
     }
+  }
+
+  @override
+  Future<List<PreOperatoryProcedureOption>> listClinicProcedures() async {
+    final response =
+        await _dio.get<dynamic>(ApiEndpoints.publicTenantProcedures);
+    final rows = response.data is List
+        ? response.data as List<dynamic>
+        : const <dynamic>[];
+    return rows
+        .whereType<Map<String, dynamic>>()
+        .map(PreOperatoryProcedureOption.fromJson)
+        .toList();
   }
 
   @override

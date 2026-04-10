@@ -1,16 +1,25 @@
 from __future__ import annotations
 
+import csv
+import io
+import unicodedata
 from datetime import datetime
+from pathlib import Path
 
-from django.db.models import Exists, OuterRef
+from django.core.exceptions import ValidationError
+from django.core.validators import validate_email
+from django.db.models import Exists, OuterRef, Prefetch
+from django.utils.crypto import get_random_string
+from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
+from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
-from django.utils import timezone
 
 from apps.appointments.models import Appointment
 from apps.chat.models import Message
+from apps.pre_operatory.models import PreOperatory
 from apps.users.models import GoKlinikUser
 
 from .models import DoctorPatientAssignment, Patient
@@ -28,6 +37,112 @@ ACTIVE_APPOINTMENT_STATUSES = [
     Appointment.StatusChoices.IN_PROGRESS,
     Appointment.StatusChoices.RESCHEDULED,
 ]
+
+
+HEADER_ALIASES = {
+    "name": {"nome", "name", "full_name", "nome_completo"},
+    "email": {"email", "e_mail", "mail"},
+    "phone": {"telefone", "phone", "telefone_celular", "celular", "fone"},
+}
+
+
+def _normalize_header_value(value: object) -> str:
+    normalized = unicodedata.normalize("NFKD", str(value or ""))
+    normalized = normalized.encode("ascii", "ignore").decode("ascii")
+    normalized = normalized.strip().lower().replace("-", "_").replace(" ", "_")
+    while "__" in normalized:
+        normalized = normalized.replace("__", "_")
+    return normalized
+
+
+def _resolve_column_indexes(header_row: list[object]) -> dict[str, int]:
+    normalized_header = [_normalize_header_value(value) for value in header_row]
+    indexes: dict[str, int] = {}
+    for key, aliases in HEADER_ALIASES.items():
+        for index, column_name in enumerate(normalized_header):
+            if column_name in aliases:
+                indexes[key] = index
+                break
+    missing_required = [field for field in ("name", "email", "phone") if field not in indexes]
+    if missing_required:
+        readable_names = {
+            "name": "nome",
+            "email": "email",
+            "phone": "telefone",
+        }
+        missing_labels = ", ".join(readable_names[field] for field in missing_required)
+        raise ValueError(f"Colunas obrigatórias ausentes: {missing_labels}.")
+    return indexes
+
+
+def _row_is_empty(row: list[object]) -> bool:
+    return all(str(value or "").strip() == "" for value in row)
+
+
+def _extract_row_value(row: list[object], index: int) -> str:
+    if index >= len(row):
+        return ""
+    value = row[index]
+    if value is None:
+        return ""
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+    return str(value).strip()
+
+
+def _split_name(full_name: str, *, fallback_email: str) -> tuple[str, str]:
+    normalized = " ".join(full_name.strip().split())
+    if not normalized:
+        local_part = fallback_email.split("@", 1)[0].strip()
+        normalized = local_part or "Paciente"
+    parts = normalized.split(" ", 1)
+    first_name = parts[0]
+    last_name = parts[1] if len(parts) > 1 else ""
+    return first_name, last_name
+
+
+def _read_csv_rows(uploaded_file) -> list[list[object]]:
+    uploaded_file.seek(0)
+    raw_bytes = uploaded_file.read()
+    if isinstance(raw_bytes, str):
+        text = raw_bytes
+    else:
+        for encoding in ("utf-8-sig", "utf-8", "latin-1"):
+            try:
+                text = raw_bytes.decode(encoding)
+                break
+            except UnicodeDecodeError:
+                continue
+        else:
+            text = raw_bytes.decode("utf-8", errors="ignore")
+    return list(csv.reader(io.StringIO(text)))
+
+
+def _read_xlsx_rows(uploaded_file) -> list[list[object]]:
+    from openpyxl import load_workbook
+
+    uploaded_file.seek(0)
+    workbook = load_workbook(uploaded_file, read_only=True, data_only=True)
+    try:
+        worksheet = workbook.active
+        return [list(row) for row in worksheet.iter_rows(values_only=True)]
+    finally:
+        workbook.close()
+
+
+def _parse_import_file(uploaded_file) -> list[list[object]]:
+    extension = Path(str(getattr(uploaded_file, "name", "") or "")).suffix.lower()
+    content_type = (getattr(uploaded_file, "content_type", "") or "").lower()
+
+    is_csv = extension == ".csv" or "csv" in content_type
+    is_xlsx = extension == ".xlsx" or "spreadsheetml" in content_type
+
+    if is_csv:
+        return _read_csv_rows(uploaded_file)
+    if is_xlsx:
+        return _read_xlsx_rows(uploaded_file)
+
+    raise ValueError("Formato de arquivo inválido. Envie CSV ou XLSX.")
 
 
 class PatientPagination(PageNumberPagination):
@@ -78,7 +193,19 @@ class PatientViewSet(viewsets.ModelViewSet):
             "doctor_assignment",
             "doctor_assignment__doctor",
             "doctor_assignment__assigned_by",
-        ).prefetch_related("pre_operatory_records").annotate(
+        ).prefetch_related(
+            Prefetch(
+                "pre_operatory_records",
+                queryset=PreOperatory.objects.select_related("procedure").only(
+                    "id",
+                    "patient_id",
+                    "status",
+                    "updated_at",
+                    "procedure_id",
+                    "procedure__specialty_name",
+                ),
+            )
+        ).annotate(
             has_active_appointment=Exists(active_appointments),
             has_completed_surgery=Exists(completed_surgeries),
         ).all()
@@ -92,12 +219,18 @@ class PatientViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(doctor_assignment__doctor_id=user.id)
 
         status_filter = self.request.query_params.get("status")
+        app_status_filter = self.request.query_params.get("app_status")
         specialty_filter = self.request.query_params.get("specialty")
         created_from = self.request.query_params.get("created_from")
         created_to = self.request.query_params.get("created_to")
 
         if status_filter:
             queryset = queryset.filter(status=status_filter)
+
+        if app_status_filter == "installed":
+            queryset = queryset.filter(app_installed_at__isnull=False)
+        elif app_status_filter == "not_installed":
+            queryset = queryset.filter(app_installed_at__isnull=True)
 
         if specialty_filter:
             queryset = queryset.filter(specialty_id=specialty_filter)
@@ -264,3 +397,122 @@ class PatientViewSet(viewsets.ModelViewSet):
             context=self.get_serializer_context(),
         ).data
         return Response(payload, status=status.HTTP_200_OK)
+
+    @action(
+        detail=False,
+        methods=["post"],
+        url_path="import",
+        parser_classes=[MultiPartParser, FormParser],
+    )
+    def import_patients(self, request):
+        user = request.user
+        if user.role not in {
+            GoKlinikUser.RoleChoices.CLINIC_MASTER,
+            GoKlinikUser.RoleChoices.SECRETARY,
+        }:
+            return Response(status=status.HTTP_403_FORBIDDEN)
+
+        if not user.tenant_id:
+            return Response(
+                {"detail": "Usuário sem clínica vinculada."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        uploaded_file = request.FILES.get("file")
+        if uploaded_file is None:
+            return Response(
+                {"file": ["Arquivo é obrigatório."]},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            rows = _parse_import_file(uploaded_file)
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception:  # noqa: BLE001
+            return Response(
+                {"detail": "Não foi possível processar o arquivo enviado."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if not rows:
+            return Response(
+                {"detail": "A planilha está vazia."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        header_row = rows[0]
+        try:
+            column_indexes = _resolve_column_indexes(header_row)
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        total_rows = 0
+        imported = 0
+        duplicates = 0
+        errors = 0
+        error_details: list[str] = []
+
+        for row_number, row in enumerate(rows[1:], start=2):
+            if _row_is_empty(row):
+                continue
+
+            total_rows += 1
+            email_value = _extract_row_value(row, column_indexes["email"]).lower()
+            name_value = _extract_row_value(row, column_indexes["name"])
+            phone_value = _extract_row_value(row, column_indexes["phone"])
+
+            if not email_value:
+                errors += 1
+                if len(error_details) < 10:
+                    error_details.append(f"Linha {row_number}: e-mail vazio.")
+                continue
+
+            try:
+                validate_email(email_value)
+            except ValidationError:
+                errors += 1
+                if len(error_details) < 10:
+                    error_details.append(f"Linha {row_number}: e-mail inválido ({email_value}).")
+                continue
+
+            if GoKlinikUser.objects.filter(
+                tenant_id=user.tenant_id,
+                email__iexact=email_value,
+            ).exists():
+                duplicates += 1
+                continue
+
+            first_name, last_name = _split_name(name_value, fallback_email=email_value)
+            temporary_password = get_random_string(12)
+
+            try:
+                Patient.objects.create_user(
+                    tenant_id=user.tenant_id,
+                    role=GoKlinikUser.RoleChoices.PATIENT,
+                    first_name=first_name,
+                    last_name=last_name,
+                    email=email_value,
+                    phone=phone_value,
+                    status=Patient.StatusChoices.LEAD,
+                    password=temporary_password,
+                    is_active=True,
+                )
+            except Exception as exc:  # noqa: BLE001
+                errors += 1
+                if len(error_details) < 10:
+                    error_details.append(f"Linha {row_number}: erro ao criar paciente ({exc}).")
+                continue
+
+            imported += 1
+
+        return Response(
+            {
+                "total_rows": total_rows,
+                "imported": imported,
+                "duplicates": duplicates,
+                "errors": errors,
+                "error_details": error_details,
+            },
+            status=status.HTTP_200_OK,
+        )

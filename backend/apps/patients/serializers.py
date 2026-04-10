@@ -14,11 +14,35 @@ from apps.pre_operatory.models import PreOperatory
 from .models import Patient
 
 
+def _latest_pre_operatory_for_patient(obj: Patient) -> PreOperatory | None:
+    prefetched = getattr(obj, "_prefetched_objects_cache", {}).get(
+        "pre_operatory_records"
+    )
+    if prefetched is not None:
+        if not prefetched:
+            return None
+        return max(prefetched, key=lambda row: row.updated_at)
+
+    return (
+        PreOperatory.objects.select_related("procedure")
+        .filter(patient_id=obj.id)
+        .only(
+            "status",
+            "updated_at",
+            "procedure_id",
+            "procedure__specialty_name",
+        )
+        .order_by("-updated_at")
+        .first()
+    )
+
+
 class PatientListSerializer(AbsoluteMediaUrlsSerializerMixin, serializers.ModelSerializer):
     full_name = serializers.CharField(read_only=True)
     specialty_name = serializers.CharField(source="specialty.specialty_name", read_only=True)
     assigned_doctor = serializers.SerializerMethodField()
     pre_operatory_status = serializers.SerializerMethodField()
+    pre_operatory_procedure_name = serializers.SerializerMethodField()
     has_active_appointment = serializers.SerializerMethodField()
     has_completed_surgery = serializers.SerializerMethodField()
 
@@ -35,6 +59,9 @@ class PatientListSerializer(AbsoluteMediaUrlsSerializerMixin, serializers.ModelS
             "specialty_name",
             "assigned_doctor",
             "pre_operatory_status",
+            "pre_operatory_procedure_name",
+            "app_installed_at",
+            "last_app_login_at",
             "has_active_appointment",
             "has_completed_surgery",
             "date_joined",
@@ -57,22 +84,14 @@ class PatientListSerializer(AbsoluteMediaUrlsSerializerMixin, serializers.ModelS
         }
 
     def get_pre_operatory_status(self, obj: Patient):
-        prefetched = getattr(obj, "_prefetched_objects_cache", {}).get(
-            "pre_operatory_records"
-        )
-        if prefetched is not None:
-            if not prefetched:
-                return None
-            latest = max(prefetched, key=lambda row: row.updated_at)
-            return latest.status
-
-        latest = (
-            PreOperatory.objects.filter(patient_id=obj.id)
-            .only("status", "updated_at")
-            .order_by("-updated_at")
-            .first()
-        )
+        latest = _latest_pre_operatory_for_patient(obj)
         return latest.status if latest else None
+
+    def get_pre_operatory_procedure_name(self, obj: Patient):
+        latest = _latest_pre_operatory_for_patient(obj)
+        if not latest or not latest.procedure:
+            return ""
+        return latest.procedure.specialty_name or ""
 
     def get_has_active_appointment(self, obj: Patient):
         annotated = getattr(obj, "has_active_appointment", None)
@@ -106,6 +125,7 @@ class PatientDetailSerializer(AbsoluteMediaUrlsSerializerMixin, serializers.Mode
     specialty_name = serializers.CharField(source="specialty.specialty_name", read_only=True)
     assigned_doctor = serializers.SerializerMethodField()
     pre_operatory_status = serializers.SerializerMethodField()
+    pre_operatory_procedure_name = serializers.SerializerMethodField()
     has_active_appointment = serializers.SerializerMethodField()
     has_completed_surgery = serializers.SerializerMethodField()
 
@@ -136,6 +156,9 @@ class PatientDetailSerializer(AbsoluteMediaUrlsSerializerMixin, serializers.Mode
             "notes",
             "assigned_doctor",
             "pre_operatory_status",
+            "pre_operatory_procedure_name",
+            "app_installed_at",
+            "last_app_login_at",
             "has_active_appointment",
             "has_completed_surgery",
             "tenant",
@@ -160,22 +183,14 @@ class PatientDetailSerializer(AbsoluteMediaUrlsSerializerMixin, serializers.Mode
         }
 
     def get_pre_operatory_status(self, obj: Patient):
-        prefetched = getattr(obj, "_prefetched_objects_cache", {}).get(
-            "pre_operatory_records"
-        )
-        if prefetched is not None:
-            if not prefetched:
-                return None
-            latest = max(prefetched, key=lambda row: row.updated_at)
-            return latest.status
-
-        latest = (
-            PreOperatory.objects.filter(patient_id=obj.id)
-            .only("status", "updated_at")
-            .order_by("-updated_at")
-            .first()
-        )
+        latest = _latest_pre_operatory_for_patient(obj)
         return latest.status if latest else None
+
+    def get_pre_operatory_procedure_name(self, obj: Patient):
+        latest = _latest_pre_operatory_for_patient(obj)
+        if not latest or not latest.procedure:
+            return ""
+        return latest.procedure.specialty_name or ""
 
     def get_has_active_appointment(self, obj: Patient):
         annotated = getattr(obj, "has_active_appointment", None)

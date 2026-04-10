@@ -11,7 +11,7 @@ from apps.appointments.models import Appointment
 from apps.patients.models import Patient
 from apps.post_op.models import PostOpJourney
 from apps.pre_operatory.models import PreOperatory, PreOperatoryFile
-from apps.tenants.models import Tenant
+from apps.tenants.models import Tenant, TenantSpecialty
 from apps.users.models import GoKlinikUser
 
 
@@ -33,6 +33,12 @@ class PreOperatoryPatientViewsTestCase(APITestCase):
             first_name="Pat",
             last_name="One",
         )
+        self.procedure = TenantSpecialty.objects.create(
+            tenant=self.tenant,
+            specialty_name="Rinoplastia",
+            description="Correção estética e funcional do nariz.",
+            is_active=True,
+        )
 
     def test_me_returns_404_when_patient_has_not_submitted_pre_operatory(self):
         self.client.force_authenticate(self.patient)
@@ -51,6 +57,18 @@ class PreOperatoryPatientViewsTestCase(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("height", response.data)
         self.assertIn("weight", response.data)
+
+    def test_create_requires_procedure_selection(self):
+        self.client.force_authenticate(self.patient)
+
+        response = self.client.post(
+            reverse("api-pre-operatory"),
+            {"height": 1.70, "weight": 70},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("procedure", response.data)
 
     def test_patient_cannot_edit_record_after_clinic_review_started(self):
         pre_operatory = PreOperatory.objects.create(
@@ -209,12 +227,19 @@ class PreOperatoryPatientViewsTestCase(APITestCase):
         self.client.force_authenticate(self.patient)
         response = self.client.post(
             reverse("api-pre-operatory"),
-            {"height": 1.76, "weight": 76},
+            {
+                "height": 1.76,
+                "weight": 76,
+                "procedure": str(self.procedure.id),
+            },
             format="json",
         )
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertNotEqual(response.data["id"], str(approved.id))
+        self.assertEqual(str(response.data["procedure"]), str(self.procedure.id))
+        self.assertEqual(response.data["procedure_name"], self.procedure.specialty_name)
+        self.assertEqual(response.data["procedure_description"], self.procedure.description)
 
     def test_create_new_cycle_auto_completes_expired_postop_before_unlocking(self):
         approved = PreOperatory.objects.create(
@@ -246,7 +271,11 @@ class PreOperatoryPatientViewsTestCase(APITestCase):
         self.client.force_authenticate(self.patient)
         response = self.client.post(
             reverse("api-pre-operatory"),
-            {"height": 1.75, "weight": 75},
+            {
+                "height": 1.75,
+                "weight": 75,
+                "procedure": str(self.procedure.id),
+            },
             format="json",
         )
 

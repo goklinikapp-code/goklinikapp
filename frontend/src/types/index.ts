@@ -95,6 +95,8 @@ export interface PatientRow {
   specialty_name?: string
   date_joined?: string
   last_visit?: string
+  app_installed_at: string | null
+  last_app_login_at: string | null
   assigned_doctor?: {
     id: string
     name: string
