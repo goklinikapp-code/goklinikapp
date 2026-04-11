@@ -90,6 +90,8 @@ class ApiEndpoints {
       '/api/medical-records/$patientId/prontuario/documents/$documentId/';
 
   static const appointments = '/api/appointments/';
+  static String appointmentDetail(String appointmentId) =>
+      '/api/appointments/$appointmentId/';
   static const appointmentsAvailableSlots =
       '/api/appointments/available-slots/';
   static const appointmentsAvailabilityRules =

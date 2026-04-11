@@ -3,6 +3,7 @@ from __future__ import annotations
 from rest_framework import serializers
 
 from config.media_urls import AbsoluteMediaUrlsSerializerMixin
+from apps.patients.models import DoctorPatientAssignment
 from apps.tenants.models import TenantSpecialty
 
 from .models import PreOperatory, PreOperatoryFile
@@ -49,6 +50,14 @@ class PreOperatorySerializer(AbsoluteMediaUrlsSerializerMixin, serializers.Model
         read_only=True,
         allow_null=True,
     )
+    approved_by_name = serializers.CharField(
+        source="approved_by.full_name",
+        read_only=True,
+        allow_null=True,
+    )
+    current_doctor_id = serializers.SerializerMethodField()
+    current_doctor_name = serializers.SerializerMethodField()
+    approved_by_different_doctor = serializers.SerializerMethodField()
     procedure_name = serializers.CharField(
         source="procedure.specialty_name",
         read_only=True,
@@ -85,6 +94,10 @@ class PreOperatorySerializer(AbsoluteMediaUrlsSerializerMixin, serializers.Model
             "procedure_description",
             "assigned_doctor",
             "assigned_doctor_name",
+            "approved_by_name",
+            "current_doctor_id",
+            "current_doctor_name",
+            "approved_by_different_doctor",
             "status",
             "approved_at",
             "files",
@@ -105,6 +118,19 @@ class PreOperatorySerializer(AbsoluteMediaUrlsSerializerMixin, serializers.Model
             "created_at",
             "updated_at",
         )
+
+    def _get_current_assignment(self, obj: PreOperatory):
+        assignment = getattr(obj, "_current_doctor_assignment", None)
+        if assignment is not None:
+            return assignment
+
+        assignment = (
+            DoctorPatientAssignment.objects.select_related("doctor")
+            .filter(patient_id=obj.patient_id)
+            .first()
+        )
+        setattr(obj, "_current_doctor_assignment", assignment)
+        return assignment
 
     def get_photos(self, obj: PreOperatory):
         rows = obj.files.filter(type=PreOperatoryFile.FileTypeChoices.PHOTO)
@@ -127,6 +153,28 @@ class PreOperatorySerializer(AbsoluteMediaUrlsSerializerMixin, serializers.Model
 
     def get_drinks_alcohol(self, obj: PreOperatory) -> bool:
         return bool(obj.alcohol)
+
+    def get_current_doctor_name(self, obj: PreOperatory):
+        assignment = self._get_current_assignment(obj)
+        if not assignment or not assignment.doctor_id:
+            return None
+        return assignment.doctor.full_name
+
+    def get_current_doctor_id(self, obj: PreOperatory):
+        assignment = self._get_current_assignment(obj)
+        if not assignment or not assignment.doctor_id:
+            return None
+        return str(assignment.doctor_id)
+
+    def get_approved_by_different_doctor(self, obj: PreOperatory) -> bool:
+        if not obj.approved_by_id:
+            return False
+
+        assignment = self._get_current_assignment(obj)
+        if not assignment or not assignment.doctor_id:
+            return False
+
+        return str(obj.approved_by_id) != str(assignment.doctor_id)
 
 
 class PreOperatoryWriteSerializer(serializers.ModelSerializer):

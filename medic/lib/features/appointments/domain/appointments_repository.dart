@@ -18,6 +18,12 @@ abstract class AppointmentsRepository {
     required String notes,
   });
 
+  Future<AppointmentItem> updateAppointmentStatus({
+    required String appointmentId,
+    required String status,
+    String? cancellationReason,
+  });
+
   Future<ProfessionalAvailabilityResponse> getAvailabilityRules({
     String? professionalId,
   });

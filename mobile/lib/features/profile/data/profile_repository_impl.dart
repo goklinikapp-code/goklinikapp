@@ -68,6 +68,20 @@ class ProfileRepositoryImpl implements ProfileRepository {
 
     return AuthUser.fromJson(response.data as Map<String, dynamic>);
   }
+
+  @override
+  Future<void> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    await _dio.post<dynamic>(
+      ApiEndpoints.authChangePassword,
+      data: {
+        'current_password': currentPassword,
+        'new_password': newPassword,
+      },
+    );
+  }
 }
 
 final profileRepositoryProvider = Provider<ProfileRepository>((ref) {

@@ -75,6 +75,11 @@ export default function PreOperatoryPage() {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [notes, setNotes] = useState('')
   const [selectedDoctorId, setSelectedDoctorId] = useState('')
+  const [originalLinkedDoctor, setOriginalLinkedDoctor] = useState<{
+    id: string
+    name: string
+  } | null>(null)
+  const [doctorSelectionManuallyChanged, setDoctorSelectionManuallyChanged] = useState(false)
   const [pendingAction, setPendingAction] = useState<ActionKind | null>(null)
   const isClinicMaster = currentUser?.role === 'clinic_master'
   const isSurgeon = currentUser?.role === 'surgeon'
@@ -105,8 +110,22 @@ export default function PreOperatoryPage() {
   useEffect(() => {
     if (!isModalOpen || !selectedRecord) return
     setNotes(selectedRecord.notes || '')
-    setSelectedDoctorId(selectedRecord.assigned_doctor || '')
-  }, [isModalOpen, selectedRecord?.id])
+    const linkedDoctorId = selectedRecord.current_doctor_id || selectedRecord.assigned_doctor || ''
+    const linkedDoctorName =
+      selectedRecord.current_doctor_name ||
+      selectedRecord.assigned_doctor_name ||
+      ''
+    setSelectedDoctorId(linkedDoctorId)
+    setOriginalLinkedDoctor(
+      linkedDoctorId
+        ? {
+            id: linkedDoctorId,
+            name: linkedDoctorName,
+          }
+        : null,
+    )
+    setDoctorSelectionManuallyChanged(false)
+  }, [isModalOpen, selectedRecord])
 
   const updateMutation = useMutation({
     mutationFn: ({
@@ -123,6 +142,8 @@ export default function PreOperatoryPage() {
     setSelectedRecordId(null)
     setNotes('')
     setSelectedDoctorId('')
+    setOriginalLinkedDoctor(null)
+    setDoctorSelectionManuallyChanged(false)
     setPendingAction(null)
   }
 
@@ -304,7 +325,15 @@ export default function PreOperatoryPage() {
                 <p className="mb-2 text-sm font-semibold text-night">{t('preop_assign_doctor')}</p>
                 <Select
                   value={selectedDoctorId}
-                  onChange={(event) => setSelectedDoctorId(event.target.value)}
+                  onChange={(event) => {
+                    const nextDoctorId = event.target.value
+                    setSelectedDoctorId(nextDoctorId)
+                    if (!originalLinkedDoctor?.id || !nextDoctorId) {
+                      setDoctorSelectionManuallyChanged(false)
+                      return
+                    }
+                    setDoctorSelectionManuallyChanged(nextDoctorId !== originalLinkedDoctor.id)
+                  }}
                   disabled={doctorsQuery.isLoading}
                 >
                   <option value="">{t('preop_select_doctor')}</option>
@@ -314,6 +343,12 @@ export default function PreOperatoryPage() {
                     </option>
                   ))}
                 </Select>
+                {doctorSelectionManuallyChanged && originalLinkedDoctor ? (
+                  <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+                    Este paciente estava vinculado ao Dr. {originalLinkedDoctor.name || 'Nao informado'}.
+                    Ao salvar com um médico diferente, o vínculo será atualizado automaticamente.
+                  </p>
+                ) : null}
               </div>
             ) : null}
 

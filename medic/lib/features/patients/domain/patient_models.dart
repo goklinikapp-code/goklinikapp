@@ -264,6 +264,8 @@ class PatientPreOperatoryRecord {
     required this.medications,
     required this.previousSurgeries,
     required this.diseases,
+    required this.procedureName,
+    required this.procedureDescription,
     required this.height,
     required this.weight,
     required this.smokes,
@@ -286,6 +288,8 @@ class PatientPreOperatoryRecord {
   final String medications;
   final String previousSurgeries;
   final String diseases;
+  final String procedureName;
+  final String procedureDescription;
   final double? height;
   final double? weight;
   final bool smokes;
@@ -329,6 +333,8 @@ class PatientPreOperatoryRecord {
       medications: (json['medications'] ?? '').toString(),
       previousSurgeries: (json['previous_surgeries'] ?? '').toString(),
       diseases: (json['diseases'] ?? '').toString(),
+      procedureName: (json['procedure_name'] ?? '').toString(),
+      procedureDescription: (json['procedure_description'] ?? '').toString(),
       height: double.tryParse((json['height'] ?? '').toString()),
       weight: double.tryParse((json['weight'] ?? '').toString()),
       smokes: json['smokes'] == true || json['smoking'] == true,

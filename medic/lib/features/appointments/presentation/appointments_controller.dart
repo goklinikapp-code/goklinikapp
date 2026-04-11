@@ -85,6 +85,21 @@ class AppointmentsController
             );
     return response.slots;
   }
+
+  Future<AppointmentItem> updateAppointmentStatus({
+    required String appointmentId,
+    required String status,
+    String? cancellationReason,
+  }) async {
+    final updated =
+        await _ref.read(appointmentsRepositoryProvider).updateAppointmentStatus(
+              appointmentId: appointmentId,
+              status: status,
+              cancellationReason: cancellationReason,
+            );
+    await load();
+    return updated;
+  }
 }
 
 final appointmentsControllerProvider = StateNotifierProvider<

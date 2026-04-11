@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { isAxiosError } from 'axios'
+import { Copy, Eye, EyeOff } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
@@ -9,6 +10,8 @@ import {
   updatePatient,
   type UpdatePatientPayload,
 } from '@/api/patients'
+import { getPatientPreOperatory } from '@/api/medicalRecords'
+import { listTenantProcedures } from '@/api/settings'
 import { PatientMedicalRecordModule } from '@/components/patients/PatientMedicalRecordModule'
 import { SectionHeader } from '@/components/shared/SectionHeader'
 import { Avatar } from '@/components/ui/Avatar'
@@ -20,6 +23,7 @@ import { Modal } from '@/components/ui/Modal'
 import { Select } from '@/components/ui/Select'
 import { TextArea } from '@/components/ui/TextArea'
 import { t as translate, type TranslationKey } from '@/i18n/system'
+import { useAuthStore } from '@/stores/authStore'
 import { usePreferencesStore } from '@/stores/preferencesStore'
 import { formatDate } from '@/utils/format'
 
@@ -32,7 +36,7 @@ interface EditPatientForm {
   email: string
   phone: string
   date_of_birth: string
-  specialty_name: string
+  specialty: string
   status: PatientStatus
   referral_source: ReferralSource
   notes: string
@@ -44,7 +48,7 @@ const emptyEditForm: EditPatientForm = {
   email: '',
   phone: '',
   date_of_birth: '',
-  specialty_name: '',
+  specialty: '',
   status: 'lead',
   referral_source: 'other',
   notes: '',
@@ -75,28 +79,54 @@ function getReferralLabel(
   return t('patient_detail_referral_other')
 }
 
+function formatApprovalDate(value?: string | null): string {
+  if (!value) return 'Não informado'
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) return 'Não informado'
+  return new Intl.DateTimeFormat('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  }).format(parsed)
+}
+
 export default function PatientDetailPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { id } = useParams()
   const [searchParams, setSearchParams] = useSearchParams()
   const language = usePreferencesStore((state) => state.language)
+  const userRole = useAuthStore((state) => state.user?.role)
   const t = (key: TranslationKey) => translate(language, key)
-  const [isEditModalOpen, setIsEditModalOpen] = useState(searchParams.get('edit') === '1')
+  const canEditPatient = userRole === 'clinic_master'
+  const isEditModalOpen = canEditPatient && searchParams.get('edit') === '1'
   const [editForm, setEditForm] = useState<EditPatientForm>(emptyEditForm)
+  const [showTempPassword, setShowTempPassword] = useState(false)
 
   const patientId = id || ''
 
-  useEffect(() => {
-    setIsEditModalOpen(searchParams.get('edit') === '1')
-  }, [searchParams])
-
   const closeEditModal = () => {
-    setIsEditModalOpen(false)
+    setShowTempPassword(false)
     if (searchParams.get('edit') === '1') {
       const next = new URLSearchParams(searchParams)
       next.delete('edit')
       setSearchParams(next, { replace: true })
+    }
+  }
+
+  const openEditModal = () => {
+    if (!canEditPatient) return
+    const next = new URLSearchParams(searchParams)
+    next.set('edit', '1')
+    setSearchParams(next, { replace: true })
+  }
+
+  const handleCopyTempPassword = async (value: string) => {
+    try {
+      await navigator.clipboard.writeText(value)
+      toast.success('Senha copiada')
+    } catch {
+      toast.error('Nao foi possivel copiar a senha')
     }
   }
 
@@ -110,6 +140,15 @@ export default function PatientDetailPage() {
     queryFn: () => getPatientById(patientId),
     enabled: Boolean(patientId),
   })
+  const { data: procedures = [] } = useQuery({
+    queryKey: ['tenant-procedures-catalog'],
+    queryFn: () => listTenantProcedures(),
+  })
+  const { data: preOperatoryRecord } = useQuery({
+    queryKey: ['patient-detail-pre-operatory', patientId],
+    queryFn: () => getPatientPreOperatory(patientId),
+    enabled: Boolean(patientId),
+  })
 
   useEffect(() => {
     if (!patient) return
@@ -119,7 +158,7 @@ export default function PatientDetailPage() {
       email: patient.email || '',
       phone: patient.phone || '',
       date_of_birth: patient.date_of_birth?.slice(0, 10) || '',
-      specialty_name: patient.specialty_name || '',
+      specialty: patient.specialty || '',
       status: normalizeStatus(patient.status),
       referral_source: normalizeReferralSource(patient.referral_source),
       notes: patient.notes || '',
@@ -154,6 +193,7 @@ export default function PatientDetailPage() {
   })
 
   const handleSaveChanges = () => {
+    if (!canEditPatient) return
     if (!patientId) return
 
     const payload: UpdatePatientPayload = {
@@ -161,7 +201,7 @@ export default function PatientDetailPage() {
       cpf: editForm.cpf,
       email: editForm.email,
       phone: editForm.phone,
-      specialty_name: editForm.specialty_name,
+      specialty: editForm.specialty || null,
       status: editForm.status,
       referral_source: editForm.referral_source,
       notes: editForm.notes,
@@ -199,16 +239,35 @@ export default function PatientDetailPage() {
     )
   }
 
+  const tempPassword = patient.temp_password ?? null
+  const displayedProcedureName =
+    patient.pre_operatory_procedure_name?.trim() || patient.specialty_name?.trim() || ''
+  const activeProcedures = procedures
+    .filter((procedure) => procedure.is_active)
+    .sort((left, right) => left.specialty_name.localeCompare(right.specialty_name))
+  const selectedProcedureMissingFromCatalog =
+    Boolean(editForm.specialty) &&
+    !activeProcedures.some((procedure) => procedure.id === editForm.specialty)
+  const approvedByDisplayName =
+    preOperatoryRecord?.approved_by_name?.trim()
+    || preOperatoryRecord?.current_doctor_name?.trim()
+    || patient.assigned_doctor?.name?.trim()
+    || ''
+  const currentDoctorDisplayName =
+    preOperatoryRecord?.current_doctor_name?.trim()
+    || patient.assigned_doctor?.name?.trim()
+    || ''
+
   return (
     <div className="space-y-5">
       <SectionHeader
         title={patient.full_name || t('patient_detail_title')}
         subtitle={t('patient_detail_subtitle')}
-        actions={
-          <Button onClick={() => setIsEditModalOpen(true)}>
+        actions={canEditPatient ? (
+          <Button onClick={openEditModal}>
             {t('patient_detail_edit_record')}
           </Button>
-        }
+        ) : null}
       />
 
       <div className="grid gap-4 xl:grid-cols-[280px_1fr]">
@@ -221,8 +280,8 @@ export default function PatientDetailPage() {
 
           <div className="mt-6 space-y-3 text-sm">
             <p>
-              <span className="overline block">{t('patient_detail_specialty')}</span>
-              <span className="text-slate-700">{fieldValue(patient.specialty_name)}</span>
+              <span className="overline block">{t('patient_detail_procedures')}</span>
+              <span className="text-slate-700">{fieldValue(displayedProcedureName)}</span>
             </p>
             <p>
               <span className="overline block">{t('patient_detail_referral_source')}</span>
@@ -302,6 +361,28 @@ export default function PatientDetailPage() {
             </div>
           </Card>
 
+          {preOperatoryRecord?.status === 'approved' ? (
+            <Card>
+              <h2 className="section-heading mb-3">Pré-operatório</h2>
+              <div className="space-y-2 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-slate-700">
+                <p>
+                  <span className="font-semibold">Médico que aprovou:</span>{' '}
+                  {approvedByDisplayName ? `Dr. ${approvedByDisplayName}` : 'Não informado'}
+                </p>
+                <p>
+                  <span className="font-semibold">Data da aprovação:</span>{' '}
+                  {formatApprovalDate(preOperatoryRecord.approved_at)}
+                </p>
+                {preOperatoryRecord.approved_by_different_doctor ? (
+                  <p className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-700">
+                    Pré-operatório aprovado pelo Dr. {approvedByDisplayName || 'Não informado'}.
+                    {' '}Médico atual: Dr. {currentDoctorDisplayName || 'Não informado'}.
+                  </p>
+                ) : null}
+              </div>
+            </Card>
+          ) : null}
+
           <PatientMedicalRecordModule patientId={patientId} />
 
           <Card>
@@ -360,6 +441,40 @@ export default function PatientDetailPage() {
             />
           </div>
 
+          {tempPassword ? (
+            <div>
+              <p className="mb-1 text-xs font-semibold text-slate-600">
+                Senha provisoria gerada automaticamente
+              </p>
+              <div className="flex items-center gap-2">
+                <Input
+                  type={showTempPassword ? 'text' : 'password'}
+                  value={tempPassword}
+                  readOnly
+                />
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => setShowTempPassword((current) => !current)}
+                  aria-label={showTempPassword ? 'Ocultar senha provisoria' : 'Mostrar senha provisoria'}
+                >
+                  {showTempPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => void handleCopyTempPassword(tempPassword)}
+                >
+                  <Copy className="h-4 w-4" />
+                  Copiar
+                </Button>
+              </div>
+              <p className="caption mt-2 text-slate-500">
+                Este campo ficara visivel apenas ate o paciente alterar a propria senha no aplicativo.
+              </p>
+            </div>
+          ) : null}
+
           <div>
             <p className="mb-1 text-xs font-semibold text-slate-600">{t('patient_detail_phone')}</p>
             <Input
@@ -380,13 +495,25 @@ export default function PatientDetailPage() {
           </div>
 
           <div>
-            <p className="mb-1 text-xs font-semibold text-slate-600">{t('patient_detail_specialty')}</p>
-            <Input
-              value={editForm.specialty_name}
+            <p className="mb-1 text-xs font-semibold text-slate-600">{t('patient_detail_procedures')}</p>
+            <Select
+              value={editForm.specialty}
               onChange={(event) =>
-                setEditForm((prev) => ({ ...prev, specialty_name: event.target.value }))
+                setEditForm((prev) => ({ ...prev, specialty: event.target.value }))
               }
-            />
+            >
+              <option value="">{t('patient_detail_select_procedure')}</option>
+              {selectedProcedureMissingFromCatalog ? (
+                <option value={editForm.specialty}>
+                  {patient.specialty_name || t('patients_not_informed')}
+                </option>
+              ) : null}
+              {activeProcedures.map((procedure) => (
+                <option key={procedure.id} value={procedure.id}>
+                  {procedure.specialty_name}
+                </option>
+              ))}
+            </Select>
           </div>
 
           <div>

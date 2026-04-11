@@ -424,3 +424,54 @@ class PatientLoginTrackingTestCase(APITestCase):
         self.clinic_master.refresh_from_db()
         self.assertIsNone(self.clinic_master.app_installed_at)
         self.assertIsNone(self.clinic_master.last_app_login_at)
+
+
+class ChangePasswordAPIViewTestCase(APITestCase):
+    def setUp(self):
+        self.tenant = Tenant.objects.create(name="Password Tenant", slug="password-tenant")
+        self.patient = Patient.objects.create_user(
+            email="password.patient@clinic.com",
+            password="SenhaAtual123!",
+            tenant=self.tenant,
+            role=GoKlinikUser.RoleChoices.PATIENT,
+            temp_password="Ab1!cdef",
+        )
+        self.url = reverse("auth-change-password")
+
+    def test_change_password_success_clears_temp_password(self):
+        self.client.force_authenticate(self.patient)
+
+        response = self.client.post(
+            self.url,
+            {
+                "current_password": "SenhaAtual123!",
+                "new_password": "NovaSenha456!",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["detail"], "Senha alterada com sucesso")
+
+        self.patient.refresh_from_db()
+        self.assertTrue(self.patient.check_password("NovaSenha456!"))
+        self.assertIsNone(self.patient.temp_password)
+
+    def test_change_password_returns_400_when_current_password_is_invalid(self):
+        self.client.force_authenticate(self.patient)
+
+        response = self.client.post(
+            self.url,
+            {
+                "current_password": "SenhaErrada123!",
+                "new_password": "NovaSenha456!",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data["detail"], "Senha atual incorreta")
+
+        self.patient.refresh_from_db()
+        self.assertTrue(self.patient.check_password("SenhaAtual123!"))
+        self.assertEqual(self.patient.temp_password, "Ab1!cdef")

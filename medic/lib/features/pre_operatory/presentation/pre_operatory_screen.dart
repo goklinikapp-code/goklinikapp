@@ -274,6 +274,8 @@ class _PreOperatoryScreenState extends ConsumerState<PreOperatoryScreen> {
               }
 
               final statusVisual = _statusVisual(record.status, t);
+              final canDecideStatus = record.status == PreOperatoryStatus.pending ||
+                  record.status == PreOperatoryStatus.inReview;
               return ConstrainedBox(
                 constraints: BoxConstraints(maxHeight: maxHeight),
                 child: Container(
@@ -435,7 +437,7 @@ class _PreOperatoryScreenState extends ConsumerState<PreOperatoryScreen> {
                                 children: [
                                   Expanded(
                                     child: OutlinedButton(
-                                      onPressed: isSubmitting
+                                      onPressed: isSubmitting || !canDecideStatus
                                           ? null
                                           : () => submit(
                                               status:
@@ -449,14 +451,14 @@ class _PreOperatoryScreenState extends ConsumerState<PreOperatoryScreen> {
                                       child: Text(
                                         isSubmitting
                                             ? t('please_wait')
-                                            : t('preop_filter_rejected'),
+                                            : t('preop_action_reject'),
                                       ),
                                     ),
                                   ),
                                   const SizedBox(width: 8),
                                   Expanded(
                                     child: ElevatedButton(
-                                      onPressed: isSubmitting
+                                      onPressed: isSubmitting || !canDecideStatus
                                           ? null
                                           : () => submit(
                                               status:
@@ -464,12 +466,22 @@ class _PreOperatoryScreenState extends ConsumerState<PreOperatoryScreen> {
                                       child: Text(
                                         isSubmitting
                                             ? t('please_wait')
-                                            : t('preop_filter_approved'),
+                                            : t('preop_action_approve'),
                                       ),
                                     ),
                                   ),
                                 ],
                               ),
+                              if (!canDecideStatus) ...[
+                                const SizedBox(height: 8),
+                                Text(
+                                  t('preop_decision_locked'),
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    color: GKColors.neutral,
+                                  ),
+                                ),
+                              ],
                               if (record.patientId.isNotEmpty) ...[
                                 const SizedBox(height: 8),
                                 SizedBox(

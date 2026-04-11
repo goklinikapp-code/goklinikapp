@@ -9,6 +9,7 @@ import { useNavigate } from 'react-router-dom'
 import { z } from 'zod'
 
 import { assignDoctorToPatient, createPatient, getDoctors, getPatients } from '@/api/patients'
+import { getPatientPreOperatory } from '@/api/medicalRecords'
 import { SectionHeader } from '@/components/shared/SectionHeader'
 import { Avatar } from '@/components/ui/Avatar'
 import { Badge } from '@/components/ui/Badge'
@@ -37,6 +38,15 @@ const patientSchema = z.object({
 
 type PatientForm = z.infer<typeof patientSchema>
 
+function resolvePatientProcedureName(patient: {
+  pre_operatory_procedure_name?: string
+  specialty_name?: string
+}): string {
+  const preOperatoryProcedure = patient.pre_operatory_procedure_name?.trim()
+  if (preOperatoryProcedure) return preOperatoryProcedure
+  return patient.specialty_name?.trim() || ''
+}
+
 function formatDateTime(value?: string | null): string {
   if (!value) return '-'
   const parsed = new Date(value)
@@ -50,12 +60,25 @@ function formatDateTime(value?: string | null): string {
   }).format(parsed)
 }
 
+function formatApprovalDate(value?: string | null): string {
+  if (!value) return 'Não informado'
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) return 'Não informado'
+  return new Intl.DateTimeFormat('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  }).format(parsed)
+}
+
 export default function PatientsPage() {
   const navigate = useNavigate()
   const language = usePreferencesStore((state) => state.language)
   const t = (key: TranslationKey) => translate(language, key)
   const userRole = useAuthStore((state) => state.user?.role)
   const canAssignDoctor = userRole === 'clinic_master' || userRole === 'secretary'
+  const canEditPatient = userRole === 'clinic_master'
+  const canViewPatientBilling = userRole === 'clinic_master' || userRole === 'secretary'
   const [statusFilter, setStatusFilter] = useState('all')
   const [specialtyFilter, setSpecialtyFilter] = useState('all')
   const [dateFilter, setDateFilter] = useState('')
@@ -67,6 +90,10 @@ export default function PatientsPage() {
   const [isAssignModalOpen, setIsAssignModalOpen] = useState(false)
   const [selectedDoctorId, setSelectedDoctorId] = useState('')
   const [assignmentNotes, setAssignmentNotes] = useState('')
+  const [originalAssignedDoctor, setOriginalAssignedDoctor] = useState<{
+    id: string
+    name: string
+  } | null>(null)
 
   const queryClient = useQueryClient()
   const appStatusFilter = statusFilter === 'app_installed'
@@ -94,6 +121,20 @@ export default function PatientsPage() {
     () => patients.find((patient) => patient.id === selectedId) || null,
     [patients, selectedId],
   )
+  const { data: selectedPatientPreOperatory } = useQuery({
+    queryKey: ['patients-selected-pre-operatory', selectedPatient?.id],
+    enabled: Boolean(selectedPatient?.id),
+    queryFn: () => getPatientPreOperatory(selectedPatient!.id),
+  })
+  const approvedByDisplayName =
+    selectedPatientPreOperatory?.approved_by_name?.trim()
+    || selectedPatientPreOperatory?.current_doctor_name?.trim()
+    || selectedPatient?.assigned_doctor?.name?.trim()
+    || ''
+  const currentDoctorDisplayName =
+    selectedPatientPreOperatory?.current_doctor_name?.trim()
+    || selectedPatient?.assigned_doctor?.name?.trim()
+    || ''
 
   const { data: doctors = [], isLoading: doctorsLoading } = useQuery({
     queryKey: ['patients-doctors'],
@@ -104,8 +145,9 @@ export default function PatientsPage() {
   const specialties = useMemo(() => {
     const set = new Set<string>()
     patients.forEach((patient) => {
-      if (patient.specialty_name) {
-        set.add(patient.specialty_name)
+      const procedureName = resolvePatientProcedureName(patient)
+      if (procedureName) {
+        set.add(procedureName)
       }
     })
     return Array.from(set)
@@ -113,8 +155,9 @@ export default function PatientsPage() {
 
   const filteredPatients = useMemo(() => {
     return patients.filter((patient) => {
+      const procedureName = resolvePatientProcedureName(patient)
       const specialtyMatch =
-        specialtyFilter === 'all' ? true : patient.specialty_name?.toLowerCase() === specialtyFilter.toLowerCase()
+        specialtyFilter === 'all' ? true : procedureName.toLowerCase() === specialtyFilter.toLowerCase()
       const joinedDate = patient.date_joined ? patient.date_joined.slice(0, 10) : ''
       const dateMatch = dateFilter ? joinedDate === dateFilter : true
 
@@ -173,6 +216,7 @@ export default function PatientsPage() {
       setIsAssignModalOpen(false)
       setSelectedDoctorId('')
       setAssignmentNotes('')
+      setOriginalAssignedDoctor(null)
       await queryClient.invalidateQueries({ queryKey: ['patients-list'] })
     },
     onError: (error) => {
@@ -209,6 +253,14 @@ export default function PatientsPage() {
     }
     setSelectedDoctorId(selectedPatient.assigned_doctor?.id || '')
     setAssignmentNotes(selectedPatient.assigned_doctor?.notes || '')
+    setOriginalAssignedDoctor(
+      selectedPatient.assigned_doctor
+        ? {
+            id: selectedPatient.assigned_doctor.id,
+            name: selectedPatient.assigned_doctor.name,
+          }
+        : null,
+    )
     setIsAssignModalOpen(true)
   }
 
@@ -285,7 +337,7 @@ export default function PatientsPage() {
                   <th className="px-4 py-3 text-left overline">{t('patients_col_patient')}</th>
                   <th className="px-4 py-3 text-left overline">{t('patients_col_contact')}</th>
                   <th className="px-4 py-3 text-left overline">{t('patients_col_last_visit')}</th>
-                  <th className="px-4 py-3 text-left overline">{t('patients_col_specialty')}</th>
+                  <th className="px-4 py-3 text-left overline">{t('patients_col_procedure')}</th>
                   <th className="w-[120px] px-4 py-3 text-left overline">APP</th>
                   <th className="px-4 py-3 text-left overline">ULTIMO ACESSO</th>
                 </tr>
@@ -326,7 +378,7 @@ export default function PatientsPage() {
                       </td>
                       <td className="px-4 py-3">
                         <Badge className="bg-primary/10 text-primary">
-                          {patient.specialty_name || t('patients_not_informed')}
+                          {resolvePatientProcedureName(patient) || t('patients_not_informed')}
                         </Badge>
                       </td>
                       <td className="w-[120px] px-4 py-3 align-top">
@@ -423,9 +475,33 @@ export default function PatientsPage() {
               <div>
                 <p className="overline mb-2">{t('patients_clinical_history')}</p>
                 <p className="text-sm text-slate-600">
-                  {t('patients_last_procedure')}: {selectedPatient.specialty_name || t('patients_not_informed')}
+                  {t('patients_last_procedure')}:{' '}
+                  {resolvePatientProcedureName(selectedPatient) || t('patients_not_informed')}
                 </p>
               </div>
+
+              {selectedPatientPreOperatory?.status === 'approved' ? (
+                <div>
+                  <p className="overline mb-2">Pré-operatório</p>
+                  <div className="space-y-1 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-slate-700">
+                    <p>
+                      <span className="font-semibold">Aprovado por:</span>{' '}
+                      {approvedByDisplayName ? `Dr. ${approvedByDisplayName}` : 'Não informado'}
+                    </p>
+                    <p>
+                      <span className="font-semibold">Data da aprovação:</span>{' '}
+                      {formatApprovalDate(selectedPatientPreOperatory.approved_at)}
+                    </p>
+                    {selectedPatientPreOperatory.approved_by_different_doctor ? (
+                      <p className="rounded-md border border-sky-200 bg-sky-50 px-2 py-1 text-xs text-sky-700">
+                        Pré-operatório aprovado pelo Dr.{' '}
+                        {approvedByDisplayName || 'Não informado'}. Médico atual:{' '}
+                        Dr. {currentDoctorDisplayName || 'Não informado'}.
+                      </p>
+                    ) : null}
+                  </div>
+                </div>
+              ) : null}
 
               <div>
                 <p className="overline mb-2">App Status</p>
@@ -470,16 +546,20 @@ export default function PatientsPage() {
                 <Button fullWidth onClick={() => navigate(`/patients/${selectedPatient.id}`)}>
                   {t('patients_view_full_profile')}
                 </Button>
-                <Button
-                  fullWidth
-                  variant="secondary"
-                  onClick={() => navigate(`/patients/${selectedPatient.id}?edit=1`)}
-                >
-                  {t('patients_edit')}
-                </Button>
-                <Button fullWidth variant="accent" onClick={() => navigate('/reports')}>
-                  {t('patients_billing')}
-                </Button>
+                {canEditPatient ? (
+                  <Button
+                    fullWidth
+                    variant="secondary"
+                    onClick={() => navigate(`/patients/${selectedPatient.id}?edit=1`)}
+                  >
+                    {t('patients_edit')}
+                  </Button>
+                ) : null}
+                {canViewPatientBilling ? (
+                  <Button fullWidth variant="accent" onClick={() => navigate('/reports')}>
+                    {t('patients_billing')}
+                  </Button>
+                ) : null}
               </div>
             </div>
           ) : (
@@ -541,7 +621,10 @@ export default function PatientsPage() {
       {canAssignDoctor ? (
         <Modal
           isOpen={isAssignModalOpen}
-          onClose={() => setIsAssignModalOpen(false)}
+          onClose={() => {
+            setIsAssignModalOpen(false)
+            setOriginalAssignedDoctor(null)
+          }}
           title={t('patients_assign_modal_title')}
         >
           <div className="space-y-3">
@@ -564,6 +647,14 @@ export default function PatientsPage() {
                   </option>
                 ))}
               </Select>
+              {originalAssignedDoctor &&
+              selectedDoctorId &&
+              selectedDoctorId !== originalAssignedDoctor.id ? (
+                <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+                  Este paciente estava vinculado ao Dr. {originalAssignedDoctor.name}. Ao salvar com
+                  um médico diferente, o vínculo será atualizado automaticamente.
+                </p>
+              ) : null}
             </div>
 
             <div>
@@ -577,7 +668,13 @@ export default function PatientsPage() {
             </div>
 
             <div className="flex justify-end gap-2">
-              <Button variant="secondary" onClick={() => setIsAssignModalOpen(false)}>
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setIsAssignModalOpen(false)
+                  setOriginalAssignedDoctor(null)
+                }}
+              >
                 {t('patients_cancel')}
               </Button>
               <Button onClick={handleAssignDoctor} disabled={assignDoctorMutation.isPending}>

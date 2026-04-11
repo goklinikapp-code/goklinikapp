@@ -92,7 +92,10 @@ export interface PatientRow {
   phone: string
   avatar_url?: string | null
   status: 'active' | 'inactive' | 'lead'
+  specialty?: string | null
   specialty_name?: string
+  pre_operatory_status?: 'pending' | 'in_review' | 'approved' | 'rejected' | null
+  pre_operatory_procedure_name?: string
   date_joined?: string
   last_visit?: string
   app_installed_at: string | null
@@ -113,6 +116,7 @@ export interface PatientDetail extends PatientRow {
   last_name?: string
   cpf?: string
   date_of_birth?: string
+  temp_password?: string | null
   avatar_url?: string | null
   blood_type?: string
   allergies?: string
@@ -320,8 +324,16 @@ export interface PreOperatoryRecord {
   height?: number | null
   weight?: number | null
   notes?: string
+  procedure?: string | null
+  procedure_name?: string | null
+  procedure_description?: string | null
   assigned_doctor?: string | null
   assigned_doctor_name?: string | null
+  approved_at?: string | null
+  approved_by_name?: string | null
+  current_doctor_id?: string | null
+  current_doctor_name?: string | null
+  approved_by_different_doctor?: boolean
   status: 'pending' | 'in_review' | 'approved' | 'rejected'
   files: PreOperatoryFileRecord[]
   photos: PreOperatoryFileRecord[]

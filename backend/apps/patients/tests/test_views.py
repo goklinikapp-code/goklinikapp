@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from datetime import timedelta
 from io import BytesIO
 
@@ -260,6 +261,44 @@ class PatientViewSetSurgeonScopeTestCase(APITestCase):
         self.assertEqual(response.data["duplicates"], 0)
         self.assertEqual(response.data["errors"], 0)
 
+    def test_import_patients_generates_temp_password_with_expected_pattern(self):
+        self.client.force_authenticate(self.master)
+        csv_content = (
+            "nome,email,telefone\n"
+            "Ana Temp,ana.temp@patients.com,11911111111\n"
+            "Bruno Temp,bruno.temp@patients.com,11922222222\n"
+        )
+        upload = SimpleUploadedFile(
+            "pacientes.csv",
+            csv_content.encode("utf-8"),
+            content_type="text/csv",
+        )
+
+        response = self.client.post(
+            reverse("patients-import-patients"),
+            {"file": upload},
+            format="multipart",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["imported"], 2)
+
+        imported_users = Patient.objects.filter(
+            email__in=["ana.temp@patients.com", "bruno.temp@patients.com"],
+        ).order_by("email")
+        self.assertEqual(imported_users.count(), 2)
+
+        for imported_user in imported_users:
+            self.assertIsNotNone(imported_user.temp_password)
+            self.assertEqual(len(imported_user.temp_password), 8)
+            self.assertRegex(imported_user.temp_password, r"[A-Z]")
+            self.assertRegex(imported_user.temp_password, r"[0-9]")
+            self.assertRegex(imported_user.temp_password, r"[!@#$%&]")
+            self.assertRegex(imported_user.temp_password, r"^[A-Za-z0-9!@#$%&]{8}$")
+            lowercase_count = len(re.findall(r"[a-z]", imported_user.temp_password))
+            self.assertEqual(lowercase_count, 5)
+            self.assertTrue(imported_user.check_password(imported_user.temp_password))
+
     def test_import_patients_csv_smoke_with_duplicate(self):
         self.client.force_authenticate(self.master)
         csv_content = (
@@ -301,6 +340,25 @@ class PatientViewSetSurgeonScopeTestCase(APITestCase):
         self.assertIsNotNone(response.data["results"][0]["app_installed_at"])
         self.assertIsNotNone(response.data["results"][0]["last_app_login_at"])
 
+    def test_filter_pre_op_approved_returns_only_patients_with_approved_record(self):
+        PreOperatory.objects.create(
+            patient=self.patient_a,
+            tenant=self.tenant,
+            status=PreOperatory.StatusChoices.APPROVED,
+        )
+        PreOperatory.objects.create(
+            patient=self.patient_b,
+            tenant=self.tenant,
+            status=PreOperatory.StatusChoices.PENDING,
+        )
+
+        self.client.force_authenticate(self.master)
+        response = self.client.get(reverse("patients-list"), {"pre_op_approved": "true"})
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        ids = {item["id"] for item in response.data["results"]}
+        self.assertEqual(ids, {str(self.patient_a.id)})
+
     def test_import_patients_forbidden_for_surgeon(self):
         self.client.force_authenticate(self.surgeon_a)
         upload = SimpleUploadedFile(
@@ -316,3 +374,42 @@ class PatientViewSetSurgeonScopeTestCase(APITestCase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_patient_detail_exposes_temp_password_for_clinic_master(self):
+        self.patient_a.temp_password = "Ab1!cdef"
+        self.patient_a.save(update_fields=["temp_password"])
+        self.client.force_authenticate(self.master)
+
+        response = self.client.get(reverse("patients-detail", args=[self.patient_a.id]))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["temp_password"], "Ab1!cdef")
+
+    def test_patient_detail_hides_temp_password_for_surgeon(self):
+        self.patient_a.temp_password = "Ab1!cdef"
+        self.patient_a.save(update_fields=["temp_password"])
+        self.client.force_authenticate(self.surgeon_a)
+
+        response = self.client.get(reverse("patients-detail", args=[self.patient_a.id]))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIsNone(response.data["temp_password"])
+
+    def test_patient_detail_returns_assigned_doctor_when_assignment_exists(self):
+        DoctorPatientAssignment.objects.update_or_create(
+            patient=self.patient_a,
+            defaults={
+                "doctor": self.surgeon_a,
+                "assigned_by": self.master,
+            },
+        )
+        self.client.force_authenticate(self.master)
+
+        response = self.client.get(reverse("patients-detail", args=[self.patient_a.id]))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIsNotNone(response.data["assigned_doctor"])
+        self.assertEqual(
+            response.data["assigned_doctor"]["id"],
+            str(self.surgeon_a.id),
+        )

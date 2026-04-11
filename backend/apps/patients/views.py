@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import csv
 import io
+import secrets
+import string
 import unicodedata
 from datetime import datetime
 from pathlib import Path
@@ -9,7 +11,6 @@ from pathlib import Path
 from django.core.exceptions import ValidationError
 from django.core.validators import validate_email
 from django.db.models import Exists, OuterRef, Prefetch
-from django.utils.crypto import get_random_string
 from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -44,6 +45,12 @@ HEADER_ALIASES = {
     "email": {"email", "e_mail", "mail"},
     "phone": {"telefone", "phone", "telefone_celular", "celular", "fone"},
 }
+
+TEMP_PASSWORD_LENGTH = 8
+TEMP_PASSWORD_SPECIAL_CHARS = "!@#$%&"
+TEMP_PASSWORD_LOWERCASE_CHARS = string.ascii_lowercase
+TEMP_PASSWORD_UPPERCASE_CHARS = string.ascii_uppercase
+TEMP_PASSWORD_DIGIT_CHARS = string.digits
 
 
 def _normalize_header_value(value: object) -> str:
@@ -99,6 +106,24 @@ def _split_name(full_name: str, *, fallback_email: str) -> tuple[str, str]:
     first_name = parts[0]
     last_name = parts[1] if len(parts) > 1 else ""
     return first_name, last_name
+
+
+def _generate_temporary_password() -> str:
+    chars = [
+        secrets.choice(TEMP_PASSWORD_UPPERCASE_CHARS),
+        secrets.choice(TEMP_PASSWORD_DIGIT_CHARS),
+        secrets.choice(TEMP_PASSWORD_SPECIAL_CHARS),
+    ]
+    chars.extend(
+        secrets.choice(TEMP_PASSWORD_LOWERCASE_CHARS)
+        for _ in range(TEMP_PASSWORD_LENGTH - len(chars))
+    )
+
+    for index in range(len(chars) - 1, 0, -1):
+        swap_index = secrets.randbelow(index + 1)
+        chars[index], chars[swap_index] = chars[swap_index], chars[index]
+
+    return "".join(chars)
 
 
 def _read_csv_rows(uploaded_file) -> list[list[object]]:
@@ -221,6 +246,9 @@ class PatientViewSet(viewsets.ModelViewSet):
         status_filter = self.request.query_params.get("status")
         app_status_filter = self.request.query_params.get("app_status")
         specialty_filter = self.request.query_params.get("specialty")
+        pre_op_approved_raw = (
+            self.request.query_params.get("pre_op_approved") or ""
+        ).strip().lower()
         created_from = self.request.query_params.get("created_from")
         created_to = self.request.query_params.get("created_to")
 
@@ -234,6 +262,15 @@ class PatientViewSet(viewsets.ModelViewSet):
 
         if specialty_filter:
             queryset = queryset.filter(specialty_id=specialty_filter)
+
+        if pre_op_approved_raw in {"1", "true", "yes"}:
+            approved_pre_operatory = PreOperatory.objects.filter(
+                patient_id=OuterRef("pk"),
+                status=PreOperatory.StatusChoices.APPROVED,
+            )
+            queryset = queryset.annotate(
+                has_approved_pre_operatory=Exists(approved_pre_operatory)
+            ).filter(has_approved_pre_operatory=True)
 
         if created_from:
             queryset = queryset.filter(date_joined__date__gte=created_from)
@@ -484,7 +521,7 @@ class PatientViewSet(viewsets.ModelViewSet):
                 continue
 
             first_name, last_name = _split_name(name_value, fallback_email=email_value)
-            temporary_password = get_random_string(12)
+            temporary_password = _generate_temporary_password()
 
             try:
                 Patient.objects.create_user(
@@ -495,6 +532,7 @@ class PatientViewSet(viewsets.ModelViewSet):
                     email=email_value,
                     phone=phone_value,
                     status=Patient.StatusChoices.LEAD,
+                    temp_password=temporary_password,
                     password=temporary_password,
                     is_active=True,
                 )

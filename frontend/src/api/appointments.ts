@@ -143,9 +143,10 @@ export async function updateAppointmentStatus(
   payload: {
     status: string
     internal_notes?: string
+    cancellation_reason?: string
   },
 ) {
-  const { data } = await apiClient.put(`/appointments/${appointmentId}/status/`, payload)
+  const { data } = await apiClient.put(`/appointments/${appointmentId}/`, payload)
   return data
 }
 

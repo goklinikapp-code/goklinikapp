@@ -80,6 +80,7 @@ class GoKlinikUser(AbstractUser):
     is_visible_in_app = models.BooleanField(default=True)
     app_installed_at = models.DateTimeField(null=True, blank=True)
     last_app_login_at = models.DateTimeField(null=True, blank=True)
+    temp_password = models.CharField(max_length=100, blank=True, null=True)
     access_permissions = models.JSONField(default=list, blank=True)
 
     USERNAME_FIELD = "email"

@@ -85,6 +85,58 @@ class AppointmentsController
     await load();
   }
 
+  Future<AppointmentItem> updateAppointmentStatus({
+    required String appointmentId,
+    required String status,
+    String? cancellationReason,
+  }) async {
+    try {
+      final updated = await _ref
+          .read(appointmentsRepositoryProvider)
+          .updateAppointmentStatus(
+            appointmentId: appointmentId,
+            status: status,
+            cancellationReason: cancellationReason,
+          );
+
+      final currentItems = state.valueOrNull;
+      if (currentItems != null && currentItems.isNotEmpty) {
+        state = AsyncValue.data(
+          currentItems
+              .map(
+                (item) => item.id == appointmentId ? updated : item,
+              )
+              .toList(),
+        );
+      }
+
+      try {
+        final fresh =
+            await _ref.read(appointmentsRepositoryProvider).getAppointments();
+        state = AsyncValue.data(fresh);
+      } catch (_) {
+        // Keep optimistic state when background sync fails.
+      }
+
+      return updated;
+    } catch (error) {
+      try {
+        final fresh =
+            await _ref.read(appointmentsRepositoryProvider).getAppointments();
+        state = AsyncValue.data(fresh);
+        for (final item in fresh) {
+          if (item.id == appointmentId &&
+              item.status.trim().toLowerCase() == status.trim().toLowerCase()) {
+            return item;
+          }
+        }
+      } catch (_) {
+        // If we cannot refresh, surface the original request error.
+      }
+      rethrow;
+    }
+  }
+
   Future<List<String>> fetchSlots({
     required String professionalId,
     required String date,

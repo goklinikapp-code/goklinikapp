@@ -16,7 +16,9 @@ class AppointmentItem {
     required this.type,
     required this.date,
     required this.time,
+    required this.durationMinutes,
     required this.notes,
+    required this.cancellationReason,
   });
 
   final String id;
@@ -33,7 +35,9 @@ class AppointmentItem {
   final String type;
   final DateTime date;
   final String time;
+  final int? durationMinutes;
   final String notes;
+  final String cancellationReason;
 
   DateTime get dateTime {
     final parts = time.split(':');
@@ -104,7 +108,10 @@ class AppointmentItem {
       type: (json['appointment_type'] ?? 'first_visit').toString(),
       date: dateRaw,
       time: (json['appointment_time'] ?? '').toString(),
+      durationMinutes:
+          int.tryParse((json['duration_minutes'] ?? '').toString()),
       notes: (json['notes'] ?? '').toString(),
+      cancellationReason: (json['cancellation_reason'] ?? '').toString(),
     );
   }
 }

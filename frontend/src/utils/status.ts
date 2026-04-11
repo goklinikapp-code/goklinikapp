@@ -5,20 +5,36 @@ import { cn } from '@/utils/cn'
 export function statusBadgeClass(status: string): string {
   const normalized = normalizeStatus(status)
 
-  if (normalized === 'confirmed' || normalized === 'active' || normalized === 'paid') {
-    return cn('bg-secondary text-white')
-  }
-
   if (normalized === 'pending') {
-    return cn('bg-accent text-white')
+    return cn('bg-slate-200 text-slate-700')
   }
 
-  if (normalized === 'cancelled' || normalized === 'inactive' || normalized === 'error') {
-    return cn('bg-danger text-white')
+  if (normalized === 'confirmed') {
+    return cn('bg-blue-100 text-blue-700')
+  }
+
+  if (normalized === 'in_progress') {
+    return cn('bg-amber-100 text-amber-700')
   }
 
   if (normalized === 'completed') {
-    return cn('bg-primary text-white')
+    return cn('bg-emerald-100 text-emerald-700')
+  }
+
+  if (normalized === 'cancelled' || normalized === 'error') {
+    return cn('bg-rose-100 text-rose-700')
+  }
+
+  if (normalized === 'rescheduled') {
+    return cn('bg-violet-100 text-violet-700')
+  }
+
+  if (normalized === 'active' || normalized === 'paid') {
+    return cn('bg-secondary text-white')
+  }
+
+  if (normalized === 'inactive') {
+    return cn('bg-slate-300 text-slate-700')
   }
 
   return cn('bg-slate-200 text-slate-700')

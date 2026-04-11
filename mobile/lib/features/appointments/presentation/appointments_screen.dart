@@ -12,6 +12,7 @@ import '../../../core/widgets/gk_card.dart';
 import '../../../core/widgets/gk_loading_shimmer.dart';
 import '../../auth/presentation/auth_controller.dart';
 import '../domain/appointment_models.dart';
+import 'appointment_detail_sheet.dart';
 import 'appointments_controller.dart';
 
 class AppointmentsScreen extends ConsumerStatefulWidget {
@@ -116,8 +117,8 @@ class _AppointmentsScreenState extends ConsumerState<AppointmentsScreen> {
                   return ListView(
                     padding: EdgeInsets.only(bottom: listBottomPadding),
                     children: [
-                      ...filtered.map(
-                          (item) => _appointmentCard(item, t, colorScheme)),
+                      ...filtered.map((item) =>
+                          _appointmentCard(item, t, colorScheme, language)),
                       const SizedBox(height: 12),
                       _infoCard(
                         title: t('health_tip_title'),
@@ -149,92 +150,90 @@ class _AppointmentsScreenState extends ConsumerState<AppointmentsScreen> {
     return items.where((item) => !item.dateTime.isAfter(now)).toList();
   }
 
-  Widget _appointmentCard(AppointmentItem item, String Function(String) t,
-      ColorScheme colorScheme) {
+  Widget _appointmentCard(
+    AppointmentItem item,
+    String Function(String) t,
+    ColorScheme colorScheme,
+    String language,
+  ) {
     final appointmentTypeLabel = _appointmentTypeLabel(item.type, t);
     final statusLabel = _appointmentStatusLabel(item.status, t);
     final appointmentTime = _formatAppointmentTime(item.time);
+    final statusStyle = _statusStyle(item.status);
 
-    final statusColor = switch (item.status) {
-      'completed' => colorScheme.primary,
-      'confirmed' => colorScheme.secondary,
-      'pending' => colorScheme.tertiary,
-      'in_progress' => colorScheme.secondary,
-      'rescheduled' => colorScheme.secondary,
-      'cancelled' => colorScheme.error,
-      _ => colorScheme.primary,
-    };
-
-    return GKCard(
-      margin: const EdgeInsets.only(bottom: 10),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              GKAvatar(
-                  name: item.professionalName.isEmpty
-                      ? t('clinic_team')
-                      : item.professionalName,
-                  imageUrl: item.professionalAvatarUrl.isEmpty
-                      ? null
-                      : item.professionalAvatarUrl),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      appointmentTypeLabel,
-                      style: const TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      item.professionalName.isEmpty
-                          ? t('clinic_team')
-                          : item.professionalName,
-                    ),
-                  ],
-                ),
-              ),
-              GKBadge(
-                label: statusLabel,
-                background: statusColor,
-                foreground: Colors.white,
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              Icon(Icons.calendar_month,
-                  size: 16, color: colorScheme.onSurfaceVariant),
-              const SizedBox(width: 6),
-              Text(formatDate(item.date)),
-              const SizedBox(width: 14),
-              Icon(Icons.schedule,
-                  size: 16, color: colorScheme.onSurfaceVariant),
-              const SizedBox(width: 6),
-              Text(appointmentTime),
-            ],
-          ),
-          if (item.clinicLocation.trim().isNotEmpty) ...[
-            const SizedBox(height: 6),
+    return GestureDetector(
+      onTap: () => _openAppointmentDetails(item, language),
+      child: GKCard(
+        margin: const EdgeInsets.only(bottom: 10),
+        child: Column(
+          children: [
             Row(
               children: [
-                Icon(Icons.place_outlined,
-                    size: 16, color: colorScheme.onSurfaceVariant),
-                const SizedBox(width: 6),
+                GKAvatar(
+                    name: item.professionalName.isEmpty
+                        ? t('clinic_team')
+                        : item.professionalName,
+                    imageUrl: item.professionalAvatarUrl.isEmpty
+                        ? null
+                        : item.professionalAvatarUrl),
+                const SizedBox(width: 12),
                 Expanded(
-                  child: Text(
-                    item.clinicLocation,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        appointmentTypeLabel,
+                        style: const TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        item.professionalName.isEmpty
+                            ? t('clinic_team')
+                            : item.professionalName,
+                      ),
+                    ],
                   ),
+                ),
+                GKBadge(
+                  label: statusLabel,
+                  background: statusStyle.background,
+                  foreground: statusStyle.foreground,
                 ),
               ],
             ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Icon(Icons.calendar_month,
+                    size: 16, color: colorScheme.onSurfaceVariant),
+                const SizedBox(width: 6),
+                Text(formatDate(item.date)),
+                const SizedBox(width: 14),
+                Icon(Icons.schedule,
+                    size: 16, color: colorScheme.onSurfaceVariant),
+                const SizedBox(width: 6),
+                Text(appointmentTime),
+              ],
+            ),
+            if (item.clinicLocation.trim().isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  Icon(Icons.place_outlined,
+                      size: 16, color: colorScheme.onSurfaceVariant),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      item.clinicLocation,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }
@@ -376,4 +375,87 @@ class _AppointmentsScreenState extends ConsumerState<AppointmentsScreen> {
 
     return Text(t('appointments_load_error'));
   }
+
+  Future<void> _openAppointmentDetails(
+    AppointmentItem item,
+    String language,
+  ) async {
+    String t(String key) => appTr(key: key, language: language);
+
+    final didConfirmPresence = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => AppointmentDetailSheet(
+        appointment: item,
+        language: language,
+        t: t,
+        onConfirmPresence: () async {
+          await ref
+              .read(appointmentsControllerProvider.notifier)
+              .updateAppointmentStatus(
+                appointmentId: item.id,
+                status: 'confirmed',
+              );
+        },
+      ),
+    );
+
+    if (!mounted) return;
+    if (didConfirmPresence == true) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Presenca confirmada com sucesso')),
+      );
+    }
+  }
+
+  _StatusStyle _statusStyle(String status) {
+    switch (status.trim().toLowerCase()) {
+      case 'pending':
+        return const _StatusStyle(
+          background: Color(0xFFE2E8F0),
+          foreground: Color(0xFF334155),
+        );
+      case 'confirmed':
+        return const _StatusStyle(
+          background: Color(0xFFDBEAFE),
+          foreground: Color(0xFF1D4ED8),
+        );
+      case 'in_progress':
+        return const _StatusStyle(
+          background: Color(0xFFFEF3C7),
+          foreground: Color(0xFF92400E),
+        );
+      case 'completed':
+        return const _StatusStyle(
+          background: Color(0xFFDCFCE7),
+          foreground: Color(0xFF166534),
+        );
+      case 'cancelled':
+        return const _StatusStyle(
+          background: Color(0xFFFEE2E2),
+          foreground: Color(0xFFB91C1C),
+        );
+      case 'rescheduled':
+        return const _StatusStyle(
+          background: Color(0xFFEDE9FE),
+          foreground: Color(0xFF6D28D9),
+        );
+      default:
+        return const _StatusStyle(
+          background: Color(0xFFE2E8F0),
+          foreground: Color(0xFF334155),
+        );
+    }
+  }
+}
+
+class _StatusStyle {
+  const _StatusStyle({
+    required this.background,
+    required this.foreground,
+  });
+
+  final Color background;
+  final Color foreground;
 }

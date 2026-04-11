@@ -33,6 +33,12 @@ abstract class AppointmentsRepository {
     required String notes,
   });
 
+  Future<AppointmentItem> updateAppointmentStatus({
+    required String appointmentId,
+    required String status,
+    String? cancellationReason,
+  });
+
   Future<void> cancelAppointment({
     required String appointmentId,
     required String reason,

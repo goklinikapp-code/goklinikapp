@@ -259,7 +259,6 @@ class AppointmentSerializer(AbsoluteMediaUrlsSerializerMixin, serializers.ModelS
             "created_by",
             "created_at",
             "updated_at",
-            "cancellation_reason",
         )
 
     def validate_professional(self, value):

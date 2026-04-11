@@ -51,6 +51,13 @@ class PreOperatory(models.Model):
         blank=True,
         limit_choices_to={"role": GoKlinikUser.RoleChoices.SURGEON},
     )
+    approved_by = models.ForeignKey(
+        "users.GoKlinikUser",
+        on_delete=models.SET_NULL,
+        related_name="pre_ops_approved",
+        null=True,
+        blank=True,
+    )
     status = models.CharField(
         max_length=20,
         choices=StatusChoices.choices,

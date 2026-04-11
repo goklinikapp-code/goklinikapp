@@ -33,12 +33,54 @@ import { useGreeting } from '@/hooks/useGreeting'
 import { getLocaleForLanguage, t as translate, type TranslationKey } from '@/i18n/system'
 import { useAuthStore } from '@/stores/authStore'
 import { usePreferencesStore } from '@/stores/preferencesStore'
+import { useTenantStore } from '@/stores/tenantStore'
 import { formatCurrency } from '@/utils/format'
+
+const DEFAULT_PRIMARY_COLOR = '#0D5C73'
+const DEFAULT_SECONDARY_COLOR = '#4A7C59'
+const DEFAULT_ACCENT_COLOR = '#C8992E'
+
+function normalizeHexColor(value: string | undefined, fallback: string): string {
+  const normalized = (value || '').trim()
+  if (/^#[\da-f]{6}$/i.test(normalized)) return normalized
+  return fallback
+}
+
+function parseHexToRgb(hexColor: string): [number, number, number] | null {
+  const clean = hexColor.replace('#', '')
+  if (!/^[\da-f]{6}$/i.test(clean)) return null
+  return [
+    Number.parseInt(clean.slice(0, 2), 16),
+    Number.parseInt(clean.slice(2, 4), 16),
+    Number.parseInt(clean.slice(4, 6), 16),
+  ]
+}
+
+function mixHexColors(baseHex: string, targetHex: string, weight: number): string {
+  const base = parseHexToRgb(baseHex)
+  const target = parseHexToRgb(targetHex)
+  if (!base || !target) return baseHex
+
+  const clampedWeight = Math.max(0, Math.min(1, weight))
+  const rgb = base.map((channel, index) => {
+    const mixed = Math.round(channel + (target[index] - channel) * clampedWeight)
+    return Math.max(0, Math.min(255, mixed))
+  })
+
+  return `#${rgb.map((channel) => channel.toString(16).padStart(2, '0')).join('')}`
+}
+
+function hexToRgbaString(hexColor: string, alpha: number): string {
+  const rgb = parseHexToRgb(hexColor)
+  if (!rgb) return `rgba(13, 92, 115, ${alpha})`
+  return `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, ${alpha})`
+}
 
 export default function DashboardPage() {
   const { user } = useAuthStore()
   const language = usePreferencesStore((state) => state.language)
   const currency = usePreferencesStore((state) => state.currency)
+  const tenantConfig = useTenantStore((state) => state.tenantConfig)
   const greeting = useGreeting(language)
   const navigate = useNavigate()
   const locale = getLocaleForLanguage(language)
@@ -74,6 +116,31 @@ export default function DashboardPage() {
         maximumFractionDigits: 1,
       }),
     [currency, locale],
+  )
+  const primaryColor = normalizeHexColor(tenantConfig.primary_color, DEFAULT_PRIMARY_COLOR)
+  const secondaryColor = normalizeHexColor(tenantConfig.secondary_color, DEFAULT_SECONDARY_COLOR)
+  const accentColor = normalizeHexColor(tenantConfig.accent_color, DEFAULT_ACCENT_COLOR)
+  const occupancyTrackColor = useMemo(() => hexToRgbaString(primaryColor, 0.18), [primaryColor])
+  const specialtyColorScale = useMemo(
+    () => [
+      primaryColor,
+      secondaryColor,
+      accentColor,
+      mixHexColors(primaryColor, '#FFFFFF', 0.22),
+      mixHexColors(secondaryColor, '#FFFFFF', 0.18),
+      mixHexColors(accentColor, '#0F172A', 0.14),
+      mixHexColors(primaryColor, '#0F172A', 0.18),
+      mixHexColors(secondaryColor, '#E2E8F0', 0.35),
+    ],
+    [accentColor, primaryColor, secondaryColor],
+  )
+  const themedSpecialtyDistribution = useMemo(
+    () =>
+      specialtyDistribution.map((entry, index) => ({
+        ...entry,
+        color: specialtyColorScale[index % specialtyColorScale.length],
+      })),
+    [specialtyColorScale, specialtyDistribution],
   )
 
   const alertMessageByType: Record<string, string> = {
@@ -124,12 +191,12 @@ export default function DashboardPage() {
           </div>
           <div className="flex items-center gap-4">
             <svg viewBox="0 0 100 100" className="h-16 w-16 -rotate-90">
-              <circle cx="50" cy="50" r="44" stroke="#E5E7EB" strokeWidth="10" fill="none" />
+              <circle cx="50" cy="50" r="44" stroke={occupancyTrackColor} strokeWidth="10" fill="none" />
               <circle
                 cx="50"
                 cy="50"
                 r="44"
-                stroke="#0D5C73"
+                stroke={primaryColor}
                 strokeWidth="10"
                 fill="none"
                 strokeDasharray={276}
@@ -164,7 +231,7 @@ export default function DashboardPage() {
                   axisLine={false}
                 />
                 <Tooltip formatter={(value) => formatCurrency(Number(value))} />
-                <Bar dataKey="atual" radius={[6, 6, 0, 0]} fill="#0D5C73" />
+                <Bar dataKey="atual" radius={[6, 6, 0, 0]} fill={primaryColor} />
                 <Bar dataKey="projetado" radius={[6, 6, 0, 0]} fill="#CBD5E1" />
               </BarChart>
             </ResponsiveContainer>
@@ -179,8 +246,8 @@ export default function DashboardPage() {
             <div className="h-48">
               <ResponsiveContainer width="100%" height="100%">
                 <RechartsPieChart>
-                  <Pie data={specialtyDistribution} dataKey="value" nameKey="name" innerRadius={55} outerRadius={85}>
-                    {specialtyDistribution.map((entry) => (
+                  <Pie data={themedSpecialtyDistribution} dataKey="value" nameKey="name" innerRadius={55} outerRadius={85}>
+                    {themedSpecialtyDistribution.map((entry) => (
                       <Cell key={entry.name} fill={entry.color} />
                     ))}
                   </Pie>
@@ -188,7 +255,7 @@ export default function DashboardPage() {
                 </RechartsPieChart>
               </ResponsiveContainer>
             </div>
-            {specialtyDistribution.map((specialty) => (
+            {themedSpecialtyDistribution.map((specialty) => (
               <div key={specialty.name} className="flex items-center justify-between text-sm">
                 <span className="inline-flex items-center gap-2 text-slate-600">
                   <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: specialty.color }} />

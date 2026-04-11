@@ -4,6 +4,7 @@ class ApiEndpoints {
   static const authRefresh = '/api/auth/refresh/';
   static const authMe = '/api/auth/me/';
   static const authMeAvatar = '/api/auth/me/avatar/';
+  static const authChangePassword = '/api/auth/change-password/';
   static const publicSignupClinics = '/api/public/tenants/clinics/';
   static String publicReferralLookup(String code) => '/api/referral/$code/';
 

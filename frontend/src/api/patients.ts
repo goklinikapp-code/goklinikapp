@@ -10,6 +10,7 @@ interface PaginatedResponse<T> {
 export interface PatientsFilters {
   status?: string
   app_status?: 'installed' | 'not_installed'
+  pre_op_approved?: boolean
 }
 
 export interface PatientsImportResponse {
@@ -27,6 +28,9 @@ export async function getPatients(filters: PatientsFilters = {}): Promise<Patien
   }
   if (filters.app_status) {
     queryParams.set('app_status', filters.app_status)
+  }
+  if (typeof filters.pre_op_approved === 'boolean') {
+    queryParams.set('pre_op_approved', filters.pre_op_approved ? 'true' : 'false')
   }
 
   const queryString = queryParams.toString()
@@ -155,6 +159,7 @@ export interface UpdatePatientPayload {
   phone?: string
   cpf?: string
   date_of_birth?: string
+  specialty?: string | null
   specialty_name?: string
   status?: 'active' | 'inactive' | 'lead'
   referral_source?: string
@@ -177,7 +182,11 @@ export async function updatePatient(
   if (typeof payload.phone === 'string') requestPayload.phone = payload.phone.trim()
   if (typeof payload.cpf === 'string') requestPayload.cpf = payload.cpf.trim()
   if (typeof payload.date_of_birth === 'string') requestPayload.date_of_birth = payload.date_of_birth
-  if (typeof payload.specialty_name === 'string') {
+  if (Object.prototype.hasOwnProperty.call(payload, 'specialty')) {
+    const specialtyValue =
+      typeof payload.specialty === 'string' ? payload.specialty.trim() : ''
+    requestPayload.specialty = specialtyValue || null
+  } else if (typeof payload.specialty_name === 'string') {
     requestPayload.specialty_name = payload.specialty_name.trim()
   }
   if (typeof payload.status === 'string') requestPayload.status = payload.status

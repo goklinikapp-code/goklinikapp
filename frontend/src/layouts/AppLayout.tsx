@@ -28,6 +28,7 @@ import {
   Mailbox,
   Luggage,
   MessageSquareText,
+  User,
   X,
 } from "lucide-react";
 
@@ -70,6 +71,7 @@ const clinicNavItems = [
   { icon: Luggage, labelKey: "nav_travel_plans", to: "/travel-plans", permission: "travel_plans" },
   { icon: MessageSquareText, labelKey: "nav_chat_center", to: "/chat-center", permission: "chat_center" },
   { icon: Mailbox, labelKey: "nav_inbox", to: "/inbox", permission: "patients" },
+  { icon: User, labelKey: "nav_profile_settings", to: "/profile-settings", permission: "dashboard" },
   { icon: BarChart2, labelKey: "nav_reports", to: "/reports", permission: "reports" },
   { icon: Share2, labelKey: "nav_referrals", to: "/referrals", permission: "referrals" },
   { icon: UserCheck, labelKey: "nav_team", to: "/team", permission: "team" },
@@ -235,6 +237,9 @@ export function AppLayout() {
             return false;
           }
           if (item.to === "/inbox" && user.role !== "surgeon") {
+            return false;
+          }
+          if (item.to === "/profile-settings" && user.role !== "surgeon") {
             return false;
           }
           if (

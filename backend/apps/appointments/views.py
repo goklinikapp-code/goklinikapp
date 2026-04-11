@@ -55,6 +55,18 @@ APPOINTMENT_MANAGEMENT_ROLES = {
     GoKlinikUser.RoleChoices.NURSE,
 }
 
+STATUS_FULL_ACCESS_ROLES = {
+    GoKlinikUser.RoleChoices.CLINIC_MASTER,
+    GoKlinikUser.RoleChoices.SECRETARY,
+}
+
+SURGEON_ALLOWED_STATUS_TARGETS = {
+    Appointment.StatusChoices.IN_PROGRESS,
+    Appointment.StatusChoices.COMPLETED,
+    Appointment.StatusChoices.CANCELLED,
+    Appointment.StatusChoices.RESCHEDULED,
+}
+
 AVAILABILITY_MANAGEMENT_ROLES = {
     GoKlinikUser.RoleChoices.CLINIC_MASTER,
     GoKlinikUser.RoleChoices.SECRETARY,
@@ -133,6 +145,45 @@ class AppointmentViewSet(viewsets.ModelViewSet):
         if user.role not in APPOINTMENT_MANAGEMENT_ROLES:
             raise PermissionDenied("Role not allowed to manage appointments.")
 
+    @staticmethod
+    def _is_status_only_payload(payload) -> bool:
+        payload_keys = {str(key) for key in payload.keys()}
+        if "status" not in payload_keys:
+            return False
+        return payload_keys.issubset({"status", "internal_notes", "cancellation_reason"})
+
+    def _enforce_status_transition_permissions(
+        self,
+        *,
+        actor: GoKlinikUser,
+        appointment: Appointment,
+        new_status: str,
+    ) -> None:
+        if actor.role in STATUS_FULL_ACCESS_ROLES:
+            return
+
+        if actor.role == GoKlinikUser.RoleChoices.PATIENT:
+            if str(appointment.patient_id) != str(actor.id):
+                raise PermissionDenied("Patients can only update their own appointments.")
+            if not (
+                appointment.status == Appointment.StatusChoices.PENDING
+                and new_status == Appointment.StatusChoices.CONFIRMED
+            ):
+                raise PermissionDenied("Voce nao tem permissao para alterar este status.")
+            return
+
+        if actor.role == GoKlinikUser.RoleChoices.SURGEON:
+            if new_status not in SURGEON_ALLOWED_STATUS_TARGETS and new_status != appointment.status:
+                raise PermissionDenied("Voce nao tem permissao para alterar este status.")
+            return
+
+        raise PermissionDenied("Voce nao tem permissao para alterar este status.")
+
+    def update(self, request, *args, **kwargs):
+        if self._is_status_only_payload(request.data):
+            kwargs["partial"] = True
+        return super().update(request, *args, **kwargs)
+
     def _resolve_availability_professional(
         self,
         *,
@@ -166,6 +217,64 @@ class AppointmentViewSet(viewsets.ModelViewSet):
             )
         return professional
 
+    def _resolve_slots_professional(self, *, professional_id_raw) -> GoKlinikUser:
+        target_id = str(professional_id_raw or "").strip()
+        if not target_id:
+            raise ValidationError({"professional_id": ["This field is required."]})
+
+        professional = (
+            GoKlinikUser.objects.filter(
+                id=target_id,
+                role=GoKlinikUser.RoleChoices.SURGEON,
+            )
+            .only("id", "tenant_id", "role")
+            .first()
+        )
+        if not professional:
+            raise ValidationError({"professional_id": ["Professional not found."]})
+
+        user = self.request.user
+        if (
+            user.role != GoKlinikUser.RoleChoices.SUPER_ADMIN
+            and professional.tenant_id != user.tenant_id
+        ):
+            raise ValidationError(
+                {"professional_id": ["Professional not found for this tenant."]}
+            )
+
+        return professional
+
+    def _sync_patient_assignment_from_appointment(
+        self,
+        *,
+        appointment: Appointment,
+        actor: GoKlinikUser,
+    ) -> None:
+        professional = appointment.professional
+        if (
+            not appointment.patient_id
+            or not professional
+            or professional.role != GoKlinikUser.RoleChoices.SURGEON
+        ):
+            return
+
+        existing_assignment = (
+            DoctorPatientAssignment.objects.select_related("doctor")
+            .filter(patient=appointment.patient)
+            .first()
+        )
+        if existing_assignment and str(existing_assignment.doctor_id) == str(professional.id):
+            return
+
+        DoctorPatientAssignment.objects.update_or_create(
+            patient=appointment.patient,
+            defaults={
+                "doctor": professional,
+                "assigned_at": timezone.now(),
+                "assigned_by": actor,
+            },
+        )
+
     def perform_create(self, serializer):
         user = self.request.user
         self._ensure_can_manage_appointments(user)
@@ -192,36 +301,42 @@ class AppointmentViewSet(viewsets.ModelViewSet):
 
         # Keep surgeon -> patient linkage in sync with new bookings so
         # "my patients" views can include scheduled patients consistently.
-        professional = appointment.professional
-        if (
-            appointment.patient_id
-            and professional
-            and professional.role == GoKlinikUser.RoleChoices.SURGEON
-        ):
-            DoctorPatientAssignment.objects.update_or_create(
-                patient=appointment.patient,
-                defaults={
-                    "doctor": professional,
-                    "assigned_at": timezone.now(),
-                    "assigned_by": user,
-                },
-            )
+        self._sync_patient_assignment_from_appointment(
+            appointment=appointment,
+            actor=user,
+        )
 
         self._dispatch_creation_side_effects(appointment=appointment)
         self._notify_admin_appointment_created(appointment=appointment)
 
     def perform_update(self, serializer):
         user = self.request.user
+        appointment = self.get_object()
+        is_status_only_update = self._is_status_only_payload(self.request.data)
+        requested_status = serializer.validated_data.get("status")
+
         if user.role == GoKlinikUser.RoleChoices.PATIENT:
-            instance = serializer.instance
-            if not instance or str(instance.patient_id) != str(user.id):
-                raise PermissionDenied(
-                    "Patients can only update their own appointments."
+            if str(appointment.patient_id) != str(user.id):
+                raise PermissionDenied("Patients can only update their own appointments.")
+            if requested_status is not None:
+                if not is_status_only_update:
+                    raise PermissionDenied("Voce nao tem permissao para alterar este status.")
+                self._enforce_status_transition_permissions(
+                    actor=user,
+                    appointment=appointment,
+                    new_status=requested_status,
                 )
+        elif user.role == GoKlinikUser.RoleChoices.SURGEON:
+            if not is_status_only_update or requested_status is None:
+                raise PermissionDenied("Voce nao tem permissao para alterar este status.")
+            self._enforce_status_transition_permissions(
+                actor=user,
+                appointment=appointment,
+                new_status=requested_status,
+            )
         else:
             self._ensure_can_manage_appointments(user)
 
-        appointment = self.get_object()
         old_status = appointment.status
         old_date = appointment.appointment_date
         old_time = appointment.appointment_time
@@ -254,19 +369,10 @@ class AppointmentViewSet(viewsets.ModelViewSet):
 
             updated = serializer.save()
 
-        if (
-            updated.patient_id
-            and updated.professional
-            and updated.professional.role == GoKlinikUser.RoleChoices.SURGEON
-        ):
-            DoctorPatientAssignment.objects.update_or_create(
-                patient=updated.patient,
-                defaults={
-                    "doctor": updated.professional,
-                    "assigned_at": timezone.now(),
-                    "assigned_by": user,
-                },
-            )
+        self._sync_patient_assignment_from_appointment(
+            appointment=updated,
+            actor=user,
+        )
 
         self._dispatch_status_side_effects(
             appointment=updated,
@@ -318,15 +424,19 @@ class AppointmentViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        professional = self._resolve_slots_professional(
+            professional_id_raw=professional_id,
+        )
+
         slots = AppointmentService.get_available_slots(
-            professional_id,
+            professional.id,
             date,
             specialty_id,
             appointment_id,
         )
         return Response(
             {
-                "professional_id": professional_id,
+                "professional_id": str(professional.id),
                 "date": date_str,
                 "specialty_id": specialty_id,
                 "appointment_id": appointment_id,

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from django.urls import reverse
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
 
@@ -174,6 +175,8 @@ class PreOperatoryAdminViewsTestCase(APITestCase):
         self.assertEqual(self.pre_operatory.status, PreOperatory.StatusChoices.APPROVED)
         self.assertEqual(self.pre_operatory.notes, "Paciente apto para cirurgia.")
         self.assertEqual(str(self.pre_operatory.assigned_doctor_id), str(self.surgeon.id))
+        self.assertEqual(str(self.pre_operatory.approved_by_id), str(self.clinic_master.id))
+        self.assertIsNotNone(self.pre_operatory.approved_at)
 
         assignment = DoctorPatientAssignment.objects.filter(patient=self.patient).first()
         self.assertIsNotNone(assignment)
@@ -409,6 +412,70 @@ class PreOperatoryAdminViewsTestCase(APITestCase):
         self.pre_operatory.refresh_from_db()
         self.assertEqual(self.pre_operatory.status, PreOperatory.StatusChoices.APPROVED)
         self.assertEqual(self.pre_operatory.notes, "Apto para avançar para cirurgia.")
+        self.assertEqual(str(self.pre_operatory.approved_by_id), str(self.surgeon.id))
+        self.assertIsNotNone(self.pre_operatory.approved_at)
+
+    def test_approval_history_preserves_original_approver_when_reapproved(self):
+        self.pre_operatory.assigned_doctor = self.surgeon
+        self.pre_operatory.status = PreOperatory.StatusChoices.IN_REVIEW
+        self.pre_operatory.save(update_fields=["assigned_doctor", "status"])
+
+        self.client.force_authenticate(self.surgeon)
+        first_response = self.client.put(
+            reverse("api-pre-operatory-detail", kwargs={"pre_operatory_id": self.pre_operatory.id}),
+            {"status": PreOperatory.StatusChoices.APPROVED},
+            format="json",
+        )
+        self.assertEqual(first_response.status_code, status.HTTP_200_OK)
+
+        self.pre_operatory.refresh_from_db()
+        first_approved_by_id = str(self.pre_operatory.approved_by_id)
+        first_approved_at = self.pre_operatory.approved_at
+        self.assertEqual(first_approved_by_id, str(self.surgeon.id))
+        self.assertIsNotNone(first_approved_at)
+
+        self.client.force_authenticate(self.clinic_master)
+        second_response = self.client.put(
+            reverse("api-pre-operatory-detail", kwargs={"pre_operatory_id": self.pre_operatory.id}),
+            {
+                "status": PreOperatory.StatusChoices.APPROVED,
+                "notes": "Segunda aprovação para registro clínico.",
+            },
+            format="json",
+        )
+        self.assertEqual(second_response.status_code, status.HTTP_200_OK)
+
+        self.pre_operatory.refresh_from_db()
+        self.assertEqual(str(self.pre_operatory.approved_by_id), first_approved_by_id)
+        self.assertEqual(self.pre_operatory.approved_at, first_approved_at)
+        self.assertEqual(
+            self.pre_operatory.notes,
+            "Segunda aprovação para registro clínico.",
+        )
+
+    def test_patient_pre_operatory_serializer_includes_approval_history_fields(self):
+        self.pre_operatory.status = PreOperatory.StatusChoices.APPROVED
+        self.pre_operatory.approved_by = self.surgeon
+        self.pre_operatory.approved_at = timezone.now()
+        self.pre_operatory.save(update_fields=["status", "approved_by", "approved_at"])
+
+        DoctorPatientAssignment.objects.update_or_create(
+            patient=self.patient,
+            defaults={
+                "doctor": self.other_surgeon,
+                "assigned_by": self.clinic_master,
+            },
+        )
+
+        self.client.force_authenticate(self.clinic_master)
+        response = self.client.get(
+            reverse("api-pre-operatory-patient", kwargs={"patient_id": self.patient.id})
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["approved_by_name"], self.surgeon.full_name)
+        self.assertEqual(response.data["current_doctor_name"], self.other_surgeon.full_name)
+        self.assertTrue(response.data["approved_by_different_doctor"])
 
     def test_assigned_surgeon_cannot_assign_doctor_or_mark_in_review(self):
         DoctorPatientAssignment.objects.create(

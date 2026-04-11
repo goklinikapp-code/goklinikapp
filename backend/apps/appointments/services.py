@@ -8,19 +8,13 @@ from .models import Appointment, BlockedPeriod, ProfessionalAvailability
 
 
 class AppointmentService:
+    SLOT_DURATION_MINUTES = 30
+
     _BLOCKING_STATUSES = (
         Appointment.StatusChoices.PENDING,
         Appointment.StatusChoices.CONFIRMED,
         Appointment.StatusChoices.IN_PROGRESS,
     )
-
-    _DEFAULT_AVAILABILITY_WINDOWS = {
-        0: [(time(9, 0), time(18, 0))],  # Monday
-        1: [(time(9, 0), time(18, 0))],  # Tuesday
-        2: [(time(9, 0), time(18, 0))],  # Wednesday
-        3: [(time(9, 0), time(18, 0))],  # Thursday
-        4: [(time(9, 0), time(18, 0))],  # Friday
-    }
 
     @staticmethod
     def get_conflicting_appointment(
@@ -57,34 +51,17 @@ class AppointmentService:
     def get_available_slots(
         professional_id, date, specialty_id=None, exclude_appointment_id=None
     ) -> list[str]:
-        from apps.tenants.models import TenantSpecialty
-
-        slot_duration = 60
-        if specialty_id:
-            specialty = TenantSpecialty.objects.filter(id=specialty_id).first()
-            if specialty is not None:
-                slot_duration = getattr(specialty, "default_duration_minutes", 60) or 60
+        _ = specialty_id
 
         weekday = date.weekday()
-        has_custom_availability = ProfessionalAvailability.objects.filter(
-            professional_id=professional_id,
-            is_active=True,
-        ).exists()
-
         availabilities = ProfessionalAvailability.objects.filter(
             professional_id=professional_id,
             day_of_week=weekday,
             is_active=True,
         ).order_by("start_time")
 
-        availability_windows = [
-            (availability.start_time, availability.end_time)
-            for availability in availabilities
-        ]
-        if not has_custom_availability:
-            availability_windows = AppointmentService._DEFAULT_AVAILABILITY_WINDOWS.get(
-                weekday, []
-            )
+        if not availabilities.exists():
+            return []
 
         appointments = Appointment.objects.filter(
             professional_id=professional_id,
@@ -98,53 +75,71 @@ class AppointmentService:
             professional_id=professional_id,
             start_datetime__date__lte=date,
             end_datetime__date__gte=date,
-        )
+        ).order_by("start_datetime")
+
+        tz = timezone.get_current_timezone()
+        day_start = timezone.make_aware(datetime.combine(date, time(0, 0)), tz)
+        day_end = day_start + timedelta(days=1)
+
+        blocked_ranges: list[tuple[datetime, datetime]] = []
+        for block in blocked_periods:
+            start_datetime = block.start_datetime
+            end_datetime = block.end_datetime
+            if timezone.is_naive(start_datetime):
+                start_datetime = timezone.make_aware(start_datetime, tz)
+            if timezone.is_naive(end_datetime):
+                end_datetime = timezone.make_aware(end_datetime, tz)
+
+            if start_datetime <= day_start and end_datetime >= day_end:
+                return []
+
+            blocked_ranges.append((start_datetime, end_datetime))
+
+        appointment_ranges: list[tuple[datetime, datetime]] = []
+        for app in appointments:
+            app_start = timezone.make_aware(
+                datetime.combine(app.appointment_date, app.appointment_time),
+                tz,
+            )
+            app_end = app_start + timedelta(minutes=app.duration_minutes or 60)
+            appointment_ranges.append((app_start, app_end))
 
         now = timezone.localtime()
         available: list[str] = []
 
-        for start_time, end_time in availability_windows:
+        for availability in availabilities:
             start_dt = timezone.make_aware(
-                datetime.combine(date, start_time),
-                timezone.get_current_timezone(),
+                datetime.combine(date, availability.start_time),
+                tz,
             )
             end_dt = timezone.make_aware(
-                datetime.combine(date, end_time),
-                timezone.get_current_timezone(),
+                datetime.combine(date, availability.end_time),
+                tz,
             )
 
             current = start_dt
-            while current + timedelta(minutes=slot_duration) <= end_dt:
-                slot_end = current + timedelta(minutes=slot_duration)
+            while current + timedelta(minutes=AppointmentService.SLOT_DURATION_MINUTES) <= end_dt:
+                slot_end = current + timedelta(minutes=AppointmentService.SLOT_DURATION_MINUTES)
 
                 if current <= now:
-                    current += timedelta(minutes=slot_duration)
+                    current += timedelta(minutes=AppointmentService.SLOT_DURATION_MINUTES)
                     continue
 
-                overlaps_appointment = False
-                for app in appointments:
-                    app_start = timezone.make_aware(
-                        datetime.combine(app.appointment_date, app.appointment_time),
-                        timezone.get_current_timezone(),
-                    )
-                    app_end = app_start + timedelta(minutes=app.duration_minutes)
-                    if current < app_end and slot_end > app_start:
-                        overlaps_appointment = True
-                        break
-
+                overlaps_appointment = any(
+                    current < app_end and slot_end > app_start
+                    for app_start, app_end in appointment_ranges
+                )
                 if overlaps_appointment:
-                    current += timedelta(minutes=slot_duration)
+                    current += timedelta(minutes=AppointmentService.SLOT_DURATION_MINUTES)
                     continue
 
-                overlaps_block = False
-                for block in blocked_periods:
-                    if current < block.end_datetime and slot_end > block.start_datetime:
-                        overlaps_block = True
-                        break
-
+                overlaps_block = any(
+                    current < block_end and slot_end > block_start
+                    for block_start, block_end in blocked_ranges
+                )
                 if not overlaps_block:
                     available.append(current.strftime("%H:%M"))
 
-                current += timedelta(minutes=slot_duration)
+                current += timedelta(minutes=AppointmentService.SLOT_DURATION_MINUTES)
 
         return available

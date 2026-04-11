@@ -240,6 +240,59 @@ class PreOperatoryPatientViewsTestCase(APITestCase):
         self.assertEqual(str(response.data["procedure"]), str(self.procedure.id))
         self.assertEqual(response.data["procedure_name"], self.procedure.specialty_name)
         self.assertEqual(response.data["procedure_description"], self.procedure.description)
+        self.patient.refresh_from_db()
+        self.assertEqual(self.patient.specialty_id, self.procedure.id)
+
+    def test_create_sets_patient_specialty_from_selected_procedure(self):
+        self.client.force_authenticate(self.patient)
+
+        response = self.client.post(
+            reverse("api-pre-operatory"),
+            {
+                "height": 1.72,
+                "weight": 72,
+                "procedure": str(self.procedure.id),
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.patient.refresh_from_db()
+        self.assertEqual(self.patient.specialty_id, self.procedure.id)
+
+    def test_update_changes_patient_specialty_when_procedure_changes(self):
+        another_procedure = TenantSpecialty.objects.create(
+            tenant=self.tenant,
+            specialty_name="Implante Dentário",
+            description="Reposição de dente com pino de titânio.",
+            is_active=True,
+        )
+        pre_operatory = PreOperatory.objects.create(
+            patient=self.patient,
+            tenant=self.tenant,
+            status=PreOperatory.StatusChoices.PENDING,
+            height=1.70,
+            weight=70,
+            procedure=self.procedure,
+        )
+        self.patient.specialty = self.procedure
+        self.patient.save(update_fields=["specialty"])
+
+        self.client.force_authenticate(self.patient)
+        response = self.client.put(
+            reverse(
+                "api-pre-operatory-detail",
+                kwargs={"pre_operatory_id": pre_operatory.id},
+            ),
+            {"procedure": str(another_procedure.id)},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        pre_operatory.refresh_from_db()
+        self.assertEqual(pre_operatory.procedure_id, another_procedure.id)
+        self.patient.refresh_from_db()
+        self.assertEqual(self.patient.specialty_id, another_procedure.id)
 
     def test_create_new_cycle_auto_completes_expired_postop_before_unlocking(self):
         approved = PreOperatory.objects.create(

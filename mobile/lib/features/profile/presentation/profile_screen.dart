@@ -28,6 +28,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   bool _agendaToggle = true;
   bool _offersToggle = false;
   bool _uploadingAvatar = false;
+  bool _passwordSheetOpen = false;
   File? _selectedAvatarFile;
 
   @override
@@ -122,7 +123,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               children: [
                 Text(t('privacy_title'),
                     style: const TextStyle(fontWeight: FontWeight.w700)),
-                _arrowTile(t('change_password'), Icons.lock_outline),
+                _arrowTile(
+                  t('change_password'),
+                  Icons.lock_outline,
+                  onTap: _openChangePasswordSheet,
+                ),
                 _arrowTile(t('biometrics'), Icons.fingerprint),
                 _arrowTile(t('access_history'), Icons.history),
               ],
@@ -198,13 +203,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     );
   }
 
-  Widget _arrowTile(String title, IconData icon) {
+  Widget _arrowTile(String title, IconData icon, {VoidCallback? onTap}) {
     return ListTile(
       contentPadding: EdgeInsets.zero,
       leading: Icon(icon),
       title: Text(title),
       trailing: const Icon(Icons.chevron_right),
-      onTap: () {},
+      onTap: onTap ?? () {},
     );
   }
 
@@ -280,6 +285,238 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         final detail = payload['detail'];
         if (detail is String && detail.trim().isNotEmpty) {
           return detail.trim();
+        }
+      }
+    }
+    return fallback;
+  }
+
+  Future<void> _openChangePasswordSheet() async {
+    if (_passwordSheetOpen) return;
+    _passwordSheetOpen = true;
+
+    final currentController = TextEditingController();
+    final newController = TextEditingController();
+    final confirmController = TextEditingController();
+    bool obscureCurrent = true;
+    bool obscureNew = true;
+    bool obscureConfirm = true;
+    bool saving = false;
+    bool didCloseSheet = false;
+
+    try {
+      await showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (sheetContext) {
+          return StatefulBuilder(
+            builder: (context, setSheetState) {
+              Future<void> submit() async {
+                final currentPassword = currentController.text.trim();
+                final newPassword = newController.text.trim();
+                final confirmPassword = confirmController.text.trim();
+
+                if (currentPassword.isEmpty ||
+                    newPassword.isEmpty ||
+                    confirmPassword.isEmpty) {
+                  ScaffoldMessenger.of(this.context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Preencha todos os campos'),
+                    ),
+                  );
+                  return;
+                }
+
+                if (newPassword.length < 8) {
+                  ScaffoldMessenger.of(this.context).showSnackBar(
+                    const SnackBar(
+                      content:
+                          Text('A nova senha deve ter pelo menos 8 caracteres'),
+                    ),
+                  );
+                  return;
+                }
+
+                if (newPassword != confirmPassword) {
+                  ScaffoldMessenger.of(this.context).showSnackBar(
+                    const SnackBar(
+                      content: Text('As senhas nao coincidem'),
+                    ),
+                  );
+                  return;
+                }
+
+                setSheetState(() => saving = true);
+                try {
+                  await ref.read(profileRepositoryProvider).changePassword(
+                        currentPassword: currentPassword,
+                        newPassword: newPassword,
+                      );
+                  if (!mounted || !sheetContext.mounted) return;
+                  didCloseSheet = true;
+                  Navigator.of(sheetContext).pop();
+                  ScaffoldMessenger.of(this.context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Senha alterada com sucesso'),
+                    ),
+                  );
+                  return;
+                } catch (error) {
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(this.context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        _extractApiError(
+                          error,
+                          fallback: 'Nao foi possivel alterar a senha',
+                        ),
+                      ),
+                    ),
+                  );
+                }
+
+                if (!didCloseSheet && mounted && sheetContext.mounted) {
+                  setSheetState(() => saving = false);
+                }
+              }
+
+              return AnimatedPadding(
+                duration: const Duration(milliseconds: 160),
+                padding: EdgeInsets.only(
+                  bottom: MediaQuery.of(context).viewInsets.bottom,
+                ),
+                child: SafeArea(
+                  top: false,
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.surface,
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Alterar senha',
+                            style: Theme.of(context)
+                                .textTheme
+                                .titleLarge
+                                ?.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                ),
+                          ),
+                          const SizedBox(height: 12),
+                          TextField(
+                            controller: currentController,
+                            obscureText: obscureCurrent,
+                            textInputAction: TextInputAction.next,
+                            decoration: InputDecoration(
+                              labelText: 'Senha atual',
+                              suffixIcon: IconButton(
+                                onPressed: () => setSheetState(
+                                  () => obscureCurrent = !obscureCurrent,
+                                ),
+                                icon: Icon(
+                                  obscureCurrent
+                                      ? Icons.visibility_off_outlined
+                                      : Icons.visibility_outlined,
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          TextField(
+                            controller: newController,
+                            obscureText: obscureNew,
+                            textInputAction: TextInputAction.next,
+                            decoration: InputDecoration(
+                              labelText: 'Nova senha',
+                              suffixIcon: IconButton(
+                                onPressed: () => setSheetState(
+                                  () => obscureNew = !obscureNew,
+                                ),
+                                icon: Icon(
+                                  obscureNew
+                                      ? Icons.visibility_off_outlined
+                                      : Icons.visibility_outlined,
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          TextField(
+                            controller: confirmController,
+                            obscureText: obscureConfirm,
+                            textInputAction: TextInputAction.done,
+                            onSubmitted: (_) => submit(),
+                            decoration: InputDecoration(
+                              labelText: 'Confirmar nova senha',
+                              suffixIcon: IconButton(
+                                onPressed: () => setSheetState(
+                                  () => obscureConfirm = !obscureConfirm,
+                                ),
+                                icon: Icon(
+                                  obscureConfirm
+                                      ? Icons.visibility_off_outlined
+                                      : Icons.visibility_outlined,
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 14),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: OutlinedButton(
+                                  onPressed: saving
+                                      ? null
+                                      : () => Navigator.of(sheetContext).pop(),
+                                  child: const Text('Cancelar'),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: FilledButton(
+                                  onPressed: saving ? null : submit,
+                                  child:
+                                      Text(saving ? 'Salvando...' : 'Salvar'),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            },
+          );
+        },
+      );
+    } finally {
+      _passwordSheetOpen = false;
+    }
+  }
+
+  String _extractApiError(Object error, {required String fallback}) {
+    if (error is DioException) {
+      final payload = error.response?.data;
+      if (payload is Map<String, dynamic>) {
+        final detail = payload['detail'];
+        if (detail is String && detail.trim().isNotEmpty) {
+          return detail.trim();
+        }
+        final first = payload.values.isNotEmpty ? payload.values.first : null;
+        if (first is List && first.isNotEmpty) {
+          return first.first.toString();
+        }
+        if (first is String && first.trim().isNotEmpty) {
+          return first.trim();
         }
       }
     }

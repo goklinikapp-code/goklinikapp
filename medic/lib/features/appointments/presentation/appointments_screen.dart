@@ -14,6 +14,7 @@ import '../../../core/widgets/gk_card.dart';
 import '../../../core/widgets/gk_loading_shimmer.dart';
 import '../../../core/widgets/notification_bell_action.dart';
 import '../domain/appointment_models.dart';
+import 'appointment_detail_sheet.dart';
 import 'appointments_controller.dart';
 
 enum AppointmentStatusFilterChip {
@@ -123,7 +124,7 @@ class _AppointmentsScreenState extends ConsumerState<AppointmentsScreen> {
               Expanded(
                 child: _calendarView
                     ? _calendarMode(filteredAppointments, language, t)
-                    : _listMode(filteredAppointments, t),
+                    : _listMode(filteredAppointments, language, t),
               ),
             ],
           );
@@ -134,6 +135,7 @@ class _AppointmentsScreenState extends ConsumerState<AppointmentsScreen> {
 
   Widget _listMode(
     List<AppointmentItem> appointments,
+    String language,
     String Function(String key) t,
   ) {
     if (appointments.isEmpty) {
@@ -145,7 +147,7 @@ class _AppointmentsScreenState extends ConsumerState<AppointmentsScreen> {
       itemCount: appointments.length,
       itemBuilder: (context, index) {
         final item = appointments[index];
-        return _appointmentCard(item, t);
+        return _appointmentCard(item, language, t);
       },
     );
   }
@@ -226,55 +228,20 @@ class _AppointmentsScreenState extends ConsumerState<AppointmentsScreen> {
         if (selectedItems.isEmpty)
           GKCard(child: Text(t('appointments_empty_day')))
         else
-          ...selectedItems.map((item) => _appointmentCard(item, t)),
+          ...selectedItems.map((item) => _appointmentCard(item, language, t)),
       ],
     );
   }
 
   Widget _appointmentCard(
     AppointmentItem item,
+    String language,
     String Function(String key) t,
   ) {
-    final badge = switch (item.status) {
-      'completed' => (
-          label: t('appointments_status_completed'),
-          background: Color(0xFFDCFCE7),
-          foreground: Color(0xFF166534),
-        ),
-      'confirmed' => (
-          label: t('appointments_status_confirmed'),
-          background: Color(0xFFDCFCE7),
-          foreground: Color(0xFF166534),
-        ),
-      'in_progress' => (
-          label: t('appointments_status_in_progress'),
-          background: Color(0xFFE8F4F8),
-          foreground: GKColors.primary,
-        ),
-      'pending' => (
-          label: t('appointments_status_pending'),
-          background: Color(0xFFFFF3CD),
-          foreground: Color(0xFF92400E),
-        ),
-      'cancelled' => (
-          label: t('appointments_status_cancelled'),
-          background: Color(0xFFFEE2E2),
-          foreground: Color(0xFFB91C1C),
-        ),
-      'rescheduled' => (
-          label: t('appointments_status_rescheduled'),
-          background: Color(0xFFEDE9FE),
-          foreground: Color(0xFF5B21B6),
-        ),
-      _ => (
-          label: t('appointments_status_in_progress'),
-          background: Color(0xFFE8F4F8),
-          foreground: GKColors.primary,
-        ),
-    };
+    final badge = _statusStyle(item.status, t);
 
     return GestureDetector(
-      onTap: () => context.push('/patients/${item.patientId}'),
+      onTap: () => _openAppointmentDetails(item, language, t),
       child: GKCard(
         margin: const EdgeInsets.only(bottom: 10),
         child: Row(
@@ -324,6 +291,42 @@ class _AppointmentsScreenState extends ConsumerState<AppointmentsScreen> {
         ),
       ),
     );
+  }
+
+  Future<void> _openAppointmentDetails(
+    AppointmentItem item,
+    String language,
+    String Function(String key) t,
+  ) async {
+    final feedbackMessage = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => AppointmentDetailSheet(
+        appointment: item,
+        language: language,
+        t: t,
+        onChangeStatus: (
+          status, {
+          String? cancellationReason,
+        }) async {
+          await ref
+              .read(appointmentsControllerProvider.notifier)
+              .updateAppointmentStatus(
+                appointmentId: item.id,
+                status: status,
+                cancellationReason: cancellationReason,
+              );
+        },
+      ),
+    );
+
+    if (!mounted) return;
+    if (feedbackMessage != null && feedbackMessage.trim().isNotEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(feedbackMessage)),
+      );
+    }
   }
 
   String _appointmentTypeLabel(
@@ -389,5 +392,59 @@ class _AppointmentsScreenState extends ConsumerState<AppointmentsScreen> {
         ),
       ),
     );
+  }
+
+  ({
+    String label,
+    Color background,
+    Color foreground,
+  }) _statusStyle(
+    String status,
+    String Function(String key) t,
+  ) {
+    switch (status.trim().toLowerCase()) {
+      case 'pending':
+        return (
+          label: t('appointments_status_pending'),
+          background: const Color(0xFFE2E8F0),
+          foreground: const Color(0xFF334155),
+        );
+      case 'confirmed':
+        return (
+          label: t('appointments_status_confirmed'),
+          background: const Color(0xFFDBEAFE),
+          foreground: const Color(0xFF1D4ED8),
+        );
+      case 'in_progress':
+        return (
+          label: t('appointments_status_in_progress'),
+          background: const Color(0xFFFEF3C7),
+          foreground: const Color(0xFF92400E),
+        );
+      case 'completed':
+        return (
+          label: t('appointments_status_completed'),
+          background: const Color(0xFFDCFCE7),
+          foreground: const Color(0xFF166534),
+        );
+      case 'cancelled':
+        return (
+          label: t('appointments_status_cancelled'),
+          background: const Color(0xFFFEE2E2),
+          foreground: const Color(0xFFB91C1C),
+        );
+      case 'rescheduled':
+        return (
+          label: t('appointments_status_rescheduled'),
+          background: const Color(0xFFEDE9FE),
+          foreground: const Color(0xFF6D28D9),
+        );
+      default:
+        return (
+          label: t('appointments_status_pending'),
+          background: const Color(0xFFE2E8F0),
+          foreground: const Color(0xFF334155),
+        );
+    }
   }
 }

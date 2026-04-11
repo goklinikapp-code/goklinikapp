@@ -19,6 +19,7 @@ from apps.post_op.views import (
 )
 from apps.referrals.views import LeadAPIView, LeadDetailAPIView
 from apps.users.dashboard_views import AdminDashboardAPIView
+from apps.users.views import ChangePasswordAPIView
 
 
 def health_view(_request):
@@ -69,6 +70,7 @@ urlpatterns = [
     path("api/health/", health_view, name="api-health"),
     path("api/schema/", SpectacularAPIView.as_view(), name="api-schema"),
     path("api/docs/", SpectacularSwaggerView.as_view(url_name="api-schema"), name="api-docs"),
+    path("api/auth/change-password/", ChangePasswordAPIView.as_view(), name="api-auth-change-password-direct"),
     path("api/auth/", include("apps.users.urls")),
     path("api/patients/", include("apps.patients.urls")),
     path("api/appointments/", include("apps.appointments.urls")),

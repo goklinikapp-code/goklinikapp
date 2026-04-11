@@ -69,6 +69,8 @@ class PreOperatoryView extends ConsumerWidget {
             const SizedBox(height: 10),
             _ClinicalDataCard(record: record, t: t),
             const SizedBox(height: 10),
+            _ProcedureCard(record: record, t: t),
+            const SizedBox(height: 10),
             _PhysicalDataCard(record: record, t: t),
             const SizedBox(height: 10),
             _HabitsCard(record: record, t: t),
@@ -198,6 +200,37 @@ class _PhysicalDataCard extends StatelessWidget {
   String _formatWeight(double? value) {
     if (value == null) return '-';
     return '${value.toStringAsFixed(1)} kg';
+  }
+}
+
+class _ProcedureCard extends StatelessWidget {
+  const _ProcedureCard({
+    required this.record,
+    required this.t,
+  });
+
+  final PatientPreOperatoryRecord record;
+  final String Function(String key) t;
+
+  @override
+  Widget build(BuildContext context) {
+    return GKCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            t('appointment_info_procedure'),
+            style: TextStyle(fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 10),
+          _valueRow(t('appointment_info_procedure'), record.procedureName),
+          _valueRow(
+            t('preop_procedure_description'),
+            record.procedureDescription,
+          ),
+        ],
+      ),
+    );
   }
 }
 

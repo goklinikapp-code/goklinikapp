@@ -192,6 +192,23 @@ class AppointmentsRepositoryImpl implements AppointmentsRepository {
   }
 
   @override
+  Future<AppointmentItem> updateAppointmentStatus({
+    required String appointmentId,
+    required String status,
+    String? cancellationReason,
+  }) async {
+    final response = await _dio.put<dynamic>(
+      ApiEndpoints.appointmentDetail(appointmentId),
+      data: {
+        'status': status,
+        if (cancellationReason != null && cancellationReason.trim().isNotEmpty)
+          'cancellation_reason': cancellationReason.trim(),
+      },
+    );
+    return AppointmentItem.fromJson(response.data as Map<String, dynamic>);
+  }
+
+  @override
   Future<ProfessionalAvailabilityResponse> getAvailabilityRules({
     String? professionalId,
   }) async {

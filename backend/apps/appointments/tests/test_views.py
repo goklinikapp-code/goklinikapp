@@ -91,6 +91,65 @@ class AppointmentViewsTestCase(APITestCase):
         self.assertIsNotNone(notification)
         self.assertEqual(notification.title, "Novo agendamento criado")
 
+    def test_create_appointment_with_different_professional_updates_patient_assignment(self):
+        DoctorPatientAssignment.objects.create(
+            patient=self.patient,
+            doctor=self.surgeon,
+            assigned_by=self.master,
+        )
+
+        self.client.force_authenticate(self.master)
+        response = self.client.post(
+            reverse("appointments-list"),
+            {
+                "patient": str(self.patient.id),
+                "professional": str(self.surgeon_2.id),
+                "specialty": str(self.specialty.id),
+                "appointment_date": str(timezone.localdate() + timedelta(days=1)),
+                "appointment_time": "10:00:00",
+                "duration_minutes": 60,
+                "status": "pending",
+                "appointment_type": "first_visit",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        assignment = DoctorPatientAssignment.objects.filter(patient=self.patient).first()
+        self.assertIsNotNone(assignment)
+        self.assertEqual(str(assignment.doctor_id), str(self.surgeon_2.id))
+        self.assertEqual(str(assignment.assigned_by_id), str(self.master.id))
+
+    def test_create_appointment_keeps_assignment_when_professional_is_unchanged(self):
+        assignment = DoctorPatientAssignment.objects.create(
+            patient=self.patient,
+            doctor=self.surgeon,
+            assigned_by=self.surgeon_2,
+        )
+        previous_assigned_at = assignment.assigned_at
+
+        self.client.force_authenticate(self.master)
+        response = self.client.post(
+            reverse("appointments-list"),
+            {
+                "patient": str(self.patient.id),
+                "professional": str(self.surgeon.id),
+                "specialty": str(self.specialty.id),
+                "appointment_date": str(timezone.localdate() + timedelta(days=1)),
+                "appointment_time": "11:00:00",
+                "duration_minutes": 60,
+                "status": "pending",
+                "appointment_type": "first_visit",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        assignment.refresh_from_db()
+        self.assertEqual(str(assignment.doctor_id), str(self.surgeon.id))
+        self.assertEqual(str(assignment.assigned_by_id), str(self.surgeon_2.id))
+        self.assertEqual(assignment.assigned_at, previous_assigned_at)
+
     @patch("apps.appointments.views.dispatch_appointment_created_workflows_task.delay")
     def test_create_appointment_dispatches_confirmation_push(self, confirmation_delay_mock):
         self.client.force_authenticate(self.master)
@@ -408,6 +467,77 @@ class AppointmentViewsTestCase(APITestCase):
         response = self.client.put(url, {"status": "confirmed"}, format="json")
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
+    def test_patient_can_confirm_presence_via_detail_endpoint(self):
+        appointment = Appointment.objects.create(
+            tenant=self.tenant,
+            patient=self.patient,
+            professional=self.surgeon,
+            specialty=self.specialty,
+            appointment_date=timezone.localdate() + timedelta(days=1),
+            appointment_time=time(11, 30),
+            status=Appointment.StatusChoices.PENDING,
+            appointment_type=Appointment.AppointmentTypeChoices.FIRST_VISIT,
+            created_by=self.master,
+        )
+
+        self.client.force_authenticate(self.patient)
+        url = reverse("appointments-detail", kwargs={"pk": appointment.id})
+        response = self.client.put(url, {"status": "confirmed"}, format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        appointment.refresh_from_db()
+        self.assertEqual(appointment.status, Appointment.StatusChoices.CONFIRMED)
+
+    def test_patient_cannot_mark_appointment_as_completed(self):
+        appointment = Appointment.objects.create(
+            tenant=self.tenant,
+            patient=self.patient,
+            professional=self.surgeon,
+            specialty=self.specialty,
+            appointment_date=timezone.localdate() + timedelta(days=1),
+            appointment_time=time(12, 0),
+            status=Appointment.StatusChoices.PENDING,
+            appointment_type=Appointment.AppointmentTypeChoices.FIRST_VISIT,
+            created_by=self.master,
+        )
+
+        self.client.force_authenticate(self.patient)
+        url = reverse("appointments-detail", kwargs={"pk": appointment.id})
+        response = self.client.put(url, {"status": "completed"}, format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(
+            response.data.get("detail"),
+            "Voce nao tem permissao para alterar este status.",
+        )
+        appointment.refresh_from_db()
+        self.assertEqual(appointment.status, Appointment.StatusChoices.PENDING)
+
+    def test_surgeon_can_move_status_to_in_progress_via_detail_endpoint(self):
+        appointment = Appointment.objects.create(
+            tenant=self.tenant,
+            patient=self.patient,
+            professional=self.surgeon,
+            specialty=self.specialty,
+            appointment_date=timezone.localdate() + timedelta(days=1),
+            appointment_time=time(14, 0),
+            status=Appointment.StatusChoices.CONFIRMED,
+            appointment_type=Appointment.AppointmentTypeChoices.FIRST_VISIT,
+            created_by=self.master,
+        )
+        DoctorPatientAssignment.objects.update_or_create(
+            patient=self.patient,
+            defaults={"doctor": self.surgeon, "assigned_by": self.master},
+        )
+
+        self.client.force_authenticate(self.surgeon)
+        url = reverse("appointments-detail", kwargs={"pk": appointment.id})
+        response = self.client.put(url, {"status": "in_progress"}, format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        appointment.refresh_from_db()
+        self.assertEqual(appointment.status, Appointment.StatusChoices.IN_PROGRESS)
+
     @patch("apps.appointments.views.create_postop_schedule")
     @patch("apps.appointments.views.schedule_appointment_reminder_workflows_task.delay")
     @patch("apps.appointments.views.dispatch_appointment_created_workflows_task.delay")
@@ -674,7 +804,7 @@ class AppointmentViewsTestCase(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn("slots", response.data)
 
-    def test_available_slots_falls_back_to_default_weekday_schedule(self):
+    def test_available_slots_returns_empty_when_professional_has_no_availability_for_day(self):
         self.client.force_authenticate(self.patient)
         url = reverse("appointments-available-slots")
         date = self._next_weekday_date(1)  # Tuesday
@@ -688,7 +818,7 @@ class AppointmentViewsTestCase(APITestCase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertTrue(response.data["slots"])
+        self.assertEqual(response.data["slots"], [])
 
     def test_available_slots_does_not_use_default_when_custom_availability_exists(self):
         ProfessionalAvailability.objects.create(
@@ -713,6 +843,28 @@ class AppointmentViewsTestCase(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["slots"], [])
+
+    def test_available_slots_returns_30_minute_windows_from_configured_availability(self):
+        monday = self._next_weekday_date(0)
+        ProfessionalAvailability.objects.create(
+            professional=self.surgeon,
+            day_of_week=0,
+            start_time=time(10, 0),
+            end_time=time(12, 0),
+            is_active=True,
+        )
+
+        self.client.force_authenticate(self.patient)
+        response = self.client.get(
+            reverse("appointments-available-slots"),
+            {
+                "professional_id": str(self.surgeon.id),
+                "date": str(monday),
+            },
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["slots"], ["10:00", "10:30", "11:00", "11:30"])
 
     def test_surgeon_my_patients_includes_assigned_patient_with_scheduled_appointment(self):
         DoctorPatientAssignment.objects.create(
@@ -1102,6 +1254,46 @@ class AppointmentViewsTestCase(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
 
+    def test_update_appointment_with_different_professional_updates_assignment(self):
+        appointment = Appointment.objects.create(
+            tenant=self.tenant,
+            patient=self.patient,
+            professional=self.surgeon,
+            specialty=self.specialty,
+            appointment_date=timezone.localdate() + timedelta(days=2),
+            appointment_time=timezone.localtime().time().replace(hour=9, minute=0, second=0, microsecond=0),
+            duration_minutes=60,
+            status=Appointment.StatusChoices.PENDING,
+            appointment_type=Appointment.AppointmentTypeChoices.FIRST_VISIT,
+            created_by=self.master,
+        )
+        DoctorPatientAssignment.objects.create(
+            patient=self.patient,
+            doctor=self.surgeon,
+            assigned_by=self.master,
+        )
+
+        self.client.force_authenticate(self.master)
+        response = self.client.patch(
+            reverse("appointments-detail", kwargs={"pk": appointment.id}),
+            {
+                "patient": str(self.patient.id),
+                "professional": str(self.surgeon_2.id),
+                "specialty": str(self.specialty.id),
+                "appointment_date": str(appointment.appointment_date),
+                "appointment_time": "10:00:00",
+                "duration_minutes": 60,
+                "appointment_type": "first_visit",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        assignment = DoctorPatientAssignment.objects.filter(patient=self.patient).first()
+        self.assertIsNotNone(assignment)
+        self.assertEqual(str(assignment.doctor_id), str(self.surgeon_2.id))
+        self.assertEqual(str(assignment.assigned_by_id), str(self.master.id))
+
     def test_reschedule_updates_same_appointment_without_creating_new_row(self):
         appointment = Appointment.objects.create(
             tenant=self.tenant,
@@ -1206,6 +1398,13 @@ class AppointmentViewsTestCase(APITestCase):
             status=Appointment.StatusChoices.PENDING,
             appointment_type=Appointment.AppointmentTypeChoices.FIRST_VISIT,
             created_by=self.master,
+        )
+        ProfessionalAvailability.objects.create(
+            professional=self.surgeon,
+            day_of_week=appointment.appointment_date.weekday(),
+            start_time=time(10, 0),
+            end_time=time(12, 0),
+            is_active=True,
         )
 
         self.client.force_authenticate(self.patient)

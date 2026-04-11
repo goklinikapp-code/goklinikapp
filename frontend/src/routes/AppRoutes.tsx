@@ -24,6 +24,7 @@ import ReferralsPage from "@/pages/Referrals";
 import TeamPage from "@/pages/Team";
 import AutomationsPage from "@/pages/Automations";
 import SettingsPage from "@/pages/Settings";
+import ProfileSettingsPage from "@/pages/ProfileSettings";
 import PatientDetailPage from "@/pages/PatientDetail";
 import PreOperatoryPage from "@/pages/PreOperatory";
 import PostOperatoryPage from "@/pages/PostOperatory";
@@ -258,6 +259,14 @@ export function AppRoutes() {
           element={
             <RoleRoute allow={["clinic_master"]} permission="settings">
               <SettingsPage />
+            </RoleRoute>
+          }
+        />
+        <Route
+          path="/profile-settings"
+          element={
+            <RoleRoute allow={["surgeon"]}>
+              <ProfileSettingsPage />
             </RoleRoute>
           }
         />

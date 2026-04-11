@@ -37,7 +37,7 @@ import {
   type BlockedPeriodItem,
   type UpdateAppointmentPayload,
 } from '@/api/appointments'
-import { getPatients } from '@/api/patients'
+import { getPatientById, getPatients } from '@/api/patients'
 import { getTeamMembers } from '@/api/team'
 import { SectionHeader } from '@/components/shared/SectionHeader'
 import { Avatar } from '@/components/ui/Avatar'
@@ -77,7 +77,7 @@ interface AppointmentForm {
   professional: string
   appointment_date: string
   appointment_time: string
-  appointment_type: AppointmentTypeValue
+  appointment_type: string
   notes?: string
 }
 
@@ -119,6 +119,10 @@ function normalizeAppointmentType(value?: string | null): AppointmentTypeValue {
     return value as AppointmentTypeValue
   }
   return 'first_visit'
+}
+
+function isAppointmentTypeValue(value?: string | null): value is AppointmentTypeValue {
+  return appointmentTypeValues.includes((value || '') as AppointmentTypeValue)
 }
 
 function toInputTime(value?: string | null): string {
@@ -228,7 +232,7 @@ export default function SchedulePage() {
   const [selectedCalendarDate, setSelectedCalendarDate] = useState(() =>
     format(new Date(), 'yyyy-MM-dd'),
   )
-  const [completingAppointmentId, setCompletingAppointmentId] = useState<string | null>(null)
+  const [statusTransitionAppointmentId, setStatusTransitionAppointmentId] = useState<string | null>(null)
   const [availabilityRows, setAvailabilityRows] = useState<WeeklyAvailabilityRow[]>(
     WEEK_DAYS.map((day) => ({
       day_of_week: day,
@@ -242,6 +246,16 @@ export default function SchedulePage() {
     end_datetime: '',
     reason: '',
   })
+  const [originalAssignedDoctor, setOriginalAssignedDoctor] = useState<{
+    id: string
+    name: string
+  } | null>(null)
+  const [hasManualDoctorOverride, setHasManualDoctorOverride] = useState(false)
+  const [editOriginalAssignedDoctor, setEditOriginalAssignedDoctor] = useState<{
+    id: string
+    name: string
+  } | null>(null)
+  const [editHasManualDoctorOverride, setEditHasManualDoctorOverride] = useState(false)
   const [searchParams] = useSearchParams()
 
   const queryClient = useQueryClient()
@@ -253,7 +267,11 @@ export default function SchedulePage() {
         professional: z.string().uuid(t('schedule_error_professional_required')),
         appointment_date: z.string().min(1, t('schedule_error_date_required')),
         appointment_time: z.string().min(1, t('schedule_error_time_required')),
-        appointment_type: z.enum(appointmentTypeValues),
+        appointment_type: z
+          .string()
+          .refine((value) => isAppointmentTypeValue(value), {
+            message: t('schedule_error_type_required'),
+          }),
         notes: z.string().optional(),
       }),
     [language],
@@ -330,7 +348,7 @@ export default function SchedulePage() {
     })
   }, [appointments, scheduleSearch])
 
-  const { data: patients = [] } = useQuery({
+  const { data: allPatients = [] } = useQuery({
     queryKey: ['patients-list'],
     queryFn: () => getPatients(),
   })
@@ -345,6 +363,7 @@ export default function SchedulePage() {
   const surgeonProfessionalId = isSurgeonUser ? (currentUser?.id || '') : ''
   const surgeonProfessionalName = currentUser?.full_name || ''
   const canManageAppointments = !isSurgeonUser
+  const canAdvanceAppointmentStatus = canManageAppointments || isSurgeonUser
   const weekDayLabels = useMemo(() => {
     return WEEK_DAYS.map((dayIndex) => {
       const date = addDays(startOfWeek(new Date(), { weekStartsOn: 1 }), dayIndex)
@@ -423,6 +442,10 @@ export default function SchedulePage() {
   const appointmentsErrorMessage = useMemo(() => {
     return extractErrorMessage(appointmentsError, t('schedule_load_error'))
   }, [appointmentsError, language])
+  const editSelectedProfessionalMissingFromTeam =
+    !isSurgeonUser &&
+    Boolean(editForm?.professional) &&
+    !surgeons.some((surgeon) => surgeon.id === editForm?.professional)
 
   const {
     register,
@@ -440,7 +463,7 @@ export default function SchedulePage() {
       professional: surgeonProfessionalId,
       appointment_date: '',
       appointment_time: '',
-      appointment_type: 'first_visit',
+      appointment_type: '',
       notes: '',
     },
   })
@@ -449,11 +472,108 @@ export default function SchedulePage() {
     control,
     name: 'professional',
   })
+  const selectedProfessionalMissingFromTeam =
+    !isSurgeonUser &&
+    Boolean(selectedProfessional) &&
+    !surgeons.some((surgeon) => surgeon.id === selectedProfessional)
+  const selectedAppointmentTypeRaw = useWatch({
+    control,
+    name: 'appointment_type',
+  })
+  const selectedAppointmentType = isAppointmentTypeValue(selectedAppointmentTypeRaw)
+    ? selectedAppointmentTypeRaw
+    : null
+  const shouldFilterPreOpApprovedPatients = selectedAppointmentType === 'surgery'
+  const isPatientSelectionEnabled = Boolean(selectedAppointmentType)
+
+  const {
+    data: createModalPatients = [],
+    isFetching: isFetchingPatientsByAppointmentType,
+  } = useQuery({
+    queryKey: ['schedule-create-patients', selectedAppointmentType],
+    enabled: isModalOpen && Boolean(selectedAppointmentType),
+    queryFn: () =>
+      getPatients(
+        shouldFilterPreOpApprovedPatients
+          ? { pre_op_approved: true }
+          : {},
+      ),
+  })
 
   useEffect(() => {
     if (!isModalOpen || !isSurgeonUser || !surgeonProfessionalId) return
     setValue('professional', surgeonProfessionalId, { shouldValidate: true })
   }, [isModalOpen, isSurgeonUser, surgeonProfessionalId, setValue])
+
+  useEffect(() => {
+    if (!isModalOpen) return
+    setValue('patient', '', { shouldValidate: false })
+    if (!isSurgeonUser) {
+      setValue('professional', '', { shouldValidate: false })
+    }
+    clearErrors('patient')
+  }, [isModalOpen, selectedAppointmentType, isSurgeonUser, setValue, clearErrors])
+
+  const applyPatientAssignedDoctorToCreateModal = async (patientId: string) => {
+    if (!patientId || isSurgeonUser) {
+      setOriginalAssignedDoctor(null)
+      setHasManualDoctorOverride(false)
+      return
+    }
+
+    try {
+      const patientDetail = await getPatientById(patientId)
+      const assignedDoctor = patientDetail.assigned_doctor
+
+      if (!assignedDoctor?.id) {
+        setOriginalAssignedDoctor(null)
+        setHasManualDoctorOverride(false)
+        setValue('professional', '', { shouldValidate: false })
+        return
+      }
+
+      setOriginalAssignedDoctor({
+        id: assignedDoctor.id,
+        name: assignedDoctor.name,
+      })
+      setHasManualDoctorOverride(false)
+      setValue('professional', assignedDoctor.id, { shouldValidate: true })
+      clearErrors('professional')
+    } catch {
+      setOriginalAssignedDoctor(null)
+      setHasManualDoctorOverride(false)
+    }
+  }
+
+  const applyPatientAssignedDoctorToEditModal = async (patientId: string) => {
+    if (!patientId || isSurgeonUser) {
+      setEditOriginalAssignedDoctor(null)
+      setEditHasManualDoctorOverride(false)
+      return
+    }
+
+    try {
+      const patientDetail = await getPatientById(patientId)
+      const assignedDoctor = patientDetail.assigned_doctor
+
+      if (!assignedDoctor?.id) {
+        setEditOriginalAssignedDoctor(null)
+        setEditHasManualDoctorOverride(false)
+        setEditForm((prev) => (prev ? { ...prev, professional: '' } : prev))
+        return
+      }
+
+      setEditOriginalAssignedDoctor({
+        id: assignedDoctor.id,
+        name: assignedDoctor.name,
+      })
+      setEditHasManualDoctorOverride(false)
+      setEditForm((prev) => (prev ? { ...prev, professional: assignedDoctor.id } : prev))
+    } catch {
+      setEditOriginalAssignedDoctor(null)
+      setEditHasManualDoctorOverride(false)
+    }
+  }
 
   const {
     data: slotsByDay = {},
@@ -629,12 +749,14 @@ export default function SchedulePage() {
       setIsModalOpen(false)
       setSelectedDay('')
       setSelectedSlot('')
+      setOriginalAssignedDoctor(null)
+      setHasManualDoctorOverride(false)
       reset({
         patient: '',
         professional: isSurgeonUser ? surgeonProfessionalId : '',
         appointment_date: '',
         appointment_time: '',
-        appointment_type: 'first_visit',
+        appointment_type: '',
         notes: '',
       })
       void queryClient.invalidateQueries({ queryKey: ['schedule-appointments'], exact: false })
@@ -690,25 +812,31 @@ export default function SchedulePage() {
     },
   })
 
-  const completeSurgeryMutation = useMutation({
-    mutationFn: (appointmentId: string) =>
+  const statusTransitionMutation = useMutation({
+    mutationFn: ({
+      appointmentId,
+      nextStatus,
+    }: {
+      appointmentId: string
+      nextStatus: string
+    }) =>
       updateAppointmentStatus(appointmentId, {
-        status: 'completed',
+        status: nextStatus,
       }),
-    onMutate: (appointmentId) => {
-      setCompletingAppointmentId(appointmentId)
+    onMutate: ({ appointmentId }) => {
+      setStatusTransitionAppointmentId(appointmentId)
     },
     onSuccess: () => {
-      toast.success(t('schedule_mark_as_realized_success'))
+      toast.success(t('schedule_update_success'))
       void queryClient.invalidateQueries({ queryKey: ['schedule-appointments'], exact: false })
       void queryClient.refetchQueries({ queryKey: ['schedule-appointments'], exact: false })
       void queryClient.invalidateQueries({ queryKey: ['dashboard-data'] })
     },
     onError: (error) => {
-      toast.error(extractErrorMessage(error, t('schedule_mark_as_realized_error')))
+      toast.error(extractErrorMessage(error, t('schedule_update_error')))
     },
     onSettled: () => {
-      setCompletingAppointmentId(null)
+      setStatusTransitionAppointmentId(null)
     },
   })
 
@@ -733,13 +861,15 @@ export default function SchedulePage() {
     const firstDay = bookingDays[0] || ''
     setSelectedDay(firstDay)
     setSelectedSlot('')
+    setOriginalAssignedDoctor(null)
+    setHasManualDoctorOverride(false)
     setIsModalOpen(true)
     reset({
       patient: '',
       professional: isSurgeonUser ? surgeonProfessionalId : '',
       appointment_date: '',
       appointment_time: '',
-      appointment_type: 'first_visit',
+      appointment_type: '',
       notes: '',
     })
   }
@@ -748,6 +878,8 @@ export default function SchedulePage() {
     const isoDate = toDateOnly(appointment.appointment_date)
 
     setSelectedAppointment(appointment)
+    setEditOriginalAssignedDoctor(null)
+    setEditHasManualDoctorOverride(false)
     setEditForm({
       patient: appointment.patient,
       professional: isSurgeonUser && surgeonProfessionalId
@@ -762,12 +894,17 @@ export default function SchedulePage() {
       notes: appointment.notes || '',
     })
     setIsDetailsModalOpen(true)
+    if (!isSurgeonUser && appointment.patient) {
+      void applyPatientAssignedDoctorToEditModal(appointment.patient)
+    }
   }
 
   const closeDetailsModal = () => {
     setIsDetailsModalOpen(false)
     setSelectedAppointment(null)
     setEditForm(null)
+    setEditOriginalAssignedDoctor(null)
+    setEditHasManualDoctorOverride(false)
   }
 
   const openCancelModal = (appointment: AppointmentItem) => {
@@ -901,13 +1038,17 @@ export default function SchedulePage() {
     const patientAvatar = resolvePatientAvatar(appointment)
     const professionalAvatar = resolveProfessionalAvatar(appointment)
 
-    const canMarkAsPerformed =
-      canManageAppointments &&
-      appointment.appointment_type === 'surgery' &&
-      appointment.status !== 'completed' &&
-      appointment.status !== 'cancelled'
-    const isCompletingThisAppointment =
-      completeSurgeryMutation.isPending && completingAppointmentId === appointment.id
+    const canMoveToInProgress =
+      canAdvanceAppointmentStatus && appointment.status === 'confirmed'
+    const canMoveToCompleted =
+      canAdvanceAppointmentStatus && appointment.status === 'in_progress'
+    const nextQuickStatus = canMoveToInProgress
+      ? 'in_progress'
+      : canMoveToCompleted
+        ? 'completed'
+        : null
+    const isUpdatingQuickStatus =
+      statusTransitionMutation.isPending && statusTransitionAppointmentId === appointment.id
 
     return (
       <div
@@ -946,14 +1087,27 @@ export default function SchedulePage() {
             <MapPin className="h-4 w-4" /> {appointment.clinic_location || t('schedule_default_room')}
           </span>
           <Badge status={appointment.status} />
-          {canMarkAsPerformed ? (
+          {nextQuickStatus ? (
             <Button
               size="sm"
-              onClick={() => completeSurgeryMutation.mutate(appointment.id)}
-              disabled={isCompletingThisAppointment}
+              variant="secondary"
+              className={nextQuickStatus === 'in_progress'
+                ? 'border-amber-200 bg-amber-100 text-amber-800 hover:bg-amber-200'
+                : 'border-emerald-200 bg-emerald-100 text-emerald-800 hover:bg-emerald-200'}
+              onClick={() => statusTransitionMutation.mutate({
+                appointmentId: appointment.id,
+                nextStatus: nextQuickStatus,
+              })}
+              disabled={isUpdatingQuickStatus}
             >
-              {!isCompletingThisAppointment ? <CheckCircle2 className="h-4 w-4" /> : null}
-              {isCompletingThisAppointment ? t('schedule_saving') : t('schedule_mark_as_realized')}
+              {!isUpdatingQuickStatus && nextQuickStatus === 'completed' ? (
+                <CheckCircle2 className="h-4 w-4" />
+              ) : null}
+              {isUpdatingQuickStatus
+                ? t('schedule_saving')
+                : nextQuickStatus === 'in_progress'
+                  ? t('schedule_status_in_progress')
+                  : t('schedule_status_completed')}
             </Button>
           ) : null}
           {canManageAppointments && appointment.status !== 'cancelled' ? (
@@ -1323,24 +1477,95 @@ export default function SchedulePage() {
         className="max-w-3xl overflow-x-hidden"
       >
         <form className="grid min-w-0 gap-3" onSubmit={handleSubmit(onSubmit)}>
-          <Select {...register('patient')}>
-            <option value="">{t('schedule_select_patient')}</option>
-            {patients.map((patient) => (
-              <option key={patient.id} value={patient.id}>
-                {patient.full_name}
+          <Select
+            {...register('appointment_type', {
+              onChange: () => {
+                setValue('patient', '', { shouldValidate: false })
+                if (!isSurgeonUser) {
+                  setValue('professional', '', { shouldValidate: false })
+                }
+                setOriginalAssignedDoctor(null)
+                setHasManualDoctorOverride(false)
+                clearErrors('patient')
+              },
+            })}
+          >
+            <option value="">{t('schedule_select_appointment_type')}</option>
+            <option value="first_visit">{t('schedule_type_first_visit')}</option>
+            <option value="return">{t('schedule_type_return')}</option>
+            <option value="surgery">{t('schedule_type_surgery')}</option>
+            <option value="post_op_7d">{t('schedule_type_post_op_7d')}</option>
+            <option value="post_op_30d">{t('schedule_type_post_op_30d')}</option>
+            <option value="post_op_90d">{t('schedule_type_post_op_90d')}</option>
+          </Select>
+          {errors.appointment_type ? <p className="caption text-danger">{errors.appointment_type.message}</p> : null}
+
+          <Select
+            {...register('patient', {
+              onChange: (event) => {
+                const selectedPatientId = String(event.target.value || '').trim()
+                setSelectedSlot('')
+                setValue('appointment_date', '')
+                setValue('appointment_time', '')
+                clearErrors(['appointment_date', 'appointment_time'])
+
+                if (!selectedPatientId) {
+                  setOriginalAssignedDoctor(null)
+                  setHasManualDoctorOverride(false)
+                  if (!isSurgeonUser) {
+                    setValue('professional', '', { shouldValidate: false })
+                  }
+                  return
+                }
+
+                void applyPatientAssignedDoctorToCreateModal(selectedPatientId)
+              },
+            })}
+            disabled={!isPatientSelectionEnabled || isFetchingPatientsByAppointmentType}
+          >
+            <option value="">
+              {!isPatientSelectionEnabled
+                ? t('schedule_select_type_first')
+                : t('schedule_select_patient')}
+            </option>
+            {isPatientSelectionEnabled && isFetchingPatientsByAppointmentType ? (
+              <option value="" disabled>
+                {t('schedule_loading')}
               </option>
-            ))}
+            ) : null}
+            {isPatientSelectionEnabled && !isFetchingPatientsByAppointmentType ? (
+              shouldFilterPreOpApprovedPatients && createModalPatients.length === 0 ? (
+                <option value="" disabled>
+                  {t('schedule_no_pre_op_approved_patients')}
+                </option>
+              ) : (
+                createModalPatients.map((patient) => (
+                  <option key={patient.id} value={patient.id}>
+                    {patient.full_name}
+                  </option>
+                ))
+              )
+            ) : null}
           </Select>
           {errors.patient ? <p className="caption text-danger">{errors.patient.message}</p> : null}
 
           <Select
             {...register('professional', {
-              onChange: () => {
+              onChange: (event) => {
                 if (isSurgeonUser) return
+
+                const nextProfessionalId = String(event.target.value || '').trim()
                 setSelectedSlot('')
                 setValue('appointment_date', '')
                 setValue('appointment_time', '')
                 clearErrors(['appointment_date', 'appointment_time'])
+
+                if (!nextProfessionalId || !originalAssignedDoctor?.id) {
+                  setHasManualDoctorOverride(false)
+                  return
+                }
+
+                setHasManualDoctorOverride(nextProfessionalId !== originalAssignedDoctor.id)
               },
             })}
           >
@@ -1351,6 +1576,11 @@ export default function SchedulePage() {
             ) : (
               <>
                 <option value="">{t('schedule_select_professional')}</option>
+                {selectedProfessionalMissingFromTeam && selectedProfessional ? (
+                  <option value={selectedProfessional}>
+                    {originalAssignedDoctor?.name || t('schedule_select_professional')}
+                  </option>
+                ) : null}
                 {surgeons.map((surgeon) => (
                   <option key={surgeon.id} value={surgeon.id}>
                     {surgeon.name}
@@ -1360,6 +1590,12 @@ export default function SchedulePage() {
             )}
           </Select>
           {errors.professional ? <p className="caption text-danger">{errors.professional.message}</p> : null}
+          {hasManualDoctorOverride && originalAssignedDoctor ? (
+            <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+              Este paciente estava vinculado ao Dr. {originalAssignedDoctor.name}. Ao salvar o
+              agendamento com um médico diferente, o vínculo será atualizado automaticamente.
+            </p>
+          ) : null}
 
           <input type="hidden" {...register('appointment_date')} />
           <input type="hidden" {...register('appointment_time')} />
@@ -1458,16 +1694,6 @@ export default function SchedulePage() {
           {errors.appointment_date ? <p className="caption text-danger">{errors.appointment_date.message}</p> : null}
           {errors.appointment_time ? <p className="caption text-danger">{errors.appointment_time.message}</p> : null}
 
-          <Select {...register('appointment_type')}>
-            <option value="first_visit">{t('schedule_type_first_visit')}</option>
-            <option value="return">{t('schedule_type_return')}</option>
-            <option value="surgery">{t('schedule_type_surgery')}</option>
-            <option value="post_op_7d">{t('schedule_type_post_op_7d')}</option>
-            <option value="post_op_30d">{t('schedule_type_post_op_30d')}</option>
-            <option value="post_op_90d">{t('schedule_type_post_op_90d')}</option>
-          </Select>
-          {errors.appointment_type ? <p className="caption text-danger">{errors.appointment_type.message}</p> : null}
-
           <TextArea rows={3} placeholder={t('schedule_notes_optional')} {...register('notes')} />
 
           <div className="mt-2 flex justify-end gap-2">
@@ -1504,15 +1730,33 @@ export default function SchedulePage() {
               </p>
             </div>
 
+            <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-3 py-2">
+              <p className="text-xs font-semibold text-slate-600">{t('schedule_field_status')}</p>
+              <Badge status={editForm.status} />
+            </div>
+
             <div>
               <p className="mb-1 text-xs font-semibold text-slate-600">{t('schedule_field_patient')}</p>
               <Select
                 value={editForm.patient}
                 disabled={!canManageAppointments}
-                onChange={(event) => setEditForm((prev) => (prev ? { ...prev, patient: event.target.value } : prev))}
+                onChange={(event) => {
+                  const selectedPatientId = String(event.target.value || '').trim()
+                  setEditForm((prev) => (prev ? { ...prev, patient: selectedPatientId } : prev))
+
+                  if (isSurgeonUser) return
+                  if (!selectedPatientId) {
+                    setEditOriginalAssignedDoctor(null)
+                    setEditHasManualDoctorOverride(false)
+                    setEditForm((prev) => (prev ? { ...prev, professional: '' } : prev))
+                    return
+                  }
+
+                  void applyPatientAssignedDoctorToEditModal(selectedPatientId)
+                }}
               >
                 <option value="">{t('schedule_select_patient')}</option>
-                {patients.map((patient) => (
+                {allPatients.map((patient) => (
                   <option key={patient.id} value={patient.id}>
                     {patient.full_name}
                   </option>
@@ -1525,9 +1769,21 @@ export default function SchedulePage() {
               <Select
                 value={editForm.professional}
                 disabled={!canManageAppointments}
-                onChange={(event) =>
-                  setEditForm((prev) => (prev ? { ...prev, professional: event.target.value } : prev))
-                }
+                onChange={(event) => {
+                  const selectedProfessionalId = String(event.target.value || '').trim()
+                  setEditForm((prev) =>
+                    prev ? { ...prev, professional: selectedProfessionalId } : prev,
+                  )
+
+                  if (!editOriginalAssignedDoctor?.id || !selectedProfessionalId) {
+                    setEditHasManualDoctorOverride(false)
+                    return
+                  }
+
+                  setEditHasManualDoctorOverride(
+                    selectedProfessionalId !== editOriginalAssignedDoctor.id,
+                  )
+                }}
               >
                 {isSurgeonUser ? (
                   <option value={surgeonProfessionalId}>
@@ -1536,6 +1792,11 @@ export default function SchedulePage() {
                 ) : (
                   <>
                     <option value="">{t('schedule_select_professional')}</option>
+                    {editSelectedProfessionalMissingFromTeam && editForm.professional ? (
+                      <option value={editForm.professional}>
+                        {editOriginalAssignedDoctor?.name || t('schedule_select_professional')}
+                      </option>
+                    ) : null}
                     {surgeons.map((surgeon) => (
                       <option key={surgeon.id} value={surgeon.id}>
                         {surgeon.name}
@@ -1544,6 +1805,12 @@ export default function SchedulePage() {
                   </>
                 )}
               </Select>
+              {editHasManualDoctorOverride && editOriginalAssignedDoctor ? (
+                <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+                  Este paciente estava vinculado ao Dr. {editOriginalAssignedDoctor.name}. Ao salvar o
+                  agendamento com um médico diferente, o vínculo será atualizado automaticamente.
+                </p>
+              ) : null}
             </div>
 
             <div className="grid gap-3 md:grid-cols-2">

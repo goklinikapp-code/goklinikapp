@@ -18,7 +18,6 @@ from services.supabase_storage import SupabaseStorageError, delete_file, upload_
 from .models import GoKlinikUser, TutorialProgress, TutorialVideo
 from .serializers import (
     ActivityLogSerializer,
-    ChangePasswordSerializer,
     ForgotPasswordSerializer,
     GoKlinikUserSerializer,
     InviteUserSerializer,
@@ -195,7 +194,13 @@ class ChangePasswordAPIView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     @extend_schema(
-        request=ChangePasswordSerializer,
+        request=inline_serializer(
+            name="ChangePasswordRequestSerializer",
+            fields={
+                "current_password": serializers.CharField(),
+                "new_password": serializers.CharField(),
+            },
+        ),
         responses={
             status.HTTP_200_OK: DETAIL_RESPONSE_SERIALIZER,
             status.HTTP_400_BAD_REQUEST: OpenApiResponse(description="Validation error."),
@@ -203,11 +208,27 @@ class ChangePasswordAPIView(APIView):
         },
     )
     def post(self, request, *args, **kwargs):
-        serializer = ChangePasswordSerializer(data=request.data, context={"request": request})
-        serializer.is_valid(raise_exception=True)
-        serializer.save()
+        current_password = str(request.data.get("current_password") or "")
+        new_password = str(request.data.get("new_password") or "")
 
-        return Response({"detail": "Password changed successfully."}, status=status.HTTP_200_OK)
+        if not current_password or not new_password:
+            return Response(
+                {"detail": "Campos obrigatórios: current_password e new_password."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        user = request.user
+        if not user.check_password(current_password):
+            return Response(
+                {"detail": "Senha atual incorreta"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        user.set_password(new_password)
+        user.temp_password = None
+        user.save(update_fields=["password", "temp_password"])
+
+        return Response({"detail": "Senha alterada com sucesso"}, status=status.HTTP_200_OK)
 
 
 class CurrentUserAPIView(APIView):

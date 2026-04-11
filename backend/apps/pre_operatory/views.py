@@ -79,6 +79,7 @@ def _pre_operatory_queryset():
     return PreOperatory.objects.select_related(
         "patient",
         "assigned_doctor",
+        "approved_by",
         "procedure",
     ).prefetch_related("files")
 
@@ -211,6 +212,14 @@ def _delete_storage_file_from_url(file_url: str | None) -> None:
         pass
 
 
+def _sync_patient_specialty_with_pre_operatory(pre_operatory: PreOperatory) -> None:
+    Patient.objects.filter(id=pre_operatory.patient_id).exclude(
+        specialty_id=pre_operatory.procedure_id
+    ).update(
+        specialty_id=pre_operatory.procedure_id
+    )
+
+
 class PreOperatoryCreateAPIView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -325,6 +334,7 @@ class PreOperatoryCreateAPIView(APIView):
                     procedure=data.get("procedure"),
                     status=PreOperatory.StatusChoices.PENDING,
                 )
+                _sync_patient_specialty_with_pre_operatory(pre_operatory)
 
                 for upload in photos:
                     file_url = _save_uploaded_file(
@@ -481,10 +491,10 @@ class PreOperatoryDetailAPIView(APIView):
 
                 if pre_operatory.status == PreOperatory.StatusChoices.REJECTED:
                     pre_operatory.status = PreOperatory.StatusChoices.PENDING
-                    pre_operatory.approved_at = None
                     changed_fields.append("status")
 
                 pre_operatory.save()
+                _sync_patient_specialty_with_pre_operatory(pre_operatory)
 
                 for upload in photos:
                     file_url = _save_uploaded_file(
@@ -648,17 +658,29 @@ class PreOperatoryDetailAPIView(APIView):
 
         with transaction.atomic():
             changed_fields = []
+            approval_history_event: dict | None = None
             if "status" in data:
                 new_status = data["status"]
                 if pre_operatory.status != new_status:
                     changed_fields.append("status")
                 pre_operatory.status = new_status
                 if new_status == PreOperatory.StatusChoices.APPROVED:
-                    pre_operatory.approved_at = timezone.now()
-                    changed_fields.append("approved_at")
-                elif pre_operatory.approved_at is not None:
-                    pre_operatory.approved_at = None
-                    changed_fields.append("approved_at")
+                    if pre_operatory.approved_by_id is None:
+                        pre_operatory.approved_by = user
+                        pre_operatory.approved_at = timezone.now()
+                        changed_fields.extend(["approved_by", "approved_at"])
+                    elif pre_operatory.approved_at is None:
+                        pre_operatory.approved_at = timezone.now()
+                        changed_fields.append("approved_at")
+                    elif str(pre_operatory.approved_by_id) != str(user.id):
+                        approval_history_event = {
+                            "status": "approved_by_another_doctor",
+                            "original_approved_by_id": str(pre_operatory.approved_by_id),
+                            "original_approved_at": pre_operatory.approved_at.isoformat()
+                            if pre_operatory.approved_at
+                            else None,
+                            "new_approver_id": str(user.id),
+                        }
             if "notes" in data:
                 normalized_notes = (data.get("notes") or "").strip()
                 if pre_operatory.notes != normalized_notes:
@@ -710,6 +732,7 @@ class PreOperatoryDetailAPIView(APIView):
                         else None
                     ),
                     "notes_changed": previous_notes != pre_operatory.notes,
+                    "approval_history_event": approval_history_event,
                 },
             )
 

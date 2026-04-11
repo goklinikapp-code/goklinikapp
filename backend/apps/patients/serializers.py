@@ -123,6 +123,7 @@ class PatientListSerializer(AbsoluteMediaUrlsSerializerMixin, serializers.ModelS
 class PatientDetailSerializer(AbsoluteMediaUrlsSerializerMixin, serializers.ModelSerializer):
     full_name = serializers.CharField(read_only=True)
     specialty_name = serializers.CharField(source="specialty.specialty_name", read_only=True)
+    temp_password = serializers.SerializerMethodField()
     assigned_doctor = serializers.SerializerMethodField()
     pre_operatory_status = serializers.SerializerMethodField()
     pre_operatory_procedure_name = serializers.SerializerMethodField()
@@ -137,6 +138,7 @@ class PatientDetailSerializer(AbsoluteMediaUrlsSerializerMixin, serializers.Mode
             "first_name",
             "last_name",
             "email",
+            "temp_password",
             "phone",
             "cpf",
             "date_of_birth",
@@ -165,6 +167,23 @@ class PatientDetailSerializer(AbsoluteMediaUrlsSerializerMixin, serializers.Mode
             "date_joined",
         )
         read_only_fields = ("id", "tenant", "date_joined")
+
+    def get_temp_password(self, obj: Patient):
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        if not user or not getattr(user, "is_authenticated", False):
+            return None
+
+        if user.role not in {
+            GoKlinikUser.RoleChoices.CLINIC_MASTER,
+            GoKlinikUser.RoleChoices.SECRETARY,
+        }:
+            return None
+
+        if not user.tenant_id or not obj.tenant_id or str(user.tenant_id) != str(obj.tenant_id):
+            return None
+
+        return obj.temp_password
 
     def get_assigned_doctor(self, obj: Patient):
         assignment = getattr(obj, "doctor_assignment", None)

@@ -275,6 +275,7 @@ export default function SettingsPage() {
 
   const [procedureName, setProcedureName] = useState('')
   const [procedureDescription, setProcedureDescription] = useState('')
+  const [isCreateProcedureModalOpen, setIsCreateProcedureModalOpen] = useState(false)
   const [editingProcedure, setEditingProcedure] = useState<TenantProcedure | null>(null)
   const [editingProcedureName, setEditingProcedureName] = useState('')
   const [editingProcedureDescription, setEditingProcedureDescription] = useState('')
@@ -336,6 +337,7 @@ export default function SettingsPage() {
       toast.success('Procedimento cadastrado com sucesso')
       setProcedureName('')
       setProcedureDescription('')
+      setIsCreateProcedureModalOpen(false)
       await queryClient.invalidateQueries({ queryKey: ['tenant-procedures', tenantConfig.id] })
     },
     onError: () => toast.error('Não foi possível cadastrar o procedimento'),
@@ -421,6 +423,18 @@ export default function SettingsPage() {
     }
 
     createProcedureMutation.mutate()
+  }
+
+  const openCreateProcedureModal = () => {
+    setProcedureName('')
+    setProcedureDescription('')
+    setIsCreateProcedureModalOpen(true)
+  }
+
+  const closeCreateProcedureModal = () => {
+    setIsCreateProcedureModalOpen(false)
+    setProcedureName('')
+    setProcedureDescription('')
   }
 
   const openProcedureEditModal = (procedure: TenantProcedure) => {
@@ -877,30 +891,17 @@ export default function SettingsPage() {
 
       {activeTab === 'Procedimentos' ? (
         <Card>
-          <h2 className="section-heading mb-4">Procedimentos</h2>
-          <p className="caption mb-4">
-            Cadastre os procedimentos da clínica. Eles serão usados no agendamento e no histórico do prontuário.
-          </p>
-          <div className="mb-4 grid gap-3 rounded-lg border border-slate-100 bg-slate-50 p-3 md:grid-cols-2">
-            <Input
-              placeholder="Nome do procedimento"
-              value={procedureName}
-              onChange={(event) => setProcedureName(event.target.value)}
-            />
-            <Input
-              placeholder="Descrição breve (opcional)"
-              value={procedureDescription}
-              onChange={(event) => setProcedureDescription(event.target.value)}
-            />
-            <div className="md:col-span-2 flex flex-wrap justify-end gap-2">
-              <Button
-                type="button"
-                onClick={handleSaveProcedure}
-                disabled={createProcedureMutation.isPending || updateProcedureMutation.isPending}
-              >
-                {createProcedureMutation.isPending ? 'Cadastrando...' : 'Cadastrar procedimento'}
-              </Button>
+          <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="section-heading">Procedimentos</h2>
+              <p className="caption mt-1">
+                Cadastre os procedimentos da clínica. Eles serão usados no agendamento e no histórico do prontuário.
+              </p>
             </div>
+            <Button type="button" onClick={openCreateProcedureModal}>
+              <Plus className="h-4 w-4" />
+              Cadastrar procedimento
+            </Button>
           </div>
           <div className="space-y-3">
             {proceduresQuery.isLoading ? <p className="text-sm text-slate-500">Carregando procedimentos...</p> : null}
@@ -960,6 +961,55 @@ export default function SettingsPage() {
               </p>
             ) : null}
           </div>
+
+          <Modal
+            isOpen={isCreateProcedureModalOpen}
+            onClose={closeCreateProcedureModal}
+            title="Cadastrar procedimento"
+            className="max-w-2xl"
+          >
+            <div className="space-y-4">
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <p className="text-sm font-semibold text-night">Novo procedimento</p>
+                <p className="caption mt-1">
+                  Preencha o nome e uma descrição breve para aparecer no app e no painel.
+                </p>
+              </div>
+
+              <div className="space-y-3">
+                <div>
+                  <p className="mb-1 text-xs font-semibold text-slate-600">Nome do procedimento</p>
+                  <Input
+                    placeholder="Ex: Rinoplastia estruturada"
+                    value={procedureName}
+                    onChange={(event) => setProcedureName(event.target.value)}
+                  />
+                </div>
+                <div>
+                  <p className="mb-1 text-xs font-semibold text-slate-600">Descrição breve (opcional)</p>
+                  <TextArea
+                    rows={4}
+                    placeholder="Descreva brevemente o procedimento para orientar o paciente."
+                    value={procedureDescription}
+                    onChange={(event) => setProcedureDescription(event.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2">
+                <Button type="button" variant="secondary" onClick={closeCreateProcedureModal}>
+                  Cancelar
+                </Button>
+                <Button
+                  type="button"
+                  onClick={handleSaveProcedure}
+                  disabled={createProcedureMutation.isPending || updateProcedureMutation.isPending}
+                >
+                  {createProcedureMutation.isPending ? 'Cadastrando...' : 'Cadastrar procedimento'}
+                </Button>
+              </div>
+            </div>
+          </Modal>
 
           <Modal
             isOpen={Boolean(editingProcedure)}

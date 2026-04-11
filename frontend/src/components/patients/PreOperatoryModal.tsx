@@ -32,6 +32,17 @@ interface PreOperatoryModalProps {
   actionArea?: ReactNode
 }
 
+function formatApprovalDate(value?: string | null): string {
+  if (!value) return 'Não informado'
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) return 'Não informado'
+  return new Intl.DateTimeFormat('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  }).format(parsed)
+}
+
 export function PreOperatoryModal({
   isOpen,
   onClose,
@@ -55,6 +66,15 @@ export function PreOperatoryModal({
   const resolvedLoadingMessage = loadingMessage || t('preop_modal_loading')
   const resolvedErrorMessage = errorMessage || t('preop_modal_error')
   const resolvedEmptyMessage = emptyMessage || t('preop_modal_empty')
+  const approvedByDisplayName =
+    record?.approved_by_name?.trim()
+    || record?.current_doctor_name?.trim()
+    || record?.assigned_doctor_name?.trim()
+    || ''
+  const currentDoctorDisplayName =
+    record?.current_doctor_name?.trim()
+    || record?.assigned_doctor_name?.trim()
+    || ''
 
   return (
     <Modal
@@ -74,6 +94,33 @@ export function PreOperatoryModal({
           <div className="flex items-center justify-between rounded-card border border-slate-200 bg-slate-50 p-3">
             <p className="text-sm font-semibold text-night">{t('preop_modal_screening_status')}</p>
             <Badge className={preOperatoryStatusBadgeClass(record.status)}>{statusText}</Badge>
+          </div>
+
+          {record.status === 'approved' ? (
+            <div className="space-y-2 rounded-card border border-emerald-200 bg-emerald-50 p-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">
+                Histórico de aprovação
+              </p>
+              <p className="text-sm text-slate-700">
+                <span className="font-semibold">Médico que aprovou:</span>{' '}
+                {approvedByDisplayName ? `Dr. ${approvedByDisplayName}` : 'Não informado'}
+              </p>
+              <p className="text-sm text-slate-700">
+                <span className="font-semibold">Data da aprovação:</span>{' '}
+                {formatApprovalDate(record.approved_at)}
+              </p>
+              {record.approved_by_different_doctor ? (
+                <p className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-700">
+                  Pré-operatório aprovado pelo Dr. {approvedByDisplayName || 'Não informado'}. Médico atual:
+                  {' '}Dr. {currentDoctorDisplayName || 'Não informado'}.
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+
+          <div className="rounded-card border border-slate-200 bg-slate-50 p-3">
+            <p className="overline">{t('preop_field_procedure')}</p>
+            <p className="text-sm text-slate-700">{record.procedure_name?.trim() || t('preop_not_informed')}</p>
           </div>
 
           <div className="grid gap-3 md:grid-cols-2">
