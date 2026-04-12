@@ -306,8 +306,23 @@ class AppointmentViewSet(viewsets.ModelViewSet):
             actor=user,
         )
 
-        self._dispatch_creation_side_effects(appointment=appointment)
-        self._notify_admin_appointment_created(appointment=appointment)
+        try:
+            self._dispatch_creation_side_effects(appointment=appointment)
+        except Exception as exc:  # noqa: BLE001
+            logger.exception(
+                "Non-blocking post-create side effects failed for appointment=%s: %s",
+                appointment.id,
+                exc,
+            )
+
+        try:
+            self._notify_admin_appointment_created(appointment=appointment)
+        except Exception as exc:  # noqa: BLE001
+            logger.exception(
+                "Non-blocking admin create notification failed for appointment=%s: %s",
+                appointment.id,
+                exc,
+            )
 
     def perform_update(self, serializer):
         user = self.request.user

@@ -120,6 +120,35 @@ class AppointmentViewsTestCase(APITestCase):
         self.assertEqual(str(assignment.doctor_id), str(self.surgeon_2.id))
         self.assertEqual(str(assignment.assigned_by_id), str(self.master.id))
 
+    @patch(
+        "apps.appointments.views.AppointmentViewSet._notify_admin_appointment_created",
+        side_effect=RuntimeError("notification failure"),
+    )
+    def test_create_appointment_still_returns_201_when_admin_notification_fails(
+        self,
+        _notification_mock,
+    ):
+        self.client.force_authenticate(self.master)
+        response = self.client.post(
+            reverse("appointments-list"),
+            {
+                "patient": str(self.patient.id),
+                "professional": str(self.surgeon.id),
+                "specialty": str(self.specialty.id),
+                "appointment_date": str(timezone.localdate() + timedelta(days=1)),
+                "appointment_time": "10:30:00",
+                "duration_minutes": 60,
+                "status": "pending",
+                "appointment_type": "first_visit",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertTrue(
+            Appointment.objects.filter(id=response.data["id"]).exists()
+        )
+
     def test_create_appointment_keeps_assignment_when_professional_is_unchanged(self):
         assignment = DoctorPatientAssignment.objects.create(
             patient=self.patient,
